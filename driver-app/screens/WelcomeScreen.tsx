@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 
-export default function HomeScreen(): React.JSX.Element {
+export default function WelcomeScreen(): React.JSX.Element {
   const handleGetStarted = (): void => {
     // Placeholder handler
     console.log('Get Started pressed');
@@ -149,3 +149,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+
