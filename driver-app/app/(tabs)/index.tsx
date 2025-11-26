@@ -8,16 +8,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 
 export default function HomeScreen(): React.JSX.Element {
   const handleGetStarted = (): void => {
-    // Placeholder handler
-    console.log('Get Started pressed');
+    router.push('/signup');
   };
 
   const handleLogin = (): void => {
-    // Placeholder handler
-    console.log('Login pressed');
+    router.push('/login');
   };
 
   return (
