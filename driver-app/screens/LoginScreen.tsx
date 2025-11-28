@@ -13,8 +13,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import { login, type ApiError } from '@/services/api';
+import { useUser } from '@/context/UserContext';
 
 export default function LoginScreen(): React.JSX.Element {
+  const { setUser } = useUser();
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
 
@@ -57,17 +60,22 @@ export default function LoginScreen(): React.JSX.Element {
     setErrors({});
 
     try {
-      // TODO: Implement actual login API call
-      // await loginAPI({ email, password });
+      const response = await login({
+        email: email.trim(),
+        password,
+      });
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Navigate to home/dashboard on success
-      // router.push('/home');
+      if (response.success && response.user) {
+        // Save user data to context
+        await setUser(response.user);
+        
+        // Navigate to home screen
+        router.replace('/(tabs)');
+      }
     } catch (error) {
+      const apiError = error as ApiError;
       setErrors({
-        general: 'Invalid email or password. Please try again.',
+        general: apiError.message || 'Invalid email or password. Please try again.',
       });
     } finally {
       setIsLoading(false);

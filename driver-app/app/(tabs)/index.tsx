@@ -9,8 +9,37 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
+import { useUser } from '@/context/UserContext';
 
 export default function HomeScreen(): React.JSX.Element {
+  const { user } = useUser();
+
+  // If user is logged in, show greeting
+  if (user) {
+    const getGreeting = (): string => {
+      const hour = new Date().getHours();
+      if (hour < 12) return 'Good morning';
+      if (hour < 18) return 'Good afternoon';
+      return 'Good evening';
+    };
+
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <StatusBar style="light" />
+        <View style={styles.content}>
+          <View style={styles.greetingContainer}>
+            <Text style={styles.greeting}>{getGreeting()},</Text>
+            <Text style={styles.name}>{user.fullName}! 👋</Text>
+            <Text style={styles.welcomeText}>
+              Welcome to Waypool Driver
+            </Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // If not logged in, show welcome screen
   const handleGetStarted = (): void => {
     router.push('/signup');
   };
@@ -146,5 +175,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
     letterSpacing: 0.5,
+  },
+  greetingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  greeting: {
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  name: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 16,
+  },
+  welcomeText: {
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#E5E5E5',
+    opacity: 0.9,
+    textAlign: 'center',
   },
 });

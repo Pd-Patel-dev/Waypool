@@ -1,7 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response } from 'express';
+import cors from 'cors';
 import { getDatabaseStatus, disconnectDatabase } from './utils/database';
+import driverRoutes from './routes/driver';
+import riderRoutes from './routes/rider';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -10,7 +13,12 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const serverStartTime = Date.now();
 
 // Middleware
+app.use(cors()); // Enable CORS for React Native app
 app.use(express.json());
+
+// Routes
+app.use('/api/driver', driverRoutes);
+app.use('/api/rider', riderRoutes);
 
 // Welcome route
 app.get('/', (req: Request, res: Response) => {

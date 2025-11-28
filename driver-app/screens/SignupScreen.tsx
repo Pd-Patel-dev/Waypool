@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import { signup, type ApiError } from '@/services/api';
 
 export default function SignupScreen(): React.JSX.Element {
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -102,18 +103,43 @@ export default function SignupScreen(): React.JSX.Element {
     setErrors({});
 
     try {
-      // TODO: Implement actual signup API call
-      // await signupAPI({ fullName, email, phoneNumber, password });
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Navigate to Login screen on success
-      router.push('/login');
-    } catch (error) {
-      setErrors({
-        general: 'Something went wrong. Please try again.',
+      const response = await signup({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        phoneNumber: phoneNumber.trim(),
+        password,
       });
+
+      if (response.success) {
+        // Navigate to Login screen on success
+        router.push('/login');
+      } else {
+        setErrors({
+          general: response.message || 'Something went wrong. Please try again.',
+        });
+      }
+    } catch (error) {
+      const apiError = error as ApiError;
+      if (apiError.errors && apiError.errors.length > 0) {
+        // Map API errors to form errors
+        const newErrors: typeof errors = {};
+        apiError.errors.forEach((err) => {
+          if (err.toLowerCase().includes('name')) {
+            newErrors.fullName = err;
+          } else if (err.toLowerCase().includes('email')) {
+            newErrors.email = err;
+          } else if (err.toLowerCase().includes('phone')) {
+            newErrors.phoneNumber = err;
+          } else if (err.toLowerCase().includes('password')) {
+            newErrors.password = err;
+          }
+        });
+        setErrors(newErrors);
+      } else {
+        setErrors({
+          general: apiError.message || 'Something went wrong. Please try again.',
+        });
+      }
     } finally {
       setIsLoading(false);
     }
