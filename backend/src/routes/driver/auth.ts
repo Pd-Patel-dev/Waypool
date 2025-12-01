@@ -5,11 +5,57 @@ import bcrypt from 'bcrypt';
 
 const router = express.Router();
 
+// GET /api/driver/auth/check-email?email=user@example.com
+router.get('/check-email', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.query;
+
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required',
+      });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email format',
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+
+    res.json({
+      success: true,
+      available: !existingUser,
+      message: existingUser
+        ? 'Email is already registered'
+        : 'Email is available',
+    });
+  } catch (error) {
+    console.error('Check email error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    });
+  }
+});
+
 interface SignupBody {
   fullName: string;
   email: string;
   phoneNumber: string;
   password: string;
+  photoUrl: string;
+  city: string;
+  carMake: string;
+  carModel: string;
+  carYear: number;
+  carColor: string;
 }
 
 interface LoginBody {
@@ -32,7 +78,7 @@ const validatePhoneNumber = (phone: string): boolean => {
 // POST /api/driver/auth/signup
 router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const { fullName, email, phoneNumber, password }: SignupBody = req.body;
+    const { fullName, email, phoneNumber, password, photoUrl, city, carMake, carModel, carYear, carColor }: SignupBody = req.body;
 
     // Validation
     const errors: string[] = [];
@@ -59,6 +105,32 @@ router.post('/signup', async (req: Request, res: Response) => {
       errors.push('Password must be at least 8 characters');
     }
 
+    if (!photoUrl || !photoUrl.trim()) {
+      errors.push('Photo URL is required');
+    }
+
+    if (!city || !city.trim()) {
+      errors.push('City is required');
+    }
+
+    if (!carMake || !carMake.trim()) {
+      errors.push('Car make is required');
+    }
+
+    if (!carModel || !carModel.trim()) {
+      errors.push('Car model is required');
+    }
+
+    if (!carYear) {
+      errors.push('Car year is required');
+    } else if (typeof carYear !== 'number' || carYear < 1900 || carYear > new Date().getFullYear() + 1) {
+      errors.push('Car year must be a valid year');
+    }
+
+    if (!carColor || !carColor.trim()) {
+      errors.push('Car color is required');
+    }
+
     if (errors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -76,6 +148,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       return res.status(409).json({
         success: false,
         message: 'User with this email already exists',
+        errors: ['Email already exists. Please use a different email or log in.'],
       });
     }
 
@@ -90,12 +163,24 @@ router.post('/signup', async (req: Request, res: Response) => {
         email: email.trim().toLowerCase(),
         phoneNumber: phoneNumber.trim(),
         password: hashedPassword,
+        photoUrl: photoUrl.trim(),
+        city: city.trim(),
+        carMake: carMake.trim(),
+        carModel: carModel.trim(),
+        carYear: typeof carYear === 'number' ? carYear : parseInt(String(carYear), 10),
+        carColor: carColor.trim(),
       },
       select: {
         id: true,
         fullName: true,
         email: true,
         phoneNumber: true,
+        photoUrl: true,
+        city: true,
+        carMake: true,
+        carModel: true,
+        carYear: true,
+        carColor: true,
         createdAt: true,
       },
     });
@@ -165,6 +250,12 @@ router.post('/login', async (req: Request, res: Response) => {
         fullName: user.fullName,
         email: user.email,
         phoneNumber: user.phoneNumber,
+        photoUrl: user.photoUrl,
+        city: user.city,
+        carMake: user.carMake,
+        carModel: user.carModel,
+        carYear: user.carYear,
+        carColor: user.carColor,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },

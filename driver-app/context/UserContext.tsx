@@ -7,6 +7,12 @@ interface User {
   fullName: string;
   email: string;
   phoneNumber: string;
+  photoUrl: string | null;
+  city: string | null;
+  carMake: string | null;
+  carModel: string | null;
+  carYear: number | null;
+  carColor: string | null;
   createdAt: string;
   updatedAt: string;
 }
