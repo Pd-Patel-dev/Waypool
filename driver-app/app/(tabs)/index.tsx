@@ -1,98 +1,264 @@
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
+import { useUser } from '@/context/UserContext';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function HomeScreen(): React.JSX.Element {
+  const { user, logout } = useUser();
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
 
-export default function HomeScreen() {
+  // If user is logged in, show greeting
+  if (user) {
+    const getGreeting = (): string => {
+      const hour = new Date().getHours();
+      if (hour < 12) return 'Good morning';
+      if (hour < 18) return 'Good afternoon';
+      return 'Good evening';
+    };
+
+    const handleSignOut = async (): Promise<void> => {
+      setIsLoggingOut(true);
+      try {
+        await logout();
+        // Navigation will happen automatically when user state changes
+      } catch (error) {
+        console.error('Sign out error:', error);
+        // Still clear local state even if backend call fails
+      } finally {
+        setIsLoggingOut(false);
+      }
+    };
+
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <StatusBar style="light" />
+        <View style={styles.content}>
+          <View style={styles.greetingContainer}>
+            <Text style={styles.greeting}>{getGreeting()},</Text>
+            <Text style={styles.name}>{user.fullName}! 👋</Text>
+            <Text style={styles.welcomeText}>
+              Welcome to Waypool Driver
+            </Text>
+          </View>
+          
+          <View style={styles.signOutContainer}>
+            <TouchableOpacity
+              style={[styles.signOutButton, isLoggingOut && styles.signOutButtonDisabled]}
+              onPress={handleSignOut}
+              disabled={isLoggingOut}
+              activeOpacity={0.8}
+            >
+              {isLoggingOut ? (
+                <ActivityIndicator color="#000000" />
+              ) : (
+                <Text style={styles.signOutButtonText}>Sign Out</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // If not logged in, show welcome screen
+  const handleGetStarted = (): void => {
+    router.push('/signup');
+  };
+
+  const handleLogin = (): void => {
+    router.push('/login');
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <StatusBar style="light" />
+      {/* Content Container */}
+      <View style={styles.content}>
+        {/* Logo */}
+        <View style={styles.logoContainer}>
         <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+            source={require('@/assets/images/Waypool-logo.png')}
+            style={styles.logo}
+            contentFit="contain"
+          />
+        </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        {/* Title and Subtitle */}
+        <View style={styles.textContainer}>
+          <Text style={styles.title}>Drive & Earn on Your Route</Text>
+          <Text style={styles.subtitle}>
+            Share your daily commute and earn with Waypool.
+          </Text>
+        </View>
+
+        {/* Buttons Container */}
+        <View style={styles.buttonContainer}>
+          {/* Primary Button - Get Started */}
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={handleGetStarted}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.primaryButtonText}>Get Started</Text>
+          </TouchableOpacity>
+
+          {/* Secondary Button - Login */}
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={handleLogin}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.secondaryButtonText}>Login</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
   },
-  stepContainer: {
-    gap: 8,
+  content: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    paddingBottom: 40,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginTop: 40,
+  },
+  logo: {
+    width: 220,
+    height: 220,
+  },
+  textContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  title: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 16,
+    letterSpacing: -0.5,
+    lineHeight: 44,
+  },
+  subtitle: {
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#E5E5E5',
+    textAlign: 'center',
+    lineHeight: 26,
+    opacity: 0.9,
+  },
+  buttonContainer: {
+    width: '100%',
+    gap: 16,
+  },
+  primaryButton: {
+    width: '100%',
+    height: 56,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  primaryButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000000',
+    letterSpacing: 0.5,
+  },
+  secondaryButton: {
+    width: '100%',
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  greetingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  greeting: {
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#FFFFFF',
     marginBottom: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  name: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 16,
+  },
+  welcomeText: {
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#E5E5E5',
+    opacity: 0.9,
+    textAlign: 'center',
+  },
+  signOutContainer: {
+    width: '100%',
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+  signOutButton: {
+    width: '100%',
+    height: 56,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  signOutButtonDisabled: {
+    opacity: 0.6,
+  },
+  signOutButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000000',
+    letterSpacing: 0.5,
   },
 });
