@@ -178,5 +178,23 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/driver/auth/logout
+router.post('/logout', async (req: Request, res: Response) => {
+  try {
+    // For now, just return success
+    // In the future, this could invalidate tokens, clear sessions, etc.
+    res.json({
+      success: true,
+      message: 'Logout successful',
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    });
+  }
+});
+
 export default router;
 

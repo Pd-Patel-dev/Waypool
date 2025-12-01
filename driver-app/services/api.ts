@@ -44,6 +44,11 @@ export interface LoginResponse {
   };
 }
 
+export interface LogoutResponse {
+  success: boolean;
+  message: string;
+}
+
 /**
  * Signup API call
  */
@@ -105,6 +110,41 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
     }
 
     return result as LoginResponse;
+  } catch (error) {
+    if (error && typeof error === 'object' && 'message' in error) {
+      throw error;
+    }
+    
+    // Network or other errors
+    throw {
+      success: false,
+      message: 'Network error. Please check your connection.',
+    } as ApiError;
+  }
+};
+
+/**
+ * Logout API call
+ */
+export const logout = async (): Promise<LogoutResponse> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGOUT}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || 'Logout failed',
+      } as ApiError;
+    }
+
+    return result as LogoutResponse;
   } catch (error) {
     if (error && typeof error === 'object' && 'message' in error) {
       throw error;

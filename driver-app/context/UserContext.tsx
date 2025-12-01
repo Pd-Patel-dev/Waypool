@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logout as apiLogout } from '@/services/api';
 
 interface User {
   id: number;
@@ -58,7 +59,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await setUser(null);
+    try {
+      // Call backend logout endpoint
+      await apiLogout();
+    } catch (error) {
+      // Even if backend call fails, clear local storage
+      console.error('Logout error:', error);
+    } finally {
+      // Always clear local user data
+      await setUser(null);
+    }
   };
 
   return (

@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -12,7 +13,8 @@ import { router } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 
 export default function HomeScreen(): React.JSX.Element {
-  const { user } = useUser();
+  const { user, logout } = useUser();
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
 
   // If user is logged in, show greeting
   if (user) {
@@ -21,6 +23,19 @@ export default function HomeScreen(): React.JSX.Element {
       if (hour < 12) return 'Good morning';
       if (hour < 18) return 'Good afternoon';
       return 'Good evening';
+    };
+
+    const handleSignOut = async (): Promise<void> => {
+      setIsLoggingOut(true);
+      try {
+        await logout();
+        // Navigation will happen automatically when user state changes
+      } catch (error) {
+        console.error('Sign out error:', error);
+        // Still clear local state even if backend call fails
+      } finally {
+        setIsLoggingOut(false);
+      }
     };
 
     return (
@@ -33,6 +48,21 @@ export default function HomeScreen(): React.JSX.Element {
             <Text style={styles.welcomeText}>
               Welcome to Waypool Driver
             </Text>
+          </View>
+          
+          <View style={styles.signOutContainer}>
+            <TouchableOpacity
+              style={[styles.signOutButton, isLoggingOut && styles.signOutButtonDisabled]}
+              onPress={handleSignOut}
+              disabled={isLoggingOut}
+              activeOpacity={0.8}
+            >
+              {isLoggingOut ? (
+                <ActivityIndicator color="#000000" />
+              ) : (
+                <Text style={styles.signOutButtonText}>Sign Out</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>
@@ -55,7 +85,7 @@ export default function HomeScreen(): React.JSX.Element {
       <View style={styles.content}>
         {/* Logo */}
         <View style={styles.logoContainer}>
-          <Image
+        <Image
             source={require('@/assets/images/Waypool-logo.png')}
             style={styles.logo}
             contentFit="contain"
@@ -200,5 +230,35 @@ const styles = StyleSheet.create({
     color: '#E5E5E5',
     opacity: 0.9,
     textAlign: 'center',
+  },
+  signOutContainer: {
+    width: '100%',
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+  signOutButton: {
+    width: '100%',
+    height: 56,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  signOutButtonDisabled: {
+    opacity: 0.6,
+  },
+  signOutButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000000',
+    letterSpacing: 0.5,
   },
 });
