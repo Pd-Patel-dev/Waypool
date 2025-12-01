@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
-import { signup, type ApiError } from '@/services/api';
+import { signup, checkEmail, type ApiError } from '@/services/api';
+import { US_STATES_CITIES, getCitiesByState, getStateNames } from '@/data/usStatesCities';
+import CustomDropdown from '@/components/CustomDropdown';
 
 export default function SignupScreen(): React.JSX.Element {
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -21,6 +23,14 @@ export default function SignupScreen(): React.JSX.Element {
   const [fullName, setFullName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [phoneNumber, setPhoneNumber] = useState<string>('');
+  const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [selectedState, setSelectedState] = useState<string>('');
+  const [selectedCity, setSelectedCity] = useState<string>('');
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [carMake, setCarMake] = useState<string>('');
+  const [carModel, setCarModel] = useState<string>('');
+  const [carYear, setCarYear] = useState<string>('');
+  const [carColor, setCarColor] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
 
@@ -28,17 +38,90 @@ export default function SignupScreen(): React.JSX.Element {
     fullName?: string;
     email?: string;
     phoneNumber?: string;
+    photoUrl?: string;
+    state?: string;
+    city?: string;
+    carMake?: string;
+    carModel?: string;
+    carYear?: string;
+    carColor?: string;
     password?: string;
     confirmPassword?: string;
     general?: string;
   }>({});
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState<boolean>(false);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
+
+  const emailCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const checkEmailAvailability = async (emailValue: string): Promise<void> => {
+    if (!emailValue.trim() || !validateEmail(emailValue)) {
+      return;
+    }
+
+    setIsCheckingEmail(true);
+    try {
+      const response = await checkEmail(emailValue.trim());
+      if (!response.available) {
+        setErrors((prev) => ({
+          ...prev,
+          email: 'This email is already registered. Please use a different email.',
+        }));
+      } else {
+        // Clear email error if email is available
+        setErrors((prev) => {
+          const newErrors = { ...prev };
+          if (newErrors.email && newErrors.email.includes('already registered')) {
+            delete newErrors.email;
+          }
+          return newErrors;
+        });
+      }
+    } catch (error) {
+      // Silently fail - don't show error for real-time check
+      console.error('Email check error:', error);
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  };
+
+  // Debounced email check
+  useEffect(() => {
+    if (emailCheckTimeoutRef.current) {
+      clearTimeout(emailCheckTimeoutRef.current);
+    }
+
+    if (email.trim() && validateEmail(email)) {
+      emailCheckTimeoutRef.current = setTimeout(() => {
+        checkEmailAvailability(email);
+      }, 800); // Wait 800ms after user stops typing
+    }
+
+    return () => {
+      if (emailCheckTimeoutRef.current) {
+        clearTimeout(emailCheckTimeoutRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
+
+  // Update cities when state changes
+  useEffect(() => {
+    if (selectedState) {
+      const cities = getCitiesByState(selectedState);
+      setAvailableCities(cities);
+      setSelectedCity(''); // Reset city when state changes
+    } else {
+      setAvailableCities([]);
+      setSelectedCity('');
+    }
+  }, [selectedState]);
 
   const validateStep1 = (): boolean => {
     const newErrors: typeof errors = {};
@@ -82,20 +165,79 @@ export default function SignupScreen(): React.JSX.Element {
     return Object.keys(newErrors).length === 0;
   };
 
+  const validateStep3 = (): boolean => {
+    const newErrors: typeof errors = {};
+
+    if (!photoUrl || !photoUrl.trim()) {
+      newErrors.photoUrl = 'Photo URL is required';
+    }
+
+    if (!selectedState) {
+      newErrors.state = 'State is required';
+    }
+
+    if (!selectedCity) {
+      newErrors.city = 'City is required';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const validateStep4 = (): boolean => {
+    const newErrors: typeof errors = {};
+
+    if (!carMake || !carMake.trim()) {
+      newErrors.carMake = 'Car make is required';
+    }
+
+    if (!carModel || !carModel.trim()) {
+      newErrors.carModel = 'Car model is required';
+    }
+
+    if (!carYear || !carYear.trim()) {
+      newErrors.carYear = 'Car year is required';
+    } else if (carYear.trim().length !== 4) {
+      newErrors.carYear = 'Car year must be 4 digits';
+    }
+
+    if (!carColor || !carColor.trim()) {
+      newErrors.carColor = 'Car color is required';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleNext = (): void => {
-    if (validateStep1()) {
+    if (currentStep === 1 && validateStep1()) {
       setCurrentStep(2);
+      setErrors({});
+    } else if (currentStep === 2 && validateStep2()) {
+      setCurrentStep(3);
+      setErrors({});
+    } else if (currentStep === 3 && validateStep3()) {
+      setCurrentStep(4);
       setErrors({});
     }
   };
 
   const handleBack = (): void => {
-    setCurrentStep(1);
-    setErrors({});
+    if (currentStep === 2) {
+      setCurrentStep(1);
+      setErrors({});
+    } else if (currentStep === 3) {
+      setCurrentStep(2);
+      setErrors({});
+    } else if (currentStep === 4) {
+      setCurrentStep(3);
+      setErrors({});
+    }
   };
 
   const handleSignup = async (): Promise<void> => {
-    if (!validateStep2()) {
+    if (!validateStep4()) {
+      setIsLoading(false);
       return;
     }
 
@@ -103,11 +245,21 @@ export default function SignupScreen(): React.JSX.Element {
     setErrors({});
 
     try {
+      const cityValue = selectedState && selectedCity 
+        ? `${selectedCity}, ${selectedState}`
+        : '';
+
       const response = await signup({
         fullName: fullName.trim(),
         email: email.trim(),
         phoneNumber: phoneNumber.trim(),
         password,
+        photoUrl: photoUrl.trim(),
+        city: cityValue,
+        carMake: carMake.trim(),
+        carModel: carModel.trim(),
+        carYear: parseInt(carYear.trim(), 10),
+        carColor: carColor.trim(),
       });
 
       if (response.success) {
@@ -120,7 +272,15 @@ export default function SignupScreen(): React.JSX.Element {
       }
     } catch (error) {
       const apiError = error as ApiError;
-      if (apiError.errors && apiError.errors.length > 0) {
+      
+      // Check if it's an email already exists error
+      if (apiError.message && apiError.message.toLowerCase().includes('email already exists')) {
+        setErrors({
+          email: 'This email is already registered. Please use a different email or log in.',
+        });
+        // Go back to step 1 to show the error
+        setCurrentStep(1);
+      } else if (apiError.errors && apiError.errors.length > 0) {
         // Map API errors to form errors
         const newErrors: typeof errors = {};
         apiError.errors.forEach((err) => {
@@ -130,11 +290,19 @@ export default function SignupScreen(): React.JSX.Element {
             newErrors.email = err;
           } else if (err.toLowerCase().includes('phone')) {
             newErrors.phoneNumber = err;
+          } else if (err.toLowerCase().includes('photo')) {
+            newErrors.photoUrl = err;
+          } else if (err.toLowerCase().includes('city')) {
+            newErrors.city = err;
           } else if (err.toLowerCase().includes('password')) {
             newErrors.password = err;
           }
         });
         setErrors(newErrors);
+        // If email error, go back to step 1
+        if (newErrors.email) {
+          setCurrentStep(1);
+        }
       } else {
         setErrors({
           general: apiError.message || 'Something went wrong. Please try again.',
@@ -167,12 +335,20 @@ export default function SignupScreen(): React.JSX.Element {
               <Text style={styles.subtitle}>
                 {currentStep === 1
                   ? 'Enter your basic information to get started.'
-                  : 'Create a secure password for your account.'}
+                  : currentStep === 2
+                  ? 'Create a secure password for your account.'
+                  : currentStep === 3
+                  ? 'Complete your profile setup.'
+                  : 'Add your vehicle information.'}
               </Text>
               <View style={styles.stepIndicator}>
                 <View style={[styles.stepDot, currentStep === 1 && styles.stepDotActive]} />
                 <View style={styles.stepLine} />
                 <View style={[styles.stepDot, currentStep === 2 && styles.stepDotActive]} />
+                <View style={styles.stepLine} />
+                <View style={[styles.stepDot, currentStep === 3 && styles.stepDotActive]} />
+                <View style={styles.stepLine} />
+                <View style={[styles.stepDot, currentStep === 4 && styles.stepDotActive]} />
               </View>
             </View>
 
@@ -186,115 +362,330 @@ export default function SignupScreen(): React.JSX.Element {
               {currentStep === 1 ? (
                 <>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Full Name</Text>
-                    <TextInput
-                      style={[styles.input, errors.fullName && styles.inputError]}
-                      placeholder="Enter your full name"
-                      placeholderTextColor="#666"
-                      value={fullName}
-                      onChangeText={(text) => {
-                        setFullName(text);
-                        if (errors.fullName) {
-                          setErrors({ ...errors, fullName: undefined });
-                        }
-                      }}
-                      editable={!isLoading}
-                      autoCapitalize="words"
-                    />
+                    <Text style={styles.label}>
+                      Full Name <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.fullName && styles.inputError]}
+                        placeholder="Enter your full name"
+                        placeholderTextColor="#666"
+                        value={fullName}
+                        onChangeText={(text) => {
+                          setFullName(text);
+                          if (errors.fullName) {
+                            setErrors({ ...errors, fullName: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        autoCapitalize="words"
+                      />
+                    </View>
                     {errors.fullName && (
                       <Text style={styles.fieldError}>{errors.fullName}</Text>
                     )}
                   </View>
 
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Email</Text>
-                    <TextInput
-                      style={[styles.input, errors.email && styles.inputError]}
-                      placeholder="Enter your email"
-                      placeholderTextColor="#666"
-                      value={email}
-                      onChangeText={(text) => {
-                        setEmail(text);
-                        if (errors.email) {
-                          setErrors({ ...errors, email: undefined });
-                        }
-                      }}
-                      editable={!isLoading}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
+                    <Text style={styles.label}>
+                      Email <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.email && styles.inputError]}
+                        placeholder="Enter your email"
+                        placeholderTextColor="#666"
+                        value={email}
+                        onChangeText={(text) => {
+                          setEmail(text);
+                          // Clear error when user starts typing (but keep it if it's from real-time check)
+                          if (errors.email && !errors.email.includes('already registered')) {
+                            setErrors({ ...errors, email: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      {isCheckingEmail && (
+                        <ActivityIndicator
+                          size="small"
+                          color="#FFFFFF"
+                          style={styles.emailCheckIndicator}
+                        />
+                      )}
+                    </View>
                     {errors.email && (
                       <Text style={styles.fieldError}>{errors.email}</Text>
                     )}
                   </View>
 
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Phone Number</Text>
-                    <TextInput
-                      style={[styles.input, errors.phoneNumber && styles.inputError]}
-                      placeholder="Enter your phone number"
-                      placeholderTextColor="#666"
-                      value={phoneNumber}
-                      onChangeText={(text) => {
-                        setPhoneNumber(text);
-                        if (errors.phoneNumber) {
-                          setErrors({ ...errors, phoneNumber: undefined });
-                        }
-                      }}
-                      editable={!isLoading}
-                      keyboardType="phone-pad"
-                    />
+                    <Text style={styles.label}>
+                      Phone Number <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.phoneNumber && styles.inputError]}
+                        placeholder="Enter your phone number"
+                        placeholderTextColor="#666"
+                        value={phoneNumber}
+                        onChangeText={(text) => {
+                          setPhoneNumber(text);
+                          if (errors.phoneNumber) {
+                            setErrors({ ...errors, phoneNumber: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        keyboardType="phone-pad"
+                      />
+                    </View>
                     {errors.phoneNumber && (
                       <Text style={styles.fieldError}>{errors.phoneNumber}</Text>
                     )}
                   </View>
                 </>
-              ) : (
+              ) : currentStep === 2 ? (
                 <>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Password</Text>
-                    <TextInput
-                      style={[styles.input, errors.password && styles.inputError]}
-                      placeholder="Enter your password"
-                      placeholderTextColor="#666"
-                      value={password}
-                      onChangeText={(text) => {
-                        setPassword(text);
-                        if (errors.password) {
-                          setErrors({ ...errors, password: undefined });
-                        }
-                      }}
-                      editable={!isLoading}
-                      secureTextEntry
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
+                    <Text style={styles.label}>
+                      Password <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.password && styles.inputError]}
+                        placeholder="Enter your password"
+                        placeholderTextColor="#666"
+                        value={password}
+                        onChangeText={(text) => {
+                          setPassword(text);
+                          if (errors.password) {
+                            setErrors({ ...errors, password: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        secureTextEntry
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    </View>
                     {errors.password && (
                       <Text style={styles.fieldError}>{errors.password}</Text>
                     )}
                   </View>
 
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Confirm Password</Text>
-                    <TextInput
-                      style={[styles.input, errors.confirmPassword && styles.inputError]}
-                      placeholder="Confirm your password"
-                      placeholderTextColor="#666"
-                      value={confirmPassword}
-                      onChangeText={(text) => {
-                        setConfirmPassword(text);
-                        if (errors.confirmPassword) {
-                          setErrors({ ...errors, confirmPassword: undefined });
-                        }
-                      }}
-                      editable={!isLoading}
-                      secureTextEntry
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
+                    <Text style={styles.label}>
+                      Confirm Password <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.confirmPassword && styles.inputError]}
+                        placeholder="Confirm your password"
+                        placeholderTextColor="#666"
+                        value={confirmPassword}
+                        onChangeText={(text) => {
+                          setConfirmPassword(text);
+                          if (errors.confirmPassword) {
+                            setErrors({ ...errors, confirmPassword: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        secureTextEntry
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    </View>
                     {errors.confirmPassword && (
                       <Text style={styles.fieldError}>{errors.confirmPassword}</Text>
+                    )}
+                  </View>
+                </>
+              ) : currentStep === 3 ? (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>
+                      Photo URL <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.photoUrl && styles.inputError]}
+                        placeholder="Enter photo URL"
+                        placeholderTextColor="#666"
+                        value={photoUrl}
+                        onChangeText={(text) => {
+                          setPhotoUrl(text);
+                          if (errors.photoUrl) {
+                            setErrors({ ...errors, photoUrl: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        keyboardType="url"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    </View>
+                    {errors.photoUrl && (
+                      <Text style={styles.fieldError}>{errors.photoUrl}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>
+                      State <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <CustomDropdown
+                      items={[
+                        { label: 'Select a state', value: '' },
+                        ...getStateNames().map((state) => ({ label: state, value: state })),
+                      ]}
+                      selectedValue={selectedState}
+                      onValueChange={(value) => {
+                        setSelectedState(value);
+                        if (errors.state) {
+                          setErrors({ ...errors, state: undefined });
+                        }
+                      }}
+                      placeholder="Select a state"
+                      enabled={!isLoading}
+                      error={errors.state}
+                    />
+                    {errors.state && (
+                      <Text style={styles.fieldError}>{errors.state}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>
+                      City <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <CustomDropdown
+                      items={[
+                        {
+                          label: selectedState ? 'Select a city' : 'Select a state first',
+                          value: '',
+                        },
+                        ...availableCities.map((city) => ({ label: city, value: city })),
+                      ]}
+                      selectedValue={selectedCity}
+                      onValueChange={(value) => {
+                        setSelectedCity(value);
+                        if (errors.city) {
+                          setErrors({ ...errors, city: undefined });
+                        }
+                      }}
+                      placeholder={selectedState ? 'Select a city' : 'Select a state first'}
+                      enabled={!isLoading && !!selectedState}
+                      error={errors.city}
+                    />
+                    {errors.city && (
+                      <Text style={styles.fieldError}>{errors.city}</Text>
+                    )}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>
+                      Car Make <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.carMake && styles.inputError]}
+                        placeholder="e.g., Toyota, Honda, Ford"
+                        placeholderTextColor="#666"
+                        value={carMake}
+                        onChangeText={(text) => {
+                          setCarMake(text);
+                          if (errors.carMake) {
+                            setErrors({ ...errors, carMake: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        autoCapitalize="words"
+                      />
+                    </View>
+                    {errors.carMake && (
+                      <Text style={styles.fieldError}>{errors.carMake}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>
+                      Car Model <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.carModel && styles.inputError]}
+                        placeholder="e.g., Camry, Accord, F-150"
+                        placeholderTextColor="#666"
+                        value={carModel}
+                        onChangeText={(text) => {
+                          setCarModel(text);
+                          if (errors.carModel) {
+                            setErrors({ ...errors, carModel: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        autoCapitalize="words"
+                      />
+                    </View>
+                    {errors.carModel && (
+                      <Text style={styles.fieldError}>{errors.carModel}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>
+                      Car Year <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.carYear && styles.inputError]}
+                        placeholder="e.g., 2020"
+                        placeholderTextColor="#666"
+                        value={carYear}
+                        onChangeText={(text) => {
+                          // Only allow numbers
+                          const numericValue = text.replace(/[^0-9]/g, '');
+                          setCarYear(numericValue);
+                          if (errors.carYear) {
+                            setErrors({ ...errors, carYear: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        keyboardType="number-pad"
+                        maxLength={4}
+                      />
+                    </View>
+                    {errors.carYear && (
+                      <Text style={styles.fieldError}>{errors.carYear}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>
+                      Car Color <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                    <View style={styles.inputContainer}>
+                      <TextInput
+                        style={[styles.input, errors.carColor && styles.inputError]}
+                        placeholder="e.g., Black, White, Red"
+                        placeholderTextColor="#666"
+                        value={carColor}
+                        onChangeText={(text) => {
+                          setCarColor(text);
+                          if (errors.carColor) {
+                            setErrors({ ...errors, carColor: undefined });
+                          }
+                        }}
+                        editable={!isLoading}
+                        autoCapitalize="words"
+                      />
+                    </View>
+                    {errors.carColor && (
+                      <Text style={styles.fieldError}>{errors.carColor}</Text>
                     )}
                   </View>
                 </>
@@ -311,6 +702,46 @@ export default function SignupScreen(): React.JSX.Element {
                 >
                   <Text style={styles.primaryButtonText}>Next</Text>
                 </TouchableOpacity>
+              ) : currentStep === 2 ? (
+                <>
+                  <TouchableOpacity
+                    style={[styles.primaryButton, isLoading && styles.primaryButtonDisabled]}
+                    onPress={handleNext}
+                    disabled={isLoading}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.primaryButtonText}>Next</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={handleBack}
+                    disabled={isLoading}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.secondaryButtonText}>Back</Text>
+                  </TouchableOpacity>
+                </>
+              ) : currentStep === 3 ? (
+                <>
+                  <TouchableOpacity
+                    style={[styles.primaryButton, isLoading && styles.primaryButtonDisabled]}
+                    onPress={handleNext}
+                    disabled={isLoading}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.primaryButtonText}>Next</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={handleBack}
+                    disabled={isLoading}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.secondaryButtonText}>Back</Text>
+                  </TouchableOpacity>
+                </>
               ) : (
                 <>
                   <TouchableOpacity
@@ -428,6 +859,7 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: 20,
+    width: '100%',
   },
   label: {
     fontSize: 14,
@@ -435,7 +867,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 8,
   },
+  requiredAsterisk: {
+    color: '#FF3B30',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  inputContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   input: {
+    flex: 1,
     height: 56,
     backgroundColor: '#1C1C1E',
     borderRadius: 12,
@@ -443,6 +886,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
     color: '#FFFFFF',
+  },
+  emailCheckIndicator: {
+    position: 'absolute',
+    right: 16,
   },
   inputError: {
     borderWidth: 1,

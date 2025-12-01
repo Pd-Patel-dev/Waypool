@@ -24,6 +24,7 @@ export const API_ENDPOINTS = {
     SIGNUP: '/api/driver/auth/signup',
     LOGIN: '/api/driver/auth/login',
     LOGOUT: '/api/driver/auth/logout',
+    CHECK_EMAIL: '/api/driver/auth/check-email',
   },
 } as const;
 
