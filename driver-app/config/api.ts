@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 // API Configuration
 // For development, use your local machine's IP address
 // For Android emulator: use 10.0.2.2 instead of localhost
@@ -8,10 +10,16 @@ const getApiUrl = (): string => {
   // You can set this via environment variable or change it here
   if (__DEV__) {
     // Development - adjust based on your setup
-    // For Android emulator: 'http://10.0.2.2:3000'
-    // For iOS simulator: 'http://localhost:3000'
-    // For physical device: 'http://YOUR_COMPUTER_IP:3000' (e.g., 'http://192.168.1.100:3000')
+    if (Platform.OS === 'android') {
+      // For Android emulator: use 10.0.2.2 to access host machine
+      return 'http://10.0.2.2:3000';
+    } else if (Platform.OS === 'ios') {
+      // For iOS simulator
+      return 'http://localhost:3000';
+    } else {
+      // For web or other platforms
     return 'http://localhost:3000';
+    }
   }
   // Production - replace with your production API URL
   return 'https://api.waypool.com';
@@ -25,6 +33,10 @@ export const API_ENDPOINTS = {
     LOGIN: '/api/driver/auth/login',
     LOGOUT: '/api/driver/auth/logout',
     CHECK_EMAIL: '/api/driver/auth/check-email',
+  },
+  RIDES: {
+    CREATE: '/api/driver/rides',
+    UPCOMING: '/api/driver/rides/upcoming',
   },
 } as const;
 

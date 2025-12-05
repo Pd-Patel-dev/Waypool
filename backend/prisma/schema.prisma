@@ -24,5 +24,44 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Relations
+  rides       Ride[]   // Rides created by this driver
+
   @@map("users")
+}
+
+model Ride {
+  id              Int      @id @default(autoincrement())
+  driverId        Int
+  driverName      String
+  driverPhone     String
+  carMake         String?
+  carModel        String?
+  carYear         Int?
+  carColor        String?
+  fromAddress     String
+  fromCity        String
+  fromState       String
+  fromZipCode     String
+  fromLatitude    Float
+  fromLongitude   Float
+  toAddress       String
+  toCity          String
+  toState         String
+  toZipCode       String
+  toLatitude      Float
+  toLongitude     Float
+  departureDate   String
+  departureTime   String
+  availableSeats  Int
+  pricePerSeat    Float
+  distance        Float?
+  status          String   @default("scheduled") // scheduled, in-progress, completed, cancelled
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@map("rides")
 }
