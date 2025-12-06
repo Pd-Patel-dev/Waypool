@@ -11,8 +11,8 @@ import {
 } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
-// Your Google Maps API key (same one used for maps)
-const GOOGLE_PLACES_API_KEY = 'AIzaSyB3dqyiWNGJLqv_UYA2zQxUdYpiIbmw3k4';
+// Google Maps API key from environment variables
+const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
 
 export interface PlacePrediction {
   place_id: string;
@@ -87,6 +87,12 @@ export default function AddressAutocomplete({
   // Fetch predictions from Google Places API
   const fetchPredictions = async (input: string) => {
     if (!input || input.length < 3) {
+      setPredictions([]);
+      return;
+    }
+
+    if (!GOOGLE_PLACES_API_KEY) {
+      console.error('Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.');
       setPredictions([]);
       return;
     }
@@ -256,6 +262,11 @@ export default function AddressAutocomplete({
 
   // Fetch detailed place information
   const fetchPlaceDetails = async (placeId: string, fullAddress: string, streetAddress: string) => {
+    if (!GOOGLE_PLACES_API_KEY) {
+      console.error('Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.');
+      return;
+    }
+
     try {
       const response = await fetch(
         `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=address_components,geometry&key=${GOOGLE_PLACES_API_KEY}`

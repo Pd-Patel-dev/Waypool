@@ -1,15 +1,15 @@
 import { Platform } from 'react-native';
 
-// Backend API URL configuration
+// Backend API URL configuration from environment variables
 export const API_URL = Platform.select({
   // For iOS simulator, use localhost
-  ios: 'http://localhost:3000',
+  ios: process.env.EXPO_PUBLIC_API_URL_IOS || 'http://localhost:3000',
   // For Android emulator, use 10.0.2.2 (Android emulator's special alias for host machine)
-  android: 'http://10.0.2.2:3000',
+  android: process.env.EXPO_PUBLIC_API_URL_ANDROID || 'http://10.0.2.2:3000',
   // For web
-  web: 'http://localhost:3000',
+  web: process.env.EXPO_PUBLIC_API_URL_WEB || 'http://localhost:3000',
   // Default fallback
-  default: 'http://localhost:3000',
+  default: process.env.EXPO_PUBLIC_API_URL_IOS || 'http://localhost:3000',
 });
 
 export const API_CONFIG = {

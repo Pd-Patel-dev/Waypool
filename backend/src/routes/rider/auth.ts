@@ -5,7 +5,7 @@ import bcrypt from 'bcrypt';
 
 const router = express.Router();
 
-// GET /api/driver/auth/check-email?email=user@example.com
+// GET /api/rider/auth/check-email?email=user@example.com
 router.get('/check-email', async (req: Request, res: Response) => {
   try {
     const { email } = req.query;
@@ -46,16 +46,11 @@ router.get('/check-email', async (req: Request, res: Response) => {
 });
 
 interface SignupBody {
-  fullName: string;
   email: string;
-  phoneNumber: string;
   password: string;
-  photoUrl: string;
-  city: string;
-  carMake: string;
-  carModel: string;
-  carYear: number;
-  carColor: string;
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
 }
 
 interface LoginBody {
@@ -75,16 +70,20 @@ const validatePhoneNumber = (phone: string): boolean => {
   return cleaned.length >= 10 && /^\d+$/.test(cleaned);
 };
 
-// POST /api/driver/auth/signup
+// POST /api/rider/auth/signup
 router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const { fullName, email, phoneNumber, password, photoUrl, city, carMake, carModel, carYear, carColor }: SignupBody = req.body;
+    const { email, password, firstName, lastName, phoneNumber }: SignupBody = req.body;
 
     // Validation
     const errors: string[] = [];
 
-    if (!fullName || !fullName.trim()) {
-      errors.push('Full name is required');
+    if (!firstName || !firstName.trim()) {
+      errors.push('First name is required');
+    }
+
+    if (!lastName || !lastName.trim()) {
+      errors.push('Last name is required');
     }
 
     if (!email || !email.trim()) {
@@ -101,34 +100,8 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     if (!password) {
       errors.push('Password is required');
-    } else if (password.length < 8) {
-      errors.push('Password must be at least 8 characters');
-    }
-
-    if (!photoUrl || !photoUrl.trim()) {
-      errors.push('Photo URL is required');
-    }
-
-    if (!city || !city.trim()) {
-      errors.push('City is required');
-    }
-
-    if (!carMake || !carMake.trim()) {
-      errors.push('Car make is required');
-    }
-
-    if (!carModel || !carModel.trim()) {
-      errors.push('Car model is required');
-    }
-
-    if (!carYear) {
-      errors.push('Car year is required');
-    } else if (typeof carYear !== 'number' || carYear < 1900 || carYear > new Date().getFullYear() + 1) {
-      errors.push('Car year must be a valid year');
-    }
-
-    if (!carColor || !carColor.trim()) {
-      errors.push('Car color is required');
+    } else if (password.length < 6) {
+      errors.push('Password must be at least 6 characters');
     }
 
     if (errors.length > 0) {
@@ -156,21 +129,18 @@ router.post('/signup', async (req: Request, res: Response) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    // Combine first and last name
+    const fullName = `${firstName.trim()} ${lastName.trim()}`;
+
     // Create user
     const user = await prisma.user.create({
       data: {
-        fullName: fullName.trim(),
+        fullName,
         email: email.trim().toLowerCase(),
         phoneNumber: phoneNumber.trim(),
         password: hashedPassword,
-        isDriver: true,
-        isRider: false,
-        photoUrl: photoUrl.trim(),
-        city: city.trim(),
-        carMake: carMake.trim(),
-        carModel: carModel.trim(),
-        carYear: typeof carYear === 'number' ? carYear : parseInt(String(carYear), 10),
-        carColor: carColor.trim(),
+        isDriver: false,
+        isRider: true,
       },
       select: {
         id: true,
@@ -179,12 +149,6 @@ router.post('/signup', async (req: Request, res: Response) => {
         phoneNumber: true,
         isDriver: true,
         isRider: true,
-        photoUrl: true,
-        city: true,
-        carMake: true,
-        carModel: true,
-        carYear: true,
-        carColor: true,
         createdAt: true,
       },
     });
@@ -192,7 +156,16 @@ router.post('/signup', async (req: Request, res: Response) => {
     res.status(201).json({
       success: true,
       message: 'User created successfully',
-      user,
+      user: {
+        id: String(user.id),
+        email: user.email,
+        role: user.isRider ? 'rider' : 'driver', // Keep for backward compatibility
+        isDriver: user.isDriver,
+        isRider: user.isRider,
+        firstName: user.fullName.split(' ')[0],
+        lastName: user.fullName.split(' ').slice(1).join(' '),
+        phoneNumber: user.phoneNumber,
+      },
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -203,7 +176,7 @@ router.post('/signup', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/driver/auth/login
+// POST /api/rider/auth/login
 router.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password }: LoginBody = req.body;
@@ -245,25 +218,24 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
+    // Split fullName into firstName and lastName
+    const nameParts = user.fullName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
     // Return user data (without password)
     res.json({
       success: true,
       message: 'Login successful',
       user: {
-        id: user.id,
-        fullName: user.fullName,
+        id: String(user.id),
         email: user.email,
-        phoneNumber: user.phoneNumber,
+        role: user.isRider ? 'rider' : 'driver', // Keep for backward compatibility
         isDriver: user.isDriver,
         isRider: user.isRider,
-        photoUrl: user.photoUrl,
-        city: user.city,
-        carMake: user.carMake,
-        carModel: user.carModel,
-        carYear: user.carYear,
-        carColor: user.carColor,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
+        firstName,
+        lastName,
+        phoneNumber: user.phoneNumber,
       },
     });
   } catch (error) {
@@ -275,7 +247,7 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/driver/auth/logout
+// POST /api/rider/auth/logout
 router.post('/logout', async (req: Request, res: Response) => {
   try {
     // For now, just return success

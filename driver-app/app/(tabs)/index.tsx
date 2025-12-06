@@ -426,7 +426,7 @@ export default function HomeScreen(): React.JSX.Element {
                 <View style={styles.infoContainer}>
                   {ride.distance !== undefined && (
                     <View style={styles.infoItem}>
-                      <IconSymbol size={14} name="route" color="#999999" />
+                      <IconSymbol size={14} name="mappin" color="#999999" />
                       <Text style={styles.infoValue}>
                         {ride.distance.toFixed(1)} mi
                       </Text>
@@ -434,7 +434,7 @@ export default function HomeScreen(): React.JSX.Element {
                   )}
                   {ride.price && (
                     <View style={styles.infoItem}>
-                      <IconSymbol size={14} name="money" color="#4285F4" />
+                      <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
                       <Text style={styles.priceValue}>
                         ${ride.price.toFixed(2)}/seat
                       </Text>

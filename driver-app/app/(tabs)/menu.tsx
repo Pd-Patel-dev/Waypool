@@ -22,13 +22,13 @@ export default function MenuScreen(): React.JSX.Element {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            try {
-              await logout();
-              router.replace('/login');
-            } catch (error) {
-              console.error('Sign out error:', error);
+    try {
+      await logout();
+      router.replace('/login');
+    } catch (error) {
+      console.error('Sign out error:', error);
               Alert.alert('Error', 'Failed to sign out. Please try again.');
-            }
+    }
           },
         },
       ]

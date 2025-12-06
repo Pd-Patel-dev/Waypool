@@ -15,12 +15,14 @@ model User {
   email       String   @unique
   phoneNumber String
   password    String   // Hashed password
-  photoUrl    String   // Profile photo URL (required for drivers)
-  city        String   // City (required for drivers)
-  carMake     String   // Car make (required for drivers)
-  carModel    String   // Car model (required for drivers)
-  carYear     Int      // Car year (required for drivers)
-  carColor    String   // Car color (required for drivers)
+  isDriver    Boolean  @default(false) // True if user is a driver
+  isRider     Boolean  @default(false) // True if user is a rider
+  photoUrl    String?  // Profile photo URL (optional, for drivers)
+  city        String?  // City (optional, for drivers)
+  carMake     String?  // Car make (optional, for drivers)
+  carModel    String?  // Car model (optional, for drivers)
+  carYear     Int?     // Car year (optional, for drivers)
+  carColor    String?  // Car color (optional, for drivers)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

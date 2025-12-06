@@ -44,11 +44,11 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol 
+              <IconSymbol 
               size={24} 
-              name={focused ? "house.fill" : "house"}
+                name={focused ? "house.fill" : "house"}
               color={color} 
-            />
+              />
           ),
         }}
       />
@@ -57,11 +57,11 @@ export default function TabLayout() {
         options={{
           title: 'Earnings',
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol 
+              <IconSymbol 
               size={24} 
-              name={focused ? "chart.bar.fill" : "chart.bar"}
+                name={focused ? "chart.bar.fill" : "chart.bar"}
               color={color} 
-            />
+              />
           ),
         }}
       />
@@ -70,11 +70,11 @@ export default function TabLayout() {
         options={{
           title: 'Inbox',
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol 
+              <IconSymbol 
               size={24} 
-              name={focused ? "envelope.fill" : "envelope"}
+                name={focused ? "envelope.fill" : "envelope"}
               color={color} 
-            />
+              />
           ),
         }}
       />
@@ -83,11 +83,11 @@ export default function TabLayout() {
         options={{
           title: 'Menu',
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol 
+              <IconSymbol 
               size={24} 
-              name="line.3.horizontal"
+                name="line.3.horizontal"
               color={color} 
-            />
+              />
           ),
         }}
       />

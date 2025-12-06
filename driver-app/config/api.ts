@@ -1,28 +1,28 @@
 import { Platform } from 'react-native';
 
-// API Configuration
+// API Configuration from environment variables
 // For development, use your local machine's IP address
 // For Android emulator: use 10.0.2.2 instead of localhost
 // For iOS simulator: use localhost
 // For physical device: use your computer's IP address (e.g., 192.168.1.100)
 
 const getApiUrl = (): string => {
-  // You can set this via environment variable or change it here
+  // Use environment variables with fallback defaults
   if (__DEV__) {
     // Development - adjust based on your setup
     if (Platform.OS === 'android') {
       // For Android emulator: use 10.0.2.2 to access host machine
-      return 'http://10.0.2.2:3000';
+      return process.env.EXPO_PUBLIC_API_URL_ANDROID || 'http://10.0.2.2:3000';
     } else if (Platform.OS === 'ios') {
       // For iOS simulator
-      return 'http://localhost:3000';
+      return process.env.EXPO_PUBLIC_API_URL_IOS || 'http://localhost:3000';
     } else {
       // For web or other platforms
-    return 'http://localhost:3000';
+      return process.env.EXPO_PUBLIC_API_URL_WEB || 'http://localhost:3000';
     }
   }
-  // Production - replace with your production API URL
-  return 'https://api.waypool.com';
+  // Production - use environment variable or fallback
+  return process.env.EXPO_PUBLIC_API_URL_PROD || 'https://api.waypool.com';
 };
 
 export const API_BASE_URL = getApiUrl();

@@ -1,10 +1,10 @@
 import express from 'express';
+import riderAuthRoutes from './auth';
 
 const router = express.Router();
 
 // Rider app routes
-// Add rider-specific routes here in the future
-// Example: router.use('/auth', riderAuthRoutes);
+router.use('/auth', riderAuthRoutes);
 
 export default router;
 

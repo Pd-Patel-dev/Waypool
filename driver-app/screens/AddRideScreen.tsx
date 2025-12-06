@@ -185,7 +185,10 @@ export default function AddRideScreen(): React.JSX.Element {
     destination: { latitude: number; longitude: number }
   ) => {
     try {
-      const GOOGLE_API_KEY = 'AIzaSyB3dqyiWNGJLqv_UYA2zQxUdYpiIbmw3k4';
+      const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
+      if (!GOOGLE_API_KEY) {
+        throw new Error('Google Maps API key is not configured');
+      }
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${GOOGLE_API_KEY}`;
 
       const response = await fetch(url);

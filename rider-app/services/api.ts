@@ -53,7 +53,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
 
 export async function login(data: LoginRequest): Promise<AuthResponse> {
   try {
-    const response = await fetch(`${API_URL}/api/auth/login`, {
+    const response = await fetch(`${API_URL}/api/rider/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -89,15 +89,12 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
 
 export async function signup(data: SignupRequest): Promise<AuthResponse> {
   try {
-    const response = await fetch(`${API_URL}/api/auth/signup`, {
+    const response = await fetch(`${API_URL}/api/rider/auth/signup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        ...data,
-        role: 'rider', // Always set role to rider for rider app
-      }),
+      body: JSON.stringify(data),
     });
 
     const result = await response.json();
