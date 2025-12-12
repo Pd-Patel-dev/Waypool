@@ -66,8 +66,11 @@ export default function LoginScreen(): React.JSX.Element {
       });
 
       if (response.success && response.user) {
-        // Check if user is a rider
-        if (response.user.role !== 'rider') {
+        // Check if user is a rider (check both isRider flag and role for backward compatibility)
+        const isRider = response.user.isRider !== false && 
+                       (response.user.role === 'rider' || response.user.isRider === true);
+        
+        if (!isRider) {
           setErrors({
             general: 'This account is not registered as a rider. Please use the driver app instead.',
           });
@@ -83,8 +86,19 @@ export default function LoginScreen(): React.JSX.Element {
       }
     } catch (error) {
       const apiError = error as ApiError;
+      let errorMessage = apiError.message || 'Invalid email or password. Please try again.';
+      
+      // Handle specific error cases
+      if (apiError.status === 401) {
+        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+      } else if (apiError.status === 0) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (apiError.status && apiError.status >= 500) {
+        errorMessage = 'Server error. Please try again later.';
+      }
+      
       setErrors({
-        general: apiError.message || 'Invalid email or password. Please try again.',
+        general: errorMessage,
       });
     } finally {
       setIsLoading(false);

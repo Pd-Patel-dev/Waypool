@@ -103,3 +103,5 @@ You should now see the entire app in beautiful dark mode! 🌙
 
 Press **`r`** in Terminal 8 to see the dark theme in action! 🎉
 
+
+

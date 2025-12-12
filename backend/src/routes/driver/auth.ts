@@ -144,50 +144,90 @@ router.post('/signup', async (req: Request, res: Response) => {
       where: { email: email.trim().toLowerCase() },
     });
 
+    let user;
+
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: 'User with this email already exists',
-        errors: ['Email already exists. Please use a different email or log in.'],
+      // User exists - verify password matches
+      const isPasswordValid = await bcrypt.compare(password, existingUser.password);
+
+      if (!isPasswordValid) {
+        return res.status(409).json({
+          success: false,
+          message: 'User with this email already exists',
+          errors: ['Email already exists with a different password. Please use the correct password or log in.'],
+        });
+      }
+
+      // Password matches - update user to enable driver flag and update driver-specific fields
+      user = await prisma.user.update({
+        where: { email: email.trim().toLowerCase() },
+        data: {
+          isDriver: true,
+          // Update driver-specific fields
+          fullName: fullName.trim() !== existingUser.fullName ? fullName.trim() : existingUser.fullName,
+          phoneNumber: phoneNumber.trim() !== existingUser.phoneNumber ? phoneNumber.trim() : existingUser.phoneNumber,
+          photoUrl: photoUrl.trim(),
+          city: city.trim(),
+          carMake: carMake.trim(),
+          carModel: carModel.trim(),
+          carYear: typeof carYear === 'number' ? carYear : parseInt(String(carYear), 10),
+          carColor: carColor.trim(),
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phoneNumber: true,
+          isDriver: true,
+          isRider: true,
+          photoUrl: true,
+          city: true,
+          carMake: true,
+          carModel: true,
+          carYear: true,
+          carColor: true,
+          createdAt: true,
+        },
+      });
+    } else {
+      // User doesn't exist - create new user
+      // Hash password
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+      // Create user
+      user = await prisma.user.create({
+        data: {
+          fullName: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          phoneNumber: phoneNumber.trim(),
+          password: hashedPassword,
+          isDriver: true,
+          isRider: false,
+          photoUrl: photoUrl.trim(),
+          city: city.trim(),
+          carMake: carMake.trim(),
+          carModel: carModel.trim(),
+          carYear: typeof carYear === 'number' ? carYear : parseInt(String(carYear), 10),
+          carColor: carColor.trim(),
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phoneNumber: true,
+          isDriver: true,
+          isRider: true,
+          photoUrl: true,
+          city: true,
+          carMake: true,
+          carModel: true,
+          carYear: true,
+          carColor: true,
+          createdAt: true,
+        },
       });
     }
-
-    // Hash password
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        fullName: fullName.trim(),
-        email: email.trim().toLowerCase(),
-        phoneNumber: phoneNumber.trim(),
-        password: hashedPassword,
-        isDriver: true,
-        isRider: false,
-        photoUrl: photoUrl.trim(),
-        city: city.trim(),
-        carMake: carMake.trim(),
-        carModel: carModel.trim(),
-        carYear: typeof carYear === 'number' ? carYear : parseInt(String(carYear), 10),
-        carColor: carColor.trim(),
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        phoneNumber: true,
-        isDriver: true,
-        isRider: true,
-        photoUrl: true,
-        city: true,
-        carMake: true,
-        carModel: true,
-        carYear: true,
-        carColor: true,
-        createdAt: true,
-      },
-    });
 
     res.status(201).json({
       success: true,

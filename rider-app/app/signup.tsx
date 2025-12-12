@@ -106,11 +106,8 @@ export default function SignupScreen(): React.JSX.Element {
       });
 
       if (response.success && response.user) {
-        // Save user data to context
-        await setUser(response.user);
-        
-        // Navigate to home screen
-        router.replace('/(tabs)');
+        // Navigate to login screen after successful signup
+        router.replace('/login');
       }
     } catch (error) {
       const apiError = error as ApiError;

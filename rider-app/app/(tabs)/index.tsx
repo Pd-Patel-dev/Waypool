@@ -1,18 +1,25 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
+import { getUpcomingRides, type Ride } from '@/services/api';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export default function HomeScreen(): React.JSX.Element {
   const { user, isLoading } = useUser();
+  const [rides, setRides] = useState<Ride[]>([]);
+  const [isLoadingRides, setIsLoadingRides] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
   useEffect(() => {
     // If no user is logged in, redirect to welcome screen
@@ -20,6 +27,68 @@ export default function HomeScreen(): React.JSX.Element {
       router.replace('/welcome');
     }
   }, [user, isLoading]);
+
+  const fetchRides = useCallback(async () => {
+    if (!user) return;
+    
+    setIsLoadingRides(true);
+    try {
+      const response = await getUpcomingRides();
+      if (response.success) {
+        setRides(response.rides);
+      }
+    } catch (error) {
+      console.error('Error fetching rides:', error);
+    } finally {
+      setIsLoadingRides(false);
+      setRefreshing(false);
+    }
+  }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchRides();
+    }, [fetchRides])
+  );
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchRides();
+  }, [fetchRides]);
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffTime = date.getTime() - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) {
+        return 'Today';
+      } else if (diffDays === 1) {
+        return 'Tomorrow';
+      } else if (diffDays > 1 && diffDays <= 7) {
+        return date.toLocaleDateString('en-US', { weekday: 'long' });
+      } else {
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+    } catch {
+      return 'Invalid date';
+    }
+  };
+
+  const formatTime = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    } catch {
+      return 'Invalid time';
+    }
+  };
 
   if (isLoading || !user) {
     return (
@@ -36,6 +105,9 @@ export default function HomeScreen(): React.JSX.Element {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4285F4" />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
@@ -71,42 +143,91 @@ export default function HomeScreen(): React.JSX.Element {
           </TouchableOpacity>
         </View>
 
-        {/* Recent Rides */}
-        <View style={styles.recentRidesContainer}>
-          <Text style={styles.sectionTitle}>Recent rides</Text>
-          <View style={styles.emptyStateContainer}>
-            <Text style={styles.emptyStateIcon}>📍</Text>
-            <Text style={styles.emptyStateText}>No recent rides</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Your ride history will appear here
-            </Text>
-          </View>
-        </View>
-
-        {/* Saved Places */}
-        <View style={styles.savedPlacesContainer}>
-          <Text style={styles.sectionTitle}>Saved places</Text>
-          <TouchableOpacity
-            style={styles.savedPlaceCard}
-            activeOpacity={0.7}
-            onPress={() => console.log('Add home')}
-          >
-            <View style={styles.savedPlaceIcon}>
-              <Text style={styles.savedPlaceEmoji}>🏠</Text>
+        {/* Upcoming Rides */}
+        <View style={styles.upcomingRidesContainer}>
+          <Text style={styles.sectionTitle}>Upcoming rides</Text>
+          
+          {isLoadingRides ? (
+            <View style={styles.loadingRidesContainer}>
+              <ActivityIndicator size="large" color="#4285F4" />
             </View>
-            <Text style={styles.savedPlaceText}>Add home</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.savedPlaceCard}
-            activeOpacity={0.7}
-            onPress={() => console.log('Add work')}
-          >
-            <View style={styles.savedPlaceIcon}>
-              <Text style={styles.savedPlaceEmoji}>💼</Text>
+          ) : rides.length === 0 ? (
+            <View style={styles.emptyStateContainer}>
+              <Text style={styles.emptyStateIcon}>📍</Text>
+              <Text style={styles.emptyStateText}>No upcoming rides</Text>
+              <Text style={styles.emptyStateSubtext}>
+                Available rides will appear here
+              </Text>
             </View>
-            <Text style={styles.savedPlaceText}>Add work</Text>
-          </TouchableOpacity>
+          ) : (
+            rides.map((ride) => (
+              <TouchableOpacity
+                key={ride.id}
+                style={styles.rideCard}
+                activeOpacity={0.7}
+                onPress={() => {
+                  router.push({
+                    pathname: '/ride-details',
+                    params: {
+                      ride: JSON.stringify(ride),
+                    },
+                  });
+                }}
+              >
+                <View style={styles.rideCardContent}>
+                  {/* Header: Driver & Price */}
+                  <View style={styles.cardHeader}>
+                    <View style={styles.driverInfo}>
+                      <View style={styles.driverAvatar}>
+                        <Text style={styles.driverAvatarText}>
+                          {ride.driverName.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.driverDetails}>
+                        <Text style={styles.driverName}>{ride.driverName}</Text>
+                        {ride.carMake && ride.carModel && (
+                          <Text style={styles.carInfo}>
+                            {ride.carYear} {ride.carMake} {ride.carModel}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <Text style={styles.price}>${ride.price.toFixed(2)}</Text>
+                  </View>
+
+                  {/* Route */}
+                  <View style={styles.routeContainer}>
+                    <View style={styles.routeIndicator}>
+                      <View style={styles.routeDot} />
+                      <View style={styles.routeLine} />
+                      <View style={styles.routeDotEnd} />
+                    </View>
+                    <View style={styles.addresses}>
+                      <Text style={styles.fromAddress} numberOfLines={1}>
+                        {ride.fromAddress}
+                      </Text>
+                      <Text style={styles.toAddress} numberOfLines={1}>
+                        {ride.toAddress}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Footer: Time, Distance, Seats */}
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.footerText}>
+                      {formatDate(ride.departureTime)} at {formatTime(ride.departureTime)}
+                    </Text>
+                    {ride.distance && (
+                      <Text style={styles.footerText}>• {ride.distance.toFixed(1)} mi</Text>
+                    )}
+                    <Text style={styles.footerText}>
+                      • {ride.availableSeats} seat{ride.availableSeats !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -193,9 +314,17 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#666666',
   },
-  recentRidesContainer: {
+  upcomingRidesContainer: {
     paddingHorizontal: 20,
     marginBottom: 32,
+  },
+  loadingRidesContainer: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
   },
   emptyStateContainer: {
     backgroundColor: '#1C1C1E',
@@ -219,33 +348,114 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     textAlign: 'center',
   },
-  savedPlacesContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 32,
-  },
-  savedPlaceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  rideCard: {
     backgroundColor: '#1C1C1E',
     borderRadius: 12,
-    padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A2C',
   },
-  savedPlaceIcon: {
+  rideCardContent: {
+    padding: 16,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  driverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  driverAvatar: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#3A3A3C',
+    backgroundColor: '#4285F4',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
-  savedPlaceEmoji: {
-    fontSize: 24,
+  driverAvatarText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  savedPlaceText: {
+  driverDetails: {
+    flex: 1,
+  },
+  driverName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  carInfo: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#999999',
+  },
+  price: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#4285F4',
+  },
+  routeContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  routeIndicator: {
+    alignItems: 'center',
+    marginRight: 12,
+    width: 16,
+  },
+  routeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4285F4',
+  },
+  routeLine: {
+    width: 1.5,
+    height: 32,
+    backgroundColor: '#3A3A3C',
+    marginVertical: 4,
+  },
+  routeDotEnd: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+  },
+  addresses: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  fromAddress: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  toAddress: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2A2A2C',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  footerText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#999999',
   },
 });
