@@ -5,6 +5,18 @@ import bcrypt from 'bcrypt';
 
 const router = express.Router();
 
+// Validation helpers
+const validateEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+const validatePhoneNumber = (phone: string): boolean => {
+  // Remove spaces, dashes, and parentheses for validation
+  const cleaned = phone.replace(/[\s\-\(\)]/g, '');
+  return cleaned.length >= 10 && /^\d+$/.test(cleaned);
+};
+
 // GET /api/driver/auth/check-email?email=user@example.com
 router.get('/check-email', async (req: Request, res: Response) => {
   try {
@@ -38,9 +50,14 @@ router.get('/check-email', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Check email error:', error);
+    console.error('Error details:', error instanceof Error ? error.message : String(error));
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     res.status(500).json({
       success: false,
       message: 'Internal server error',
+      ...(process.env.NODE_ENV === 'development' && {
+        error: error instanceof Error ? error.message : String(error),
+      }),
     });
   }
 });
@@ -62,18 +79,6 @@ interface LoginBody {
   email: string;
   password: string;
 }
-
-// Validation helpers
-const validateEmail = (email: string): boolean => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
-const validatePhoneNumber = (phone: string): boolean => {
-  // Remove spaces, dashes, and parentheses for validation
-  const cleaned = phone.replace(/[\s\-\(\)]/g, '');
-  return cleaned.length >= 10 && /^\d+$/.test(cleaned);
-};
 
 // POST /api/driver/auth/signup
 router.post('/signup', async (req: Request, res: Response) => {

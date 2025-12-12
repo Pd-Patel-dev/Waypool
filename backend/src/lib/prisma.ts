@@ -15,9 +15,12 @@ if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable is not set');
 }
 
-// Create PostgreSQL connection pool
+// Create PostgreSQL connection pool with SSL for Render databases
 const pool = globalForPrisma.pool ?? new Pool({ 
   connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('render.com') || process.env.DATABASE_URL?.includes('dpg-') 
+    ? { rejectUnauthorized: false } 
+    : undefined,
 });
 const adapter = new PrismaPg(pool);
 
