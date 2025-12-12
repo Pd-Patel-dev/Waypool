@@ -4,21 +4,32 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { UserProvider } from '@/context/UserContext';
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+  initialRouteName: 'welcome',
 };
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <UserProvider>
+      <ThemeProvider value={DarkTheme}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: '#000000' },
+          }}
+        >
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="login" options={{ presentation: 'card' }} />
+          <Stack.Screen name="signup" options={{ presentation: 'card' }} />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="ride-details" options={{ presentation: 'card', headerShown: false }} />
+          <Stack.Screen name="booking" options={{ presentation: 'card', headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style="light" />
+      </ThemeProvider>
+    </UserProvider>
   );
 }

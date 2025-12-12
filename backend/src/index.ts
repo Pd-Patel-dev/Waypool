@@ -12,8 +12,13 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 // Track server start time for uptime calculation
 const serverStartTime = Date.now();
 
-// Middleware
-app.use(cors()); // Enable CORS for React Native app
+// Middleware - Enhanced CORS for React Native
+app.use(cors({
+  origin: true, // Allow all origins in development
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json());
 
 // Routes
@@ -59,8 +64,10 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Waypool Server is running on http://localhost:${PORT}`);
+// Start server - Listen on ALL interfaces (0.0.0.0) not just localhost
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Waypool Server is running on http://0.0.0.0:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌐 Accessible from Android emulator at: http://10.0.2.2:${PORT}`);
+  console.log(`💻 Accessible from browser at: http://localhost:${PORT}`);
 });

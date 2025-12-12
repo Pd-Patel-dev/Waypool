@@ -15,14 +15,55 @@ model User {
   email       String   @unique
   phoneNumber String
   password    String   // Hashed password
-  photoUrl    String   // Profile photo URL (required for drivers)
-  city        String   // City (required for drivers)
-  carMake     String   // Car make (required for drivers)
-  carModel    String   // Car model (required for drivers)
-  carYear     Int      // Car year (required for drivers)
-  carColor    String   // Car color (required for drivers)
+  isDriver    Boolean  @default(false) // True if user is a driver
+  isRider     Boolean  @default(false) // True if user is a rider
+  photoUrl    String?  // Profile photo URL (optional, for drivers)
+  city        String?  // City (optional, for drivers)
+  carMake     String?  // Car make (optional, for drivers)
+  carModel    String?  // Car model (optional, for drivers)
+  carYear     Int?     // Car year (optional, for drivers)
+  carColor    String?  // Car color (optional, for drivers)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Relations
+  rides       Ride[]   // Rides created by this driver
+
   @@map("users")
+}
+
+model Ride {
+  id              Int      @id @default(autoincrement())
+  driverId        Int
+  driverName      String
+  driverPhone     String
+  carMake         String?
+  carModel        String?
+  carYear         Int?
+  carColor        String?
+  fromAddress     String
+  fromCity        String
+  fromState       String
+  fromZipCode     String
+  fromLatitude    Float
+  fromLongitude   Float
+  toAddress       String
+  toCity          String
+  toState         String
+  toZipCode       String
+  toLatitude      Float
+  toLongitude     Float
+  departureDate   String
+  departureTime   String
+  availableSeats  Int
+  pricePerSeat    Float
+  distance        Float?
+  status          String   @default("scheduled") // scheduled, in-progress, completed, cancelled
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@map("rides")
 }
