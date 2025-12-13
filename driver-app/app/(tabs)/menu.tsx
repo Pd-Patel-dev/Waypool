@@ -1,13 +1,42 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useUser } from '@/context/UserContext';
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { API_BASE_URL } from '@/config/api';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 export default function MenuScreen(): React.JSX.Element {
   const { user, logout } = useUser();
+  const [showDebug, setShowDebug] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState<string | null>(null);
+  
+  const isPhysicalDevice = Constants.isDevice;
+  const isSimulator = !isPhysicalDevice || Constants.executionEnvironment === 'storeClient';
+  
+  const testApiConnection = async () => {
+    setApiTestResult('Testing...');
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setApiTestResult(`✅ Connected! Status: ${data.status}`);
+      } else {
+        setApiTestResult(`❌ Error: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      setApiTestResult(`❌ Network Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
 
   const handleSignOut = (): void => {
     Alert.alert(
@@ -54,6 +83,70 @@ export default function MenuScreen(): React.JSX.Element {
                   <Text style={styles.carText}>
                     {user.carYear} {user.carMake} {user.carModel}
                   </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Debug Section */}
+        <View style={styles.debugSection}>
+          <TouchableOpacity 
+            style={styles.debugHeader}
+            onPress={() => setShowDebug(!showDebug)}
+            activeOpacity={0.7}>
+            <View style={styles.debugHeaderLeft}>
+              <IconSymbol size={18} name="info.circle" color="#4285F4" />
+              <Text style={styles.debugTitle}>API Configuration</Text>
+            </View>
+            <IconSymbol 
+              size={18} 
+              name={showDebug ? "chevron.up" : "chevron.down"} 
+              color="#666666" 
+            />
+          </TouchableOpacity>
+          
+          {showDebug && (
+            <View style={styles.debugContent}>
+              <View style={styles.debugRow}>
+                <Text style={styles.debugLabel}>API Base URL:</Text>
+                <Text style={styles.debugValue} selectable>{API_BASE_URL}</Text>
+              </View>
+              
+              <View style={styles.debugRow}>
+                <Text style={styles.debugLabel}>Platform:</Text>
+                <Text style={styles.debugValue}>{Platform.OS}</Text>
+              </View>
+              
+              <View style={styles.debugRow}>
+                <Text style={styles.debugLabel}>Device Type:</Text>
+                <Text style={styles.debugValue}>
+                  {isPhysicalDevice && !isSimulator ? '📱 Physical Device' : '💻 Simulator'}
+                </Text>
+              </View>
+              
+              <View style={styles.debugRow}>
+                <Text style={styles.debugLabel}>Constants.isDevice:</Text>
+                <Text style={styles.debugValue}>{String(isPhysicalDevice)}</Text>
+              </View>
+              
+              <View style={styles.debugRow}>
+                <Text style={styles.debugLabel}>Environment:</Text>
+                <Text style={styles.debugValue}>
+                  {Constants.executionEnvironment || 'N/A'}
+                </Text>
+              </View>
+              
+              <TouchableOpacity 
+                style={styles.testButton}
+                onPress={testApiConnection}
+                activeOpacity={0.7}>
+                <Text style={styles.testButtonText}>Test API Connection</Text>
+              </TouchableOpacity>
+              
+              {apiTestResult && (
+                <View style={styles.testResult}>
+                  <Text style={styles.testResultText}>{apiTestResult}</Text>
                 </View>
               )}
             </View>
@@ -200,5 +293,74 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
     letterSpacing: 0.2,
+  },
+  debugSection: {
+    marginBottom: 24,
+    backgroundColor: '#0F0F0F',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+  debugHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  debugHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  debugContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A1A',
+  },
+  debugRow: {
+    marginTop: 12,
+  },
+  debugLabel: {
+    fontSize: 13,
+    color: '#999999',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  debugValue: {
+    fontSize: 15,
+    color: '#4285F4',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  testButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    backgroundColor: '#4285F4',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  testButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  testResult: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 8,
+  },
+  testResultText: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });

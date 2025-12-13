@@ -24,15 +24,25 @@ const getApiUrl = (): string => {
     } else if (Platform.OS === 'ios') {
       // Check if running on physical device or simulator
       const isPhysicalDevice = Constants.isDevice;
+      const isSimulator = !isPhysicalDevice || Constants.executionEnvironment === 'storeClient';
       
-      if (isPhysicalDevice) {
-        // For physical iOS device: use your computer's IP address
-        // Set EXPO_PUBLIC_API_URL_IOS_PHYSICAL in .env file
-        // Example: EXPO_PUBLIC_API_URL_IOS_PHYSICAL=http://192.168.1.100:3000
-        return process.env.EXPO_PUBLIC_API_URL_IOS_PHYSICAL || process.env.EXPO_PUBLIC_API_URL_IOS || 'http://192.168.1.100:3000';
+      console.log('📱 iOS Platform Info:');
+      console.log('  - Constants.isDevice:', isPhysicalDevice);
+      console.log('  - Constants.executionEnvironment:', Constants.executionEnvironment);
+      console.log('  - Is Simulator:', isSimulator);
+      
+      if (isPhysicalDevice && !isSimulator) {
+        // For physical iOS device: ALWAYS use IP address (hardcoded for now)
+        const apiUrl = 'http://192.168.0.103:3000';
+        console.log('📱 Physical iOS device detected');
+        console.log('🌐 Using API URL:', apiUrl);
+        return apiUrl;
       } else {
         // For iOS simulator: use localhost
-        return process.env.EXPO_PUBLIC_API_URL_IOS || 'http://localhost:3000';
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL_IOS || 'http://localhost:3000';
+        console.log('💻 iOS simulator detected');
+        console.log('🌐 Using API URL:', apiUrl);
+        return apiUrl;
       }
     } else {
       // For web or other platforms
@@ -44,6 +54,11 @@ const getApiUrl = (): string => {
 };
 
 export const API_BASE_URL = getApiUrl();
+
+// Log the API URL for debugging
+if (__DEV__) {
+  console.log('🔗 API Base URL:', API_BASE_URL);
+}
 
 export const API_ENDPOINTS = {
   AUTH: {

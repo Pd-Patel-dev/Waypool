@@ -12,7 +12,20 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Allow Waypool Driver to use your location to show your position on the map and match you with riders.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Waypool Driver to use your location to show your position on the map and match you with riders."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Waypool Driver to use your location to show your position on the map and match you with riders.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSExceptionDomains": {
+            "192.168.0.103": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            },
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
       },
       "bundleIdentifier": "com.waypool.driverapp"
     },

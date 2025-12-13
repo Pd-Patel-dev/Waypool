@@ -538,7 +538,7 @@ export default function AddRideScreen(): React.JSX.Element {
             <View style={styles.mapFullContainer}>
               <MapView
                 ref={mapRef}
-                provider={PROVIDER_GOOGLE}
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                 style={styles.mapPreview}
                 region={{
                   latitude: (fromCoords.latitude + toCoords.latitude) / 2,

@@ -208,8 +208,11 @@ export const signup = async (data: SignupRequest): Promise<SignupResponse> => {
  * Login API call
  */
 export const login = async (data: LoginRequest): Promise<LoginResponse> => {
+  const url = `${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGIN}`;
+  console.log('🔌 Login request to:', url);
+  
   try {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGIN}`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -228,6 +231,10 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
 
     return result as LoginResponse;
   } catch (error) {
+    console.error('❌ Login network error:', error);
+    console.error('📡 Attempted URL:', url);
+    console.error('🌐 API Base URL:', API_BASE_URL);
+    
     if (error && typeof error === 'object' && 'message' in error) {
       throw error;
     }
@@ -235,7 +242,7 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
     // Network or other errors
     throw {
       success: false,
-      message: 'Network error. Please check your connection.',
+      message: `Network error. Cannot reach ${API_BASE_URL}. Please check your connection and ensure backend is running.`,
     } as ApiError;
   }
 };
@@ -244,8 +251,11 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
  * Logout API call
  */
 export const logout = async (): Promise<LogoutResponse> => {
+  const url = `${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGOUT}`;
+  console.log('🔌 Logout request to:', url);
+  
   try {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGOUT}`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -263,6 +273,10 @@ export const logout = async (): Promise<LogoutResponse> => {
 
     return result as LogoutResponse;
   } catch (error) {
+    console.error('❌ Logout network error:', error);
+    console.error('📡 Attempted URL:', url);
+    console.error('🌐 API Base URL:', API_BASE_URL);
+    
     if (error && typeof error === 'object' && 'message' in error) {
       throw error;
     }
@@ -270,7 +284,7 @@ export const logout = async (): Promise<LogoutResponse> => {
     // Network or other errors
     throw {
       success: false,
-      message: 'Network error. Please check your connection.',
+      message: `Network error. Cannot reach ${API_BASE_URL}. Please check your connection and ensure backend is running.`,
     } as ApiError;
   }
 };

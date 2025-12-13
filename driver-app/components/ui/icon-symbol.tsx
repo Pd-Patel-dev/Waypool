@@ -45,6 +45,9 @@ const MAPPING = {
   'person.2.fill': 'people',
   'phone.fill': 'phone',
   'message.fill': 'message',
+  'info.circle': 'info',
+  'chevron.up': 'keyboard-arrow-up',
+  'chevron.down': 'keyboard-arrow-down',
 } as IconMapping;
 
 /**
