@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -15,9 +16,49 @@ import { useUser } from '@/context/UserContext';
 import { getUpcomingRides, type Ride } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
+// Conditionally import Location only on native platforms
+let Location: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    Location = require('expo-location');
+  } catch (e) {
+    console.warn('expo-location not available:', e);
+  }
+}
+
+interface LocationCoords {
+  latitude: number;
+  longitude: number;
+}
+
+// Calculate distance between two coordinates using Haversine formula (returns miles)
+const calculateDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number => {
+  const R = 3959; // Radius of the Earth in miles
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c; // Distance in miles
+  return distance;
+};
+
 export default function HomeScreen(): React.JSX.Element {
   const { user, isLoading } = useUser();
+  const [location, setLocation] = useState<LocationCoords | null>(null);
+  const [locationAddress, setLocationAddress] = useState<{ city: string; state: string } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [rides, setRides] = useState<Ride[]>([]);
+  const [filteredRides, setFilteredRides] = useState<Ride[]>([]);
   const [isLoadingRides, setIsLoadingRides] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
@@ -27,6 +68,102 @@ export default function HomeScreen(): React.JSX.Element {
       router.replace('/welcome');
     }
   }, [user, isLoading]);
+
+  // Reverse geocode coordinates to get city and state
+  const reverseGeocode = useCallback(async (coords: LocationCoords) => {
+    try {
+      if (Platform.OS === 'web') {
+        // Web platform - use Google Maps Geocoding API
+        const apiKey = 'AIzaSyB3dqyiWNGJLqv_UYA2zQxUdYpiIbmw3k4';
+        const response = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.latitude},${coords.longitude}&key=${apiKey}`
+        );
+        const data = await response.json();
+        if (data.status === 'OK' && data.results && data.results.length > 0) {
+          const result = data.results[0];
+          let city = '';
+          let state = '';
+          
+          // Extract city and state from address components
+          for (const component of result.address_components) {
+            if (component.types.includes('locality') || component.types.includes('sublocality')) {
+              city = component.long_name;
+            }
+            if (component.types.includes('administrative_area_level_1')) {
+              state = component.short_name;
+            }
+          }
+          
+          if (city && state) {
+            setLocationAddress({ city, state });
+          }
+        }
+      } else if (Location && Location.reverseGeocodeAsync) {
+        // Native platforms - use expo-location reverse geocoding
+        const addresses = await Location.reverseGeocodeAsync(coords);
+        if (addresses && addresses.length > 0) {
+          const address = addresses[0];
+          setLocationAddress({
+            city: address.city || address.subAdministrativeArea || 'Unknown',
+            state: address.region || address.administrativeArea || 'Unknown',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error reverse geocoding:', error);
+      // Don't set error, just leave locationAddress as null
+    }
+  }, []);
+
+  // Request location permissions and get current location
+  useEffect(() => {
+    (async () => {
+      if (user && Location && Platform.OS !== 'web') {
+        try {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status !== 'granted') {
+            setLocationError('Location permission denied');
+            return;
+          }
+
+          const currentLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+          const coords = {
+            latitude: currentLocation.coords.latitude,
+            longitude: currentLocation.coords.longitude,
+          };
+          setLocation(coords);
+          // Reverse geocode to get city and state
+          await reverseGeocode(coords);
+        } catch (error) {
+          console.error('Error getting location:', error);
+          setLocationError('Failed to get location');
+        }
+      } else if (Platform.OS === 'web') {
+        // Web fallback - try browser geolocation API
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              const coords = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              };
+              setLocation(coords);
+              // Reverse geocode to get city and state
+              await reverseGeocode(coords);
+            },
+            (error) => {
+              setLocationError('Location permission denied');
+              console.error('Geolocation error:', error);
+            }
+          );
+        } else {
+          setLocationError('Geolocation not supported');
+        }
+      }
+    })();
+  }, [user]);
 
   const fetchRides = useCallback(async () => {
     if (!user) return;
@@ -44,6 +181,53 @@ export default function HomeScreen(): React.JSX.Element {
       setRefreshing(false);
     }
   }, [user]);
+
+  // Filter rides within 50 miles of user's location
+  useEffect(() => {
+    if (!location || rides.length === 0) {
+      // If no location, show all rides (fallback)
+      setFilteredRides(rides);
+      return;
+    }
+
+    const RADIUS_MILES = 50;
+    const nearbyRides = rides.filter((ride) => {
+      if (!ride.fromLatitude || !ride.fromLongitude) {
+        return false; // Skip rides without location data
+      }
+      
+      const distance = calculateDistance(
+        location.latitude,
+        location.longitude,
+        ride.fromLatitude,
+        ride.fromLongitude
+      );
+      
+      return distance <= RADIUS_MILES;
+    });
+
+    // Sort by distance (nearest first)
+    nearbyRides.sort((a, b) => {
+      if (!a.fromLatitude || !a.fromLongitude || !b.fromLatitude || !b.fromLongitude) {
+        return 0;
+      }
+      const distA = calculateDistance(
+        location.latitude,
+        location.longitude,
+        a.fromLatitude,
+        a.fromLongitude
+      );
+      const distB = calculateDistance(
+        location.latitude,
+        location.longitude,
+        b.fromLatitude,
+        b.fromLongitude
+      );
+      return distA - distB;
+    });
+
+    setFilteredRides(nearbyRides);
+  }, [location, rides]);
 
   useFocusEffect(
     useCallback(() => {
@@ -119,6 +303,30 @@ export default function HomeScreen(): React.JSX.Element {
           </View>
         </View>
 
+        {/* Current Location Display */}
+        {location && (
+          <View style={styles.locationContainer}>
+            <View style={styles.locationContent}>
+              <IconSymbol name="location.fill" size={16} color="#4285F4" />
+              <View style={styles.locationTextContainer}>
+                <Text style={styles.locationLabel}>Your location</Text>
+                <Text style={styles.locationAddress}>
+                  {locationAddress 
+                    ? `${locationAddress.city}, ${locationAddress.state}`
+                    : `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+        {locationError && (
+          <View style={styles.locationErrorContainer}>
+            <Text style={styles.locationErrorText}>
+              {locationError} - Showing all rides
+            </Text>
+          </View>
+        )}
+
         {/* Quick Actions */}
         <View style={styles.quickActionsContainer}>
           <Text style={styles.sectionTitle}>Where would you like to go?</Text>
@@ -145,22 +353,39 @@ export default function HomeScreen(): React.JSX.Element {
 
         {/* Upcoming Rides */}
         <View style={styles.upcomingRidesContainer}>
-          <Text style={styles.sectionTitle}>Upcoming rides</Text>
+          <Text style={styles.sectionTitle}>
+            {location ? 'Nearby rides (within 50 mi)' : 'Upcoming rides'}
+          </Text>
           
           {isLoadingRides ? (
             <View style={styles.loadingRidesContainer}>
               <ActivityIndicator size="large" color="#4285F4" />
             </View>
-          ) : rides.length === 0 ? (
+          ) : filteredRides.length === 0 ? (
             <View style={styles.emptyStateContainer}>
               <Text style={styles.emptyStateIcon}>📍</Text>
-              <Text style={styles.emptyStateText}>No upcoming rides</Text>
+              <Text style={styles.emptyStateText}>
+                {location ? 'No nearby rides' : 'No upcoming rides'}
+              </Text>
               <Text style={styles.emptyStateSubtext}>
-                Available rides will appear here
+                {location
+                  ? 'No rides found within 50 miles of your location'
+                  : 'Available rides will appear here'}
               </Text>
             </View>
           ) : (
-            rides.map((ride) => (
+            filteredRides.map((ride) => {
+              // Calculate distance for display
+              const rideDistance = location && ride.fromLatitude && ride.fromLongitude
+                ? calculateDistance(
+                    location.latitude,
+                    location.longitude,
+                    ride.fromLatitude,
+                    ride.fromLongitude
+                  )
+                : null;
+              
+              return (
               <TouchableOpacity
                 key={ride.id}
                 style={styles.rideCard}
@@ -217,7 +442,10 @@ export default function HomeScreen(): React.JSX.Element {
                     <Text style={styles.footerText}>
                       {formatDate(ride.departureTime)} at {formatTime(ride.departureTime)}
                     </Text>
-                    {ride.distance && (
+                    {rideDistance !== null && (
+                      <Text style={styles.footerText}>• {rideDistance.toFixed(1)} mi away</Text>
+                    )}
+                    {ride.distance && rideDistance === null && (
                       <Text style={styles.footerText}>• {ride.distance.toFixed(1)} mi</Text>
                     )}
                     <Text style={styles.footerText}>
@@ -226,7 +454,8 @@ export default function HomeScreen(): React.JSX.Element {
                   </View>
                 </View>
               </TouchableOpacity>
-            ))
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -457,5 +686,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: '#999999',
+  },
+  locationContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  locationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A2C',
+  },
+  locationTextContainer: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  locationLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#CCCCCC',
+    marginBottom: 2,
+  },
+  locationAddress: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: '#999999',
+  },
+  locationErrorContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  locationErrorText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#FF6B6B',
+    textAlign: 'center',
   },
 });

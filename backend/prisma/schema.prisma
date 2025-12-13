@@ -74,6 +74,7 @@ model Booking {
   id                Int      @id @default(autoincrement())
   rideId            Int
   riderId           Int
+  numberOfSeats     Int      @default(1)
   confirmationNumber String   @unique
   pickupAddress     String
   pickupCity        String?

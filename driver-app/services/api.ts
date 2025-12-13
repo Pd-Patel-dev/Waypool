@@ -75,62 +75,26 @@ export interface CheckEmailResponse {
 
 export interface Passenger {
   id: number;
-  riderId?: number;
-  riderName?: string;
-  riderPhone?: string;
   pickupAddress: string;
-  pickupCity?: string;
-  pickupState?: string;
-  pickupZipCode?: string;
   pickupLatitude?: number;
   pickupLongitude?: number;
-  confirmationNumber?: string;
-  status?: string;
 }
 
 export interface Ride {
   id: number;
-  driverId?: number;
-  driverName?: string;
-  driverPhone?: string;
-  carMake?: string;
-  carModel?: string;
-  carYear?: number;
-  carColor?: string;
   fromAddress: string;
-  fromCity?: string;
-  fromState?: string;
-  fromZipCode?: string;
   toAddress: string;
-  toCity?: string;
-  toState?: string;
-  toZipCode?: string;
   fromLatitude?: number;
   fromLongitude?: number;
   toLatitude?: number;
   toLongitude?: number;
   departureTime: string;
-  departureDate?: string;
-  departureTimeString?: string;
-  departureTimeISO?: string;
   availableSeats: number;
   totalSeats: number;
   price?: number;
-  pricePerSeat?: number;
   status?: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   distance?: number; // Distance in kilometers
   passengers?: Passenger[]; // List of enrolled passengers
-  driver?: {
-    id: number;
-    fullName: string;
-    email: string;
-    phoneNumber: string;
-    photoUrl?: string | null;
-    carMake?: string | null;
-    carModel?: string | null;
-    carYear?: number | null;
-    carColor?: string | null;
-  };
 }
 
 export interface CreateRideRequest {
@@ -314,70 +278,11 @@ export const checkEmail = async (email: string): Promise<CheckEmailResponse> => 
 };
 
 /**
- * Get a specific ride by ID with all details including passengers
- * @param rideId - The ID of the ride to fetch
- * @param driverId - Optional driver ID to verify ownership
- */
-export const getRideById = async (rideId: number, driverId?: number): Promise<Ride> => {
-  try {
-    // Build URL with driverId query parameter if provided
-    const url = driverId
-      ? `${API_BASE_URL}${API_ENDPOINTS.RIDES.GET_BY_ID(rideId)}?driverId=${driverId}`
-      : `${API_BASE_URL}${API_ENDPOINTS.RIDES.GET_BY_ID(rideId)}`;
-    
-    console.log('🌐 Fetching ride from:', url);
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const result = await response.json();
-      console.error('❌ API error response:', result);
-      throw {
-        success: false,
-        message: result.message || 'Failed to fetch ride',
-      } as ApiError;
-    }
-
-    const result = await response.json();
-    console.log('✅ API response received:', result);
-    
-    if (!result.ride) {
-      throw {
-        success: false,
-        message: 'Ride data not found in response',
-      } as ApiError;
-    }
-    
-    return result.ride;
-  } catch (error) {
-    console.error('❌ Error in getRideById:', error);
-    if (error && typeof error === 'object' && 'message' in error) {
-      throw error;
-    }
-    throw {
-      success: false,
-      message: 'Network error. Please check your connection.',
-    } as ApiError;
-  }
-};
-
-/**
  * Get upcoming rides for the driver
- * @param driverId - The ID of the driver to fetch rides for
  */
-export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
+export const getUpcomingRides = async (): Promise<Ride[]> => {
   try {
-    // Build URL with driverId query parameter if provided
-    const url = driverId 
-      ? `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}?driverId=${driverId}`
-      : `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}`;
-    
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -398,13 +303,10 @@ export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
     }
 
     const result = await response.json();
-    console.log('✅ Fetched rides from API:', result);
     return result.rides || result || [];
   } catch (error) {
-    // Log the actual error for debugging
-    console.error('❌ Error fetching rides from API:', error);
     // If network error or endpoint doesn't exist, return mock data for development
-    console.warn('⚠️ Using mock rides data as fallback');
+    console.warn('Using mock rides data:', error);
     return getMockRides();
   }
 };
@@ -499,96 +401,6 @@ export const createRide = async (data: CreateRideRequest): Promise<CreateRideRes
       success: false,
       message: 'Network error. Please check your connection.',
       errors: [],
-    } as ApiError;
-  }
-};
-
-export interface DeleteRideResponse {
-  success: boolean;
-  message: string;
-}
-
-/**
- * Delete a ride by ID
- * @param rideId - The ID of the ride to delete
- * @param driverId - The ID of the driver (required for security)
- */
-export const deleteRide = async (rideId: number, driverId: number): Promise<DeleteRideResponse> => {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}${API_ENDPOINTS.RIDES.DELETE(rideId)}?driverId=${driverId}`,
-      {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw {
-        success: false,
-        message: result.message || 'Failed to delete ride',
-      } as ApiError;
-    }
-
-    return result as DeleteRideResponse;
-  } catch (error) {
-    if (error && typeof error === 'object' && 'message' in error) {
-      throw error;
-    }
-    
-    // Network or other errors
-    throw {
-      success: false,
-      message: 'Network error. Please check your connection.',
-    } as ApiError;
-  }
-};
-
-export interface CancelRideResponse {
-  success: boolean;
-  message: string;
-}
-
-/**
- * Cancel a ride by ID (updates status to 'cancelled')
- * @param rideId - The ID of the ride to cancel
- * @param driverId - The ID of the driver (required for security)
- */
-export const cancelRide = async (rideId: number, driverId: number): Promise<CancelRideResponse> => {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}${API_ENDPOINTS.RIDES.CANCEL(rideId)}?driverId=${driverId}`,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw {
-        success: false,
-        message: result.message || 'Failed to cancel ride',
-      } as ApiError;
-    }
-
-    return result as CancelRideResponse;
-  } catch (error) {
-    if (error && typeof error === 'object' && 'message' in error) {
-      throw error;
-    }
-    
-    // Network or other errors
-    throw {
-      success: false,
-      message: 'Network error. Please check your connection.',
     } as ApiError;
   }
 };

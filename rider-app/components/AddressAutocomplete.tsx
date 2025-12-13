@@ -199,6 +199,12 @@ export default function AddressAutocomplete({
               </TouchableOpacity>
             )}
             style={styles.predictionsList}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            bounces={false}
+            removeClippedSubviews={false}
           />
         </View>
       )}
@@ -252,16 +258,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2A2A2C',
     marginTop: 8,
-    maxHeight: 200,
+    maxHeight: 300,
     zIndex: 1000,
     elevation: 5,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
+    overflow: 'hidden',
   },
   predictionsList: {
-    maxHeight: 200,
+    maxHeight: 300,
   },
   predictionItem: {
     flexDirection: 'row',

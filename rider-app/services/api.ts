@@ -202,3 +202,163 @@ export async function getUpcomingRides(): Promise<UpcomingRidesResponse> {
   }
 }
 
+export interface BookRideRequest {
+  rideId: number;
+  riderId: number;
+  numberOfSeats: number;
+  pickupAddress: string;
+  pickupCity?: string;
+  pickupState?: string;
+  pickupZipCode?: string;
+  pickupLatitude: number;
+  pickupLongitude: number;
+}
+
+export interface BookingResponse {
+  success: boolean;
+  message?: string;
+  booking?: {
+    id: number;
+    confirmationNumber: string;
+    numberOfSeats: number;
+    pickupAddress: string;
+    pickupCity?: string;
+    pickupState?: string;
+    status: string;
+    createdAt: string;
+    ride: {
+      id: number;
+      fromAddress: string;
+      toAddress: string;
+      departureDate: string;
+      departureTime: string;
+      pricePerSeat: number;
+      driver: {
+        id: number;
+        fullName: string;
+        email: string;
+        phoneNumber: string;
+        photoUrl?: string;
+      };
+    };
+    rider: {
+      id: number;
+      fullName: string;
+      email: string;
+      phoneNumber: string;
+    };
+  };
+}
+
+export interface MyBookingsResponse {
+  success: boolean;
+  message?: string;
+  bookings?: {
+    upcoming: BookingDetail[];
+    past: BookingDetail[];
+  };
+}
+
+export interface BookingDetail {
+  id: number;
+  confirmationNumber: string;
+  numberOfSeats: number;
+  pickupAddress: string;
+  pickupCity?: string;
+  pickupState?: string;
+  status: string;
+  createdAt: string;
+  isUpcoming: boolean;
+  isPast: boolean;
+  ride: {
+    id: number;
+    fromAddress: string;
+    toAddress: string;
+    fromCity: string;
+    toCity: string;
+    fromLatitude: number;
+    fromLongitude: number;
+    toLatitude: number;
+    toLongitude: number;
+    departureTime: string;
+    departureDate: string;
+    departureTimeStr: string;
+    pricePerSeat: number;
+    totalPrice: number;
+    driver: {
+      id: number;
+      fullName: string;
+      email: string;
+      phoneNumber: string;
+      photoUrl?: string;
+    };
+    driverName: string;
+    driverPhone: string;
+    carMake?: string;
+    carModel?: string;
+    carYear?: number;
+    carColor?: string;
+  };
+}
+
+export async function getMyBookings(riderId: number): Promise<MyBookingsResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/rides/my-bookings?riderId=${riderId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to fetch bookings',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+export async function bookRide(data: BookRideRequest): Promise<BookingResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/rides/book`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to book ride',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+

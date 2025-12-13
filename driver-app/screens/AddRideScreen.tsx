@@ -84,14 +84,6 @@ export default function AddRideScreen(): React.JSX.Element {
   const [isFromInputActive, setIsFromInputActive] = useState(false);
   const [isToInputActive, setIsToInputActive] = useState(false);
   
-  // Reset input active states when coming back to step 1
-  useEffect(() => {
-    if (currentStep === 1) {
-      setIsFromInputActive(false);
-      setIsToInputActive(false);
-    }
-  }, [currentStep]);
-  
   // Map should only show when both addresses selected and no input is active
   const shouldShowMap = fromCoords && toCoords && !isFromInputActive && !isToInputActive;
   
@@ -124,71 +116,6 @@ export default function AddRideScreen(): React.JSX.Element {
     // Clear errors when address is selected
     if (errors.fromAddress) {
       setErrors({ ...errors, fromAddress: undefined, fromCity: undefined });
-    }
-  };
-
-  // Reverse geocode current location to get address
-  const handleUseCurrentLocation = async () => {
-    if (!currentLocation) {
-      Alert.alert('Location Unavailable', 'Please enable location services to use your current location.');
-      return;
-    }
-
-    try {
-      const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
-      if (!GOOGLE_API_KEY) {
-        Alert.alert('Error', 'Google API key not configured');
-        return;
-      }
-
-      // Reverse geocode to get address
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${currentLocation.latitude},${currentLocation.longitude}&key=${GOOGLE_API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.status === 'OK' && data.results.length > 0) {
-        const result = data.results[0];
-        const addressComponents = result.address_components || [];
-        
-        let city = '';
-        let state = '';
-        let zipCode = '';
-        let streetNumber = '';
-        let route = '';
-
-        addressComponents.forEach((component: any) => {
-          if (component.types.includes('street_number')) {
-            streetNumber = component.long_name;
-          } else if (component.types.includes('route')) {
-            route = component.long_name;
-          } else if (component.types.includes('locality')) {
-            city = component.long_name;
-          } else if (component.types.includes('administrative_area_level_1')) {
-            state = component.short_name;
-          } else if (component.types.includes('postal_code')) {
-            zipCode = component.long_name;
-          }
-        });
-
-        const fullAddress = streetNumber && route 
-          ? `${streetNumber} ${route}` 
-          : result.formatted_address.split(',')[0];
-
-        // Set the address details
-        handleSelectFromAddress({
-          fullAddress: fullAddress,
-          city: city,
-          state: state,
-          zipCode: zipCode,
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
-        });
-      } else {
-        Alert.alert('Error', 'Could not get address for current location');
-      }
-    } catch (error) {
-      console.error('Error reverse geocoding:', error);
-      Alert.alert('Error', 'Failed to get address for current location');
     }
   };
 
@@ -467,20 +394,9 @@ export default function AddRideScreen(): React.JSX.Element {
           <View style={styles.addressContainer}>
             {/* From Address */}
             <View style={styles.addressInputWrapper}>
-              <View style={styles.addressLabelRow}>
-                <Text style={styles.addressLabel}>From</Text>
-                {currentLocation && !fromAddress && (
-                  <TouchableOpacity
-                    style={styles.currentLocationIconButton}
-                    onPress={handleUseCurrentLocation}
-                    activeOpacity={0.7}>
-                    <IconSymbol size={20} name="location.fill" color="#4285F4" />
-                  </TouchableOpacity>
-                )}
-              </View>
+              <Text style={styles.addressLabel}>From</Text>
               <View style={styles.addressInputContainer}>
                 <AddressAutocomplete
-                  key={`from-${currentStep}`}
                   value={fromAddress}
                   onChangeText={setFromAddress}
                   onSelectAddress={handleSelectFromAddress}
@@ -504,12 +420,9 @@ export default function AddRideScreen(): React.JSX.Element {
 
             {/* To Address */}
             <View style={[styles.addressInputWrapper, styles.addressInputWrapperLast]}>
-              <View style={styles.addressLabelRow}>
-                <Text style={styles.addressLabel}>To</Text>
-              </View>
+              <Text style={styles.addressLabel}>To</Text>
               <View style={styles.addressInputContainer}>
                 <AddressAutocomplete
-                  key={`to-${currentStep}`}
                   value={toAddress}
                   onChangeText={setToAddress}
                   onSelectAddress={handleSelectToAddress}
@@ -858,6 +771,8 @@ const styles = StyleSheet.create({
       overflow: 'hidden',
     },
     addressInputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
       paddingVertical: 4,
       borderBottomWidth: 1,
       borderBottomColor: '#333333',
@@ -866,27 +781,15 @@ const styles = StyleSheet.create({
     addressInputWrapperLast: {
       borderBottomWidth: 0,
     },
-    addressLabelRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 8,
-    },
     addressLabel: {
       fontSize: 13,
       fontWeight: '500',
       color: '#999999',
+      width: 50,
+      marginRight: 8,
     },
-    currentLocationIconButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: 'rgba(66, 133, 244, 0.1)',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-  addressInputContainer: {
-      width: '100%',
+    addressInputContainer: {
+      flex: 1,
       overflow: 'visible',
     },
     mapFullContainer: {

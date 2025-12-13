@@ -13,8 +13,7 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Allow Waypool Driver to use your location to show your position on the map and match you with riders.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Waypool Driver to use your location to show your position on the map and match you with riders."
-      },
-      "bundleIdentifier": "com.waypool.driverapp"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,9 +26,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "ACCESS_COARSE_LOCATION"
       ],
       "package": "com.anonymous.driverapp"
     },

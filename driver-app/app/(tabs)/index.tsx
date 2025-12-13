@@ -9,14 +9,13 @@ import {
   Platform,
   TouchableOpacity,
   Animated,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import MapComponent from '@/components/MapComponent';
-import { getUpcomingRides, deleteRide, type Ride } from '@/services/api';
+import { getUpcomingRides, type Ride } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 // Conditionally import Location only on native platforms
@@ -135,8 +134,6 @@ export default function HomeScreen(): React.JSX.Element {
   const { user } = useUser();
   const [location, setLocation] = useState<LocationCoords | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [currentCity, setCurrentCity] = useState<string | null>(null);
-  const [currentState, setCurrentState] = useState<string | null>(null);
   const [rides, setRides] = useState<Ride[]>([]);
   const [isLoadingRides, setIsLoadingRides] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -150,42 +147,6 @@ export default function HomeScreen(): React.JSX.Element {
     if (hour < 12) return 'Good morning';
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
-  };
-
-  // Reverse geocode coordinates to get city and state
-  const reverseGeocode = async (lat: number, lng: number) => {
-    try {
-      const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
-      if (!GOOGLE_API_KEY) {
-        console.warn('Google Places API key not configured');
-        return;
-      }
-
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.status === 'OK' && data.results.length > 0) {
-        const result = data.results[0];
-        const addressComponents = result.address_components || [];
-        
-        let city = '';
-        let state = '';
-
-        addressComponents.forEach((component: any) => {
-          if (component.types.includes('locality')) {
-            city = component.long_name;
-          } else if (component.types.includes('administrative_area_level_1')) {
-            state = component.short_name;
-          }
-        });
-
-        setCurrentCity(city);
-        setCurrentState(state);
-      }
-    } catch (error) {
-      console.error('Error reverse geocoding:', error);
-    }
   };
 
   // Request location permissions and get current location (native only)
@@ -202,13 +163,10 @@ export default function HomeScreen(): React.JSX.Element {
           const currentLocation = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.High,
           });
-          const coords = {
+          setLocation({
             latitude: currentLocation.coords.latitude,
             longitude: currentLocation.coords.longitude,
-          };
-          setLocation(coords);
-          // Reverse geocode to get city and state
-          await reverseGeocode(coords.latitude, coords.longitude);
+          });
         } catch (error) {
           console.error('Error getting location:', error);
           setLocationError('Failed to get location');
@@ -217,14 +175,11 @@ export default function HomeScreen(): React.JSX.Element {
         // Web fallback - try browser geolocation API
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
-            async (position) => {
-              const coords = {
+            (position) => {
+              setLocation({
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
-              };
-              setLocation(coords);
-              // Reverse geocode to get city and state
-              await reverseGeocode(coords.latitude, coords.longitude);
+              });
             },
             (error) => {
               setLocationError('Location permission denied');
@@ -240,22 +195,12 @@ export default function HomeScreen(): React.JSX.Element {
 
   // Fetch upcoming rides
   const fetchRides = async () => {
-    if (!user?.id) {
-      console.log('⚠️ No user ID, skipping ride fetch');
-      setIsLoadingRides(false);
-      return;
-    }
-    
     try {
       setIsLoadingRides(true);
-      console.log('🔄 Fetching rides for driver ID:', user.id);
-      const data = await getUpcomingRides(user.id);
-      console.log('✅ Received rides:', data.length, 'rides');
+      const data = await getUpcomingRides();
       setRides(data);
     } catch (error) {
-      console.error('❌ Error fetching rides:', error);
-      // Set empty array on error instead of leaving it undefined
-      setRides([]);
+      console.error('Error fetching rides:', error);
     } finally {
       setIsLoadingRides(false);
     }
@@ -304,17 +249,6 @@ export default function HomeScreen(): React.JSX.Element {
     }
   };
 
-  // Check if a ride is scheduled for today
-  const isToday = (dateString: string): boolean => {
-    const date = new Date(dateString);
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
-  };
-
-  // Separate rides into today's rides and upcoming rides
-  const todaysRides = rides.filter((ride) => isToday(ride.departureTime));
-  const upcomingRides = rides.filter((ride) => !isToday(ride.departureTime));
-
   // If user is not logged in, show nothing (should redirect)
   if (!user) {
     return (
@@ -347,66 +281,8 @@ export default function HomeScreen(): React.JSX.Element {
   };
 
   const handleRidePress = (rideId: number) => {
-    // Find the ride from the rides array
-    const ride = rides.find((r) => r.id === rideId);
-    if (ride) {
-      // Navigate to current ride screen with ride ID and ride data
-      router.push({
-        pathname: '/current-ride',
-        params: {
-          rideId: String(ride.id),
-          ride: JSON.stringify(ride), // Keep for fallback
-        },
-      });
-    } else {
-      console.error('Ride not found with ID:', rideId);
-    }
-  };
-
-  const handleStartRide = (ride: Ride) => {
-    // Navigate to current ride screen with ride ID and ride data
-    router.push({
-      pathname: '/current-ride',
-      params: {
-        rideId: String(ride.id),
-        ride: JSON.stringify(ride), // Keep for fallback
-      },
-    });
-  };
-
-  const handleDeleteRide = (ride: Ride) => {
-    Alert.alert(
-      'Delete Ride',
-      'Are you sure you want to delete this ride? This action cannot be undone.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (!user?.id) {
-              Alert.alert('Error', 'User not found');
-              return;
-            }
-
-            try {
-              await deleteRide(ride.id, user.id);
-              // Refresh the rides list
-              await fetchRides();
-            } catch (error: any) {
-              Alert.alert(
-                'Error',
-                error.message || 'Failed to delete ride. Please try again.'
-              );
-            }
-          },
-        },
-      ]
-    );
-  };
+    router.push('/current-ride');
+      };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -421,16 +297,6 @@ export default function HomeScreen(): React.JSX.Element {
         <View style={styles.greetingContainer}>
           <Text style={styles.greeting}>{getGreeting()}</Text>
           <Text style={styles.name}>{user.fullName}</Text>
-          {(currentCity || currentState) && (
-            <View style={styles.locationContainer}>
-              <IconSymbol size={14} name="location.fill" color="#4285F4" />
-              <Text style={styles.locationText}>
-                {currentCity && currentState 
-                  ? `${currentCity}, ${currentState}`
-                  : currentCity || currentState || ''}
-              </Text>
-            </View>
-          )}
         </View>
 
         {/* Map Section - Hidden for now, can be re-enabled later */}
@@ -493,100 +359,6 @@ export default function HomeScreen(): React.JSX.Element {
           </TouchableOpacity>
         )}
 
-        {/* Today's Rides Section */}
-        {todaysRides.length > 0 && (
-          <View style={styles.ridesContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Today's rides</Text>
-            </View>
-            {todaysRides.map((ride) => (
-              <View key={ride.id} style={styles.rideCard}>
-                <View style={styles.rideCardHeader}>
-                  <TouchableOpacity 
-                    onPress={() => handleRidePress(ride.id)}
-                    activeOpacity={0.7}
-                    style={styles.rideCardContent}>
-                    <View style={styles.rideHeader}>
-                      <View style={styles.rideTimeContainer}>
-                        <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
-                        <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
-                      </View>
-                      <View style={styles.seatsContainer}>
-                        <View style={styles.seatsInfo}>
-                        <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
-                          <Text style={styles.seatsLabel}>available</Text>
-                          {ride.totalSeats > ride.availableSeats && (
-                            <Text style={styles.bookedSeatsLabel}>
-                              {ride.totalSeats - ride.availableSeats} booked
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={styles.routeContainer}>
-                      <View style={styles.routeItem}>
-                        <View style={styles.routeIndicator} />
-                        <View style={styles.routeContent}>
-                          <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.routeConnector} />
-                      <View style={styles.routeItem}>
-                        <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
-                        <View style={styles.routeContent}>
-                          <Text style={styles.routeAddress}>{ride.toAddress}</Text>
-                        </View>
-                      </View>
-                    </View>
-                    {/* Distance and Price display */}
-                    <View style={styles.infoContainer}>
-                      {ride.distance !== undefined && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="mappin" color="#999999" />
-                          <Text style={styles.infoValue}>
-                            {ride.distance.toFixed(1)} mi
-                          </Text>
-                        </View>
-                      )}
-                      {ride.price && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                          <Text style={styles.priceValue}>
-                            ${ride.price.toFixed(2)}/seat
-                          </Text>
-                        </View>
-                      )}
-                      {ride.totalSeats > ride.availableSeats && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                          <Text style={styles.earningsValue}>
-                            ${calculateEarnings(ride).toFixed(2)} earned
-                          </Text>
-                        </View>
-                      )}
-                  </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteRide(ride)}
-                    activeOpacity={0.7}>
-                    <IconSymbol size={18} name="trash" color="#FF3B30" />
-                  </TouchableOpacity>
-                </View>
-                {/* Start Ride Button - Only for today's rides */}
-                <TouchableOpacity
-                  style={styles.startRideButton}
-                  onPress={() => handleStartRide(ride)}
-                  activeOpacity={0.8}>
-                  <IconSymbol size={18} name="play.fill" color="#000000" />
-                  <Text style={styles.startRideButtonText}>Start Ride</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
-
         {/* Upcoming Rides Section */}
         <View style={styles.ridesContainer}>
           <View style={styles.sectionHeader}>
@@ -610,89 +382,74 @@ export default function HomeScreen(): React.JSX.Element {
               <Text style={styles.emptyTitle}>No upcoming rides</Text>
               <Text style={styles.emptySubtext}>Tap the + button to create your first ride</Text>
             </View>
-          ) : upcomingRides.length === 0 && todaysRides.length > 0 ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol size={48} name="calendar" color="#333333" />
-              <Text style={styles.emptyTitle}>No upcoming rides</Text>
-              <Text style={styles.emptySubtext}>All your rides are scheduled for today</Text>
-            </View>
           ) : (
-            upcomingRides.map((ride) => (
-              <View key={ride.id} style={styles.rideCard}>
-                <View style={styles.rideCardHeader}>
-                  <TouchableOpacity 
-                    onPress={() => handleRidePress(ride.id)}
-                    activeOpacity={0.7}
-                    style={styles.rideCardContent}>
-                    <View style={styles.rideHeader}>
-                      <View style={styles.rideTimeContainer}>
-                        <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
-                        <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
-                      </View>
-                      <View style={styles.seatsContainer}>
-                        <View style={styles.seatsInfo}>
-                        <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
-                          <Text style={styles.seatsLabel}>available</Text>
-                          {ride.totalSeats > ride.availableSeats && (
-                            <Text style={styles.bookedSeatsLabel}>
-                              {ride.totalSeats - ride.availableSeats} booked
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={styles.routeContainer}>
-                      <View style={styles.routeItem}>
-                        <View style={styles.routeIndicator} />
-                        <View style={styles.routeContent}>
-                          <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.routeConnector} />
-                      <View style={styles.routeItem}>
-                        <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
-                        <View style={styles.routeContent}>
-                          <Text style={styles.routeAddress}>{ride.toAddress}</Text>
-                        </View>
-                      </View>
-                    </View>
-                    {/* Distance and Price display */}
-                    <View style={styles.infoContainer}>
-                      {ride.distance !== undefined && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="mappin" color="#999999" />
-                          <Text style={styles.infoValue}>
-                            {ride.distance.toFixed(1)} mi
-                          </Text>
-                        </View>
-                      )}
-                      {ride.price && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                          <Text style={styles.priceValue}>
-                            ${ride.price.toFixed(2)}/seat
-                          </Text>
-                        </View>
-                      )}
-                      {ride.totalSeats > ride.availableSeats && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                          <Text style={styles.earningsValue}>
-                            ${calculateEarnings(ride).toFixed(2)} earned
-                          </Text>
-                        </View>
-                      )}
+            rides.map((ride) => (
+              <TouchableOpacity 
+                key={ride.id} 
+                style={styles.rideCard}
+                onPress={() => handleRidePress(ride.id)}
+                activeOpacity={0.7}>
+                <View style={styles.rideHeader}>
+                  <View style={styles.rideTimeContainer}>
+                    <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
+                    <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
                   </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteRide(ride)}
-                    activeOpacity={0.7}>
-                    <IconSymbol size={18} name="trash" color="#FF3B30" />
-                  </TouchableOpacity>
+                  <View style={styles.seatsContainer}>
+                    <View style={styles.seatsInfo}>
+                    <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
+                      <Text style={styles.seatsLabel}>available</Text>
+                      {ride.totalSeats > ride.availableSeats && (
+                        <Text style={styles.bookedSeatsLabel}>
+                          {ride.totalSeats - ride.availableSeats} booked
+                        </Text>
+                      )}
+                    </View>
+                  </View>
                 </View>
+
+                <View style={styles.routeContainer}>
+                  <View style={styles.routeItem}>
+                    <View style={styles.routeIndicator} />
+                    <View style={styles.routeContent}>
+                      <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.routeConnector} />
+                  <View style={styles.routeItem}>
+                    <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
+                    <View style={styles.routeContent}>
+                      <Text style={styles.routeAddress}>{ride.toAddress}</Text>
+                    </View>
+                  </View>
+                </View>
+                {/* Distance and Price display */}
+                <View style={styles.infoContainer}>
+                  {ride.distance !== undefined && (
+                    <View style={styles.infoItem}>
+                      <IconSymbol size={14} name="mappin" color="#999999" />
+                      <Text style={styles.infoValue}>
+                        {ride.distance.toFixed(1)} mi
+                      </Text>
+                    </View>
+                  )}
+                  {ride.price && (
+                    <View style={styles.infoItem}>
+                      <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
+                      <Text style={styles.priceValue}>
+                        ${ride.price.toFixed(2)}/seat
+                      </Text>
+                    </View>
+                  )}
+                  {ride.totalSeats > ride.availableSeats && (
+                    <View style={styles.infoItem}>
+                      <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
+                      <Text style={styles.earningsValue}>
+                        ${calculateEarnings(ride).toFixed(2)} earned
+                      </Text>
+                    </View>
+                  )}
               </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
@@ -732,19 +489,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: -1,
-    marginBottom: 4,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  locationText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#4285F4',
-    opacity: 0.9,
   },
   mapWrapper: {
     marginHorizontal: 20,
@@ -843,7 +587,6 @@ const styles = StyleSheet.create({
   ridesContainer: {
     paddingHorizontal: 20,
     paddingBottom: 24,
-    marginTop: 8,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1063,40 +806,5 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#FFFFFF',
     opacity: 0.5,
-  },
-  startRideButton: {
-    marginTop: 16,
-    backgroundColor: '#4285F4',
-    borderRadius: 12,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#4285F4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  startRideButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000000',
-    letterSpacing: 0.3,
-  },
-  rideCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  rideCardContent: {
-    flex: 1,
-  },
-  deleteButton: {
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 4,
   },
 });
