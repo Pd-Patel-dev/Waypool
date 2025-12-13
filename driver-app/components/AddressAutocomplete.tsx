@@ -64,7 +64,11 @@ export default function AddressAutocomplete({
   const [isLoading, setIsLoading] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [hasSelectedAddress, setHasSelectedAddress] = useState(false);
+  // Initialize hasSelectedAddress based on whether value is already set (user came back from step 2)
+  const [hasSelectedAddress, setHasSelectedAddress] = useState(() => {
+    // If value is already set when component mounts, treat it as a selected address
+    return !!value && value.trim().length > 0;
+  });
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const blurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isSelectingRef = useRef(false);
@@ -77,12 +81,72 @@ export default function AddressAutocomplete({
     }
   }, [value]);
   
+  // Reset hasSelectedAddress when value is cleared
+  useEffect(() => {
+    if (!value || value.trim().length === 0) {
+      setHasSelectedAddress(false);
+    } else if (value && value.trim().length > 0 && !isFocused) {
+      // If value exists but input is not focused, treat as selected address
+      // This prevents suggestions from showing when coming back from step 2
+      setHasSelectedAddress(true);
+      setShowPredictions(false);
+      setPredictions([]);
+      if (onPredictionsChange) {
+        onPredictionsChange([]);
+      }
+    }
+  }, [value, isFocused]);
+  
   // Expose selection handler to parent
   useEffect(() => {
     if (onSelectionHandler) {
       onSelectionHandler(handleSelectPrediction);
     }
   }, [onSelectionHandler]);
+
+  // Calculate distance between two coordinates using Haversine formula (in miles)
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number => {
+    const R = 3959; // Radius of the Earth in miles
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // Fetch place details to get coordinates for distance calculation
+  const fetchPlaceDetailsForSorting = async (
+    placeId: string
+  ): Promise<{ latitude: number; longitude: number } | null> => {
+    if (!GOOGLE_PLACES_API_KEY) return null;
+
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${GOOGLE_PLACES_API_KEY}`
+      );
+      const data = await response.json();
+
+      if (data.status === 'OK' && data.result?.geometry?.location) {
+        return {
+          latitude: data.result.geometry.location.lat,
+          longitude: data.result.geometry.location.lng,
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching place details:', error);
+    }
+    return null;
+  };
 
   // Fetch predictions from Google Places API
   const fetchPredictions = async (input: string) => {
@@ -119,10 +183,49 @@ export default function AddressAutocomplete({
       const data = await response.json();
 
       if (data.status === 'OK' && data.predictions) {
-        setPredictions(data.predictions);
+        let sortedPredictions = data.predictions;
+
+        // Sort by distance if current location is available
+        if (currentLocation && data.predictions.length > 0) {
+          // Limit to top 10 predictions for performance (fetch details for top results)
+          const predictionsToSort = data.predictions.slice(0, 10);
+          
+          // Fetch coordinates for each prediction and sort by distance
+          const predictionsWithDistance = await Promise.all(
+            predictionsToSort.map(async (prediction: PlacePrediction) => {
+              const coords = await fetchPlaceDetailsForSorting(prediction.place_id);
+              let distance = Infinity; // Default to far away if coordinates not available
+              
+              if (coords) {
+                distance = calculateDistance(
+                  currentLocation.latitude,
+                  currentLocation.longitude,
+                  coords.latitude,
+                  coords.longitude
+                );
+              }
+
+              return {
+                prediction,
+                distance,
+                coordinates: coords,
+              };
+            })
+          );
+
+          // Sort by distance (nearest first)
+          predictionsWithDistance.sort((a, b) => a.distance - b.distance);
+          
+          // Combine sorted top results with remaining unsorted results
+          const sortedTop = predictionsWithDistance.map((item) => item.prediction);
+          const remaining = data.predictions.slice(10);
+          sortedPredictions = [...sortedTop, ...remaining];
+        }
+
+        setPredictions(sortedPredictions);
         setShowPredictions(true);
         if (onPredictionsChange) {
-          onPredictionsChange(data.predictions);
+          onPredictionsChange(sortedPredictions);
         }
       } else if (data.status === 'REQUEST_DENIED') {
         console.error('Google Places API error:', data.error_message);
@@ -185,10 +288,19 @@ export default function AddressAutocomplete({
       return;
     }
     
-    // Don't fetch predictions if disabled, just selected an address, or address already selected
-    if (disabled || isSelectingRef.current || hasSelectedAddress) {
+    // Don't fetch predictions if disabled, just selected an address, address already selected, or input is not focused
+    if (disabled || isSelectingRef.current || hasSelectedAddress || !isFocused) {
       if (isSelectingRef.current) {
         isSelectingRef.current = false;
+      }
+      // Clear predictions if input is not focused
+      if (!isFocused) {
+        setPredictions([]);
+        setShowPredictions(false);
+        setIsLoading(false);
+        if (onPredictionsChange) {
+          onPredictionsChange([]);
+        }
       }
       return;
     }
@@ -218,7 +330,7 @@ export default function AddressAutocomplete({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [value, disabled, showPredictionsInline, hasSelectedAddress]);
+  }, [value, disabled, showPredictionsInline, hasSelectedAddress, isFocused]);
 
   const handleSelectPrediction = async (prediction: PlacePrediction) => {
     // Use only the main text (street address) for the input field
@@ -380,6 +492,12 @@ export default function AddressAutocomplete({
     // If user is typing, they're changing the address - reset selection state
     if (hasSelectedAddress) {
       setHasSelectedAddress(false);
+      // Clear any existing predictions when user starts editing
+      setShowPredictions(false);
+      setPredictions([]);
+      if (onPredictionsChange) {
+        onPredictionsChange([]);
+      }
     }
     
     onChangeText(text);
@@ -387,10 +505,8 @@ export default function AddressAutocomplete({
       setShowPredictions(false);
       setPredictions([]);
       setIsLoading(false);
-    } else {
-      // Keep suggestions visible while typing
-      if (predictions.length > 0 && !hasSelectedAddress) {
-        setShowPredictions(true);
+      if (onPredictionsChange) {
+        onPredictionsChange([]);
       }
     }
   };
@@ -419,9 +535,18 @@ export default function AddressAutocomplete({
             if (blurTimeoutRef.current) {
               clearTimeout(blurTimeoutRef.current);
             }
-            // Only show predictions if no address has been selected yet
+            // Only show predictions if no address has been selected yet and user is actively typing
+            // Don't auto-show predictions if address was already selected (value exists on mount)
             if (predictions.length > 0 && !hasSelectedAddress) {
               setShowPredictions(true);
+            }
+            // If address was already selected, don't fetch new predictions on focus
+            if (hasSelectedAddress && value && value.trim().length > 0) {
+              setShowPredictions(false);
+              setPredictions([]);
+              if (onPredictionsChange) {
+                onPredictionsChange([]);
+              }
             }
           }}
           onBlur={() => {

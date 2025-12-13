@@ -27,6 +27,7 @@ const MAPPING = {
   'envelope': 'email',
   'line.3.horizontal': 'menu',
   'location': 'location-on',
+  'location.fill': 'location-on',
   'target': 'place',
   'clock': 'schedule',
   'mappin': 'room',
@@ -36,6 +37,14 @@ const MAPPING = {
   'money': 'attach-money',
   'checkmark': 'check-circle',
   'route': 'navigation',
+  'trash': 'delete',
+  'play.fill': 'play-arrow',
+  'calendar': 'calendar-today',
+  'xmark.circle.fill': 'cancel',
+  'person.fill': 'person',
+  'person.2.fill': 'people',
+  'phone.fill': 'phone',
+  'message.fill': 'message',
 } as IconMapping;
 
 /**
