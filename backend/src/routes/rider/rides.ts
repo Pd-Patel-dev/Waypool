@@ -120,5 +120,149 @@ router.get('/upcoming', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/rider/rides/book
+ * Book a seat on a ride
+ */
+router.post('/book', async (req: Request, res: Response) => {
+  try {
+    const { rideId, riderId, pickupAddress, pickupCity, pickupState, pickupZipCode, pickupLatitude, pickupLongitude } = req.body;
+
+    // Validate required fields
+    if (!rideId || !riderId || !pickupAddress || pickupLatitude === undefined || pickupLongitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: rideId, riderId, pickupAddress, pickupLatitude, pickupLongitude',
+      });
+    }
+
+    // Find the ride
+    const ride = await prisma.ride.findUnique({
+      where: { id: parseInt(rideId) },
+    });
+
+    if (!ride) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ride not found',
+      });
+    }
+
+    // Check if ride has available seats
+    if (ride.availableSeats <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No available seats on this ride',
+      });
+    }
+
+    // Check if rider already has a booking for this ride
+    const existingBooking = await prisma.booking.findFirst({
+      where: {
+        rideId: parseInt(rideId),
+        riderId: parseInt(riderId),
+        status: 'confirmed',
+      },
+    });
+
+    if (existingBooking) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a confirmed booking for this ride',
+      });
+    }
+
+    // Generate confirmation number (format: WP-YYYYMMDD-XXXXXX)
+    const date = new Date();
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const confirmationNumber = `WP-${dateStr}-${randomStr}`;
+
+    // Create booking in a transaction
+    const booking = await prisma.$transaction(async (tx) => {
+      // Create the booking
+      const newBooking = await tx.booking.create({
+        data: {
+          rideId: parseInt(rideId),
+          riderId: parseInt(riderId),
+          confirmationNumber,
+          pickupAddress,
+          pickupCity: pickupCity || null,
+          pickupState: pickupState || null,
+          pickupZipCode: pickupZipCode || null,
+          pickupLatitude: parseFloat(pickupLatitude),
+          pickupLongitude: parseFloat(pickupLongitude),
+          status: 'confirmed',
+        },
+        include: {
+          ride: {
+            include: {
+              driver: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phoneNumber: true,
+                  photoUrl: true,
+                },
+              },
+            },
+          },
+          rider: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              phoneNumber: true,
+            },
+          },
+        },
+      });
+
+      // Update ride available seats
+      await tx.ride.update({
+        where: { id: parseInt(rideId) },
+        data: {
+          availableSeats: {
+            decrement: 1,
+          },
+        },
+      });
+
+      return newBooking;
+    });
+
+    return res.json({
+      success: true,
+      message: 'Booking confirmed successfully',
+      booking: {
+        id: booking.id,
+        confirmationNumber: booking.confirmationNumber,
+        pickupAddress: booking.pickupAddress,
+        pickupCity: booking.pickupCity,
+        pickupState: booking.pickupState,
+        status: booking.status,
+        createdAt: booking.createdAt,
+        ride: {
+          id: booking.ride.id,
+          fromAddress: booking.ride.fromAddress,
+          toAddress: booking.ride.toAddress,
+          departureDate: booking.ride.departureDate,
+          departureTime: booking.ride.departureTime,
+          pricePerSeat: booking.ride.pricePerSeat,
+          driver: booking.ride.driver,
+        },
+        rider: booking.rider,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error creating booking:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create booking',
+    });
+  }
+});
+
 export default router;
 

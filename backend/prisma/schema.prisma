@@ -28,6 +28,7 @@ model User {
 
   // Relations
   rides       Ride[]   // Rides created by this driver
+  bookings    Booking[] // Bookings made by this rider
 
   @@map("users")
 }
@@ -64,6 +65,29 @@ model Ride {
 
   // Relations
   driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  bookings        Booking[]
 
   @@map("rides")
+}
+
+model Booking {
+  id                Int      @id @default(autoincrement())
+  rideId            Int
+  riderId           Int
+  confirmationNumber String   @unique
+  pickupAddress     String
+  pickupCity        String?
+  pickupState       String?
+  pickupZipCode     String?
+  pickupLatitude    Float
+  pickupLongitude   Float
+  status            String   @default("confirmed") // confirmed, cancelled, completed
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  ride              Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  rider             User     @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@map("bookings")
 }
