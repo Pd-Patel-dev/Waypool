@@ -29,9 +29,17 @@ const MAPPING = {
   'person': 'person',
   'creditcard': 'credit-card',
   'phone': 'phone',
+  'phone.fill': 'phone',
   'car': 'directions-car',
+  'car.fill': 'directions-car',
   'flag': 'flag',
   'star': 'star',
+  'calendar': 'calendar-today',
+  'message.fill': 'message',
+  'xmark.circle.fill': 'cancel',
+  'dollarsign.circle.fill': 'attach-money',
+  'minus': 'remove',
+  'plus': 'add',
 } as IconMapping;
 
 /**

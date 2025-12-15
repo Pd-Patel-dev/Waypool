@@ -202,3 +202,198 @@ export async function getUpcomingRides(): Promise<UpcomingRidesResponse> {
   }
 }
 
+export interface RiderBooking {
+  id: number;
+  confirmationNumber: string;
+  numberOfSeats: number;
+  pickupAddress: string;
+  pickupCity?: string | null;
+  pickupState?: string | null;
+  pickupZipCode?: string | null;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  status: string;
+  createdAt: string;
+  isPast: boolean;
+  ride: {
+    id: number;
+    driverName: string;
+    driverPhone: string;
+    fromAddress: string;
+    toAddress: string;
+    fromCity: string;
+    toCity: string;
+    fromLatitude: number;
+    fromLongitude: number;
+    toLatitude: number;
+    toLongitude: number;
+    departureTime: string;
+    pricePerSeat: number;
+    distance?: number | null;
+    status: string;
+    carMake?: string | null;
+    carModel?: string | null;
+    carYear?: number | null;
+    carColor?: string | null;
+    driver: {
+      id: number;
+      fullName: string;
+      email: string;
+      phoneNumber: string;
+      photoUrl?: string | null;
+    };
+  };
+}
+
+export interface RiderBookingsResponse {
+  success: boolean;
+  bookings: RiderBooking[];
+  message?: string;
+}
+
+export async function getRiderBookings(riderId: number): Promise<RiderBookingsResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/rides/bookings?riderId=${riderId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to fetch bookings',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+export interface CancelBookingResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface BookingRequest {
+  rideId: number;
+  riderId: number;
+  pickupAddress: string;
+  pickupCity?: string | null;
+  pickupState?: string | null;
+  pickupZipCode?: string | null;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  numberOfSeats: number;
+}
+
+export interface BookingResponse {
+  success: boolean;
+  message: string;
+  booking: {
+    id: number;
+    confirmationNumber: string;
+    pickupAddress: string;
+    pickupCity?: string | null;
+    pickupState?: string | null;
+    status: string;
+    createdAt: string;
+    ride: {
+      id: number;
+      fromAddress: string;
+      toAddress: string;
+      departureDate: string;
+      departureTime: string;
+      pricePerSeat: number;
+      driver: {
+        id: number;
+        fullName: string;
+        email: string;
+        phoneNumber: string;
+        photoUrl?: string | null;
+      };
+    };
+    rider: {
+      id: number;
+      fullName: string;
+      email: string;
+      phoneNumber: string;
+    };
+  };
+}
+
+export async function bookRide(data: BookingRequest): Promise<BookingResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/rides/book`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to book ride',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+export async function cancelBooking(bookingId: number, riderId: number): Promise<CancelBookingResponse> {
+  try {
+    const response = await fetchWithAuth(
+      `${API_URL}/api/rider/bookings/${bookingId}/cancel?riderId=${riderId}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to cancel booking',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+

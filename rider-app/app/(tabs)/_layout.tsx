@@ -53,6 +53,19 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="your-rides"
+        options={{
+          title: 'Your Rides',
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol 
+              size={24} 
+              name={focused ? "car.fill" : "car"}
+              color={color} 
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="explore"
         options={{
           title: 'Activity',

@@ -11,6 +11,7 @@ import {
   Dimensions,
   Alert,
   Linking,
+  AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -22,7 +23,7 @@ import MapView, {
   PROVIDER_GOOGLE,
   Region,
 } from "react-native-maps";
-import { type Ride, getRideById, cancelRide } from "@/services/api";
+import { type Ride, getRideById, cancelRide, startRide, completeRide } from "@/services/api";
 import { useUser } from "@/context/UserContext";
 
 // Conditionally import Location only on native platforms
@@ -56,6 +57,8 @@ export default function CurrentRideScreen(): React.JSX.Element {
     null
   );
   const hasFetchedRef = useRef(false); // Track if we've already fetched
+  const appStateRef = useRef(AppState.currentState);
+  const navigationOpenedRef = useRef(false); // Track if navigation was opened
 
   // Swipeable bottom sheet state
   const screenHeight = Dimensions.get("window").height;
@@ -74,6 +77,60 @@ export default function CurrentRideScreen(): React.JSX.Element {
       sheetHeight.removeListener(listener);
     };
   }, [sheetHeight]);
+
+  // Listen for app state changes to detect when returning from Google Maps
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", async (nextAppState) => {
+      // When app comes back to foreground and navigation was opened
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextAppState === "active" &&
+        navigationOpenedRef.current &&
+        rideData &&
+        rideData.status === "in-progress"
+      ) {
+        console.log("🔄 App returned to foreground, refreshing ride data...");
+        
+        // Refresh ride data
+        try {
+          if (rideData.id && user?.id) {
+            const updatedRide = await getRideById(rideData.id, user.id);
+            setRideData(updatedRide);
+            
+            // Reset navigation flag
+            navigationOpenedRef.current = false;
+            
+            // Show prompt to complete ride if still in-progress
+            if (updatedRide.status === "in-progress") {
+              Alert.alert(
+                "Welcome Back",
+                "Have you reached the destination and dropped off all passengers?",
+                [
+                  {
+                    text: "Not Yet",
+                    style: "cancel",
+                  },
+                  {
+                    text: "Yes, Complete Ride",
+                    style: "default",
+                    onPress: handleCompleteRide,
+                  },
+                ]
+              );
+            }
+          }
+        } catch (error) {
+          console.error("Error refreshing ride data:", error);
+        }
+      }
+      
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [rideData, user?.id]);
 
   // Get ride ID from navigation params - use useMemo to prevent recreation
   const rideIdFromParams = useMemo(() => {
@@ -547,58 +604,174 @@ export default function CurrentRideScreen(): React.JSX.Element {
       });
   };
 
-  const handleStartRide = () => {
-    if (!rideData) {
-      Alert.alert("Error", "Ride data not available");
+  const handleStartRide = async () => {
+    if (!rideData || !user?.id) {
+      Alert.alert("Error", "Ride data or user information not available");
       return;
     }
 
-    // Build waypoints for navigation
-    const waypoints: string[] = [];
-
-    // Add passenger pickup locations as waypoints
-    if (rideData.passengers && rideData.passengers.length > 0) {
-      rideData.passengers.forEach((passenger) => {
-        if (passenger.pickupLatitude && passenger.pickupLongitude) {
-          waypoints.push(
-            `${passenger.pickupLatitude},${passenger.pickupLongitude}`
-          );
-        }
-      });
+    // Don't allow starting if already started, completed, or cancelled
+    if (rideData.status === "in-progress") {
+      Alert.alert("Already Started", "This ride is already in progress.");
+      return;
     }
 
-    // Directly open navigation - prefer Google Maps for better waypoint support
-    // On iOS, try Google Maps first, fallback to Apple Maps
-    if (Platform.OS === "ios") {
-      // Try Google Maps first (better waypoint support)
-      const googleUrl =
-        waypoints.length > 0
-          ? `https://www.google.com/maps/dir/?api=1&origin=${
-              rideData.fromLatitude
-            },${rideData.fromLongitude}&destination=${rideData.toLatitude},${
-              rideData.toLongitude
-            }&waypoints=${encodeURIComponent(
-              waypoints.join("|")
-            )}&dir_action=navigate`
-          : `https://www.google.com/maps/dir/?api=1&origin=${rideData.fromLatitude},${rideData.fromLongitude}&destination=${rideData.toLatitude},${rideData.toLongitude}&dir_action=navigate`;
-
-      Linking.canOpenURL(googleUrl)
-        .then((supported) => {
-          if (supported) {
-            return Linking.openURL(googleUrl);
-          } else {
-            // Fallback to Apple Maps
-            return openAppleMaps(waypoints);
-          }
-        })
-        .catch(() => {
-          // Fallback to Apple Maps if Google Maps fails
-          openAppleMaps(waypoints);
-        });
-    } else {
-      // Android: Directly open Google Maps
-      openGoogleMaps(waypoints);
+    if (rideData.status === "completed") {
+      Alert.alert("Already Completed", "This ride has already been completed.");
+      return;
     }
+
+    if (rideData.status === "cancelled") {
+      Alert.alert("Cannot Start", "This ride has been cancelled.");
+      return;
+    }
+
+    // Check if there are any booked passengers
+    if (!rideData.passengers || rideData.passengers.length === 0) {
+      Alert.alert(
+        "No Passengers",
+        "No one has booked a seat for this ride. Would you like to cancel the ride?",
+        [
+          {
+            text: "Keep Ride",
+            style: "cancel",
+          },
+          {
+            text: "Cancel Ride",
+            style: "destructive",
+            onPress: handleCancelRide,
+          },
+        ]
+      );
+      return;
+    }
+
+    try {
+      // Update ride status to in-progress and send notifications to passengers
+      await startRide(rideData.id, user.id);
+      
+      // Refresh ride data to get updated status
+      const updatedRide = await getRideById(rideData.id, user.id);
+      setRideData(updatedRide);
+
+      Alert.alert(
+        "Ride Started",
+        "The ride has been started. All passengers have been notified.",
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // Build waypoints for navigation
+              const waypoints: string[] = [];
+
+              // Add passenger pickup locations as waypoints
+              if (updatedRide.passengers && updatedRide.passengers.length > 0) {
+                updatedRide.passengers.forEach((passenger) => {
+                  if (passenger.pickupLatitude && passenger.pickupLongitude) {
+                    waypoints.push(
+                      `${passenger.pickupLatitude},${passenger.pickupLongitude}`
+                    );
+                  }
+                });
+              }
+
+              // Mark that navigation was opened
+              navigationOpenedRef.current = true;
+
+              // Open navigation after starting ride
+              if (Platform.OS === "ios") {
+                const googleUrl =
+                  waypoints.length > 0
+                    ? `https://www.google.com/maps/dir/?api=1&origin=${
+                        updatedRide.fromLatitude
+                      },${updatedRide.fromLongitude}&destination=${updatedRide.toLatitude},${
+                        updatedRide.toLongitude
+                      }&waypoints=${encodeURIComponent(
+                        waypoints.join("|")
+                      )}&dir_action=navigate`
+                    : `https://www.google.com/maps/dir/?api=1&origin=${updatedRide.fromLatitude},${updatedRide.fromLongitude}&destination=${updatedRide.toLatitude},${updatedRide.toLongitude}&dir_action=navigate`;
+
+                Linking.canOpenURL(googleUrl)
+                  .then((supported) => {
+                    if (supported) {
+                      return Linking.openURL(googleUrl);
+                    } else {
+                      return openAppleMaps(waypoints);
+                    }
+                  })
+                  .catch(() => {
+                    openAppleMaps(waypoints);
+                  });
+              } else {
+                openGoogleMaps(waypoints);
+              }
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "Failed to start ride. Please try again."
+      );
+    }
+  };
+
+  const handleCompleteRide = () => {
+    if (!rideData || !user?.id) {
+      Alert.alert("Error", "Ride data or user information not available");
+      return;
+    }
+
+    // Don't allow completing if already completed or cancelled
+    if (rideData.status === "completed") {
+      Alert.alert("Already Completed", "This ride has already been completed.");
+      return;
+    }
+
+    if (rideData.status === "cancelled") {
+      Alert.alert("Cannot Complete", "This ride has been cancelled.");
+      return;
+    }
+
+    if (rideData.status !== "in-progress") {
+      Alert.alert("Cannot Complete", "Please start the ride first.");
+      return;
+    }
+
+    Alert.alert(
+      "Complete Ride",
+      "Are you sure you have dropped off all passengers and completed the ride?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Yes, Complete",
+          style: "default",
+          onPress: async () => {
+            try {
+              const result = await completeRide(rideData.id, user.id);
+              
+              // Navigate to completion screen with earnings
+              router.replace({
+                pathname: "/ride-completion",
+                params: {
+                  totalEarnings: result.totalEarnings?.toString() || "0",
+                  rideId: rideData.id.toString(),
+                },
+              });
+            } catch (error: any) {
+              Alert.alert(
+                "Error",
+                error.message || "Failed to complete ride. Please try again."
+              );
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleCancelRide = () => {
@@ -955,15 +1128,27 @@ export default function CurrentRideScreen(): React.JSX.Element {
 
                 {/* Action Buttons */}
                 <View style={styles.actionButtons}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.actionButtonPrimary]}
-                    activeOpacity={0.7}
-                    onPress={handleStartRide}
-                  >
-                    <Text style={styles.actionButtonTextPrimary}>
-                      Start Ride
-                    </Text>
-                  </TouchableOpacity>
+                  {rideData.status === "in-progress" ? (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.actionButtonSuccess]}
+                      activeOpacity={0.7}
+                      onPress={handleCompleteRide}
+                    >
+                      <Text style={styles.actionButtonTextPrimary}>
+                        Complete Ride
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.actionButtonPrimary]}
+                      activeOpacity={0.7}
+                      onPress={handleStartRide}
+                    >
+                      <Text style={styles.actionButtonTextPrimary}>
+                        Start Ride
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* Cancel Ride Button */}
@@ -1127,15 +1312,27 @@ export default function CurrentRideScreen(): React.JSX.Element {
 
                 {/* Action Buttons - In expanded view */}
                 <View style={styles.actionButtons}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.actionButtonPrimary]}
-                    activeOpacity={0.7}
-                    onPress={handleStartRide}
-                  >
-                    <Text style={styles.actionButtonTextPrimary}>
-                      Start Ride
-                    </Text>
-                  </TouchableOpacity>
+                  {rideData.status === "in-progress" ? (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.actionButtonSuccess]}
+                      activeOpacity={0.7}
+                      onPress={handleCompleteRide}
+                    >
+                      <Text style={styles.actionButtonTextPrimary}>
+                        Complete Ride
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.actionButtonPrimary]}
+                      activeOpacity={0.7}
+                      onPress={handleStartRide}
+                    >
+                      <Text style={styles.actionButtonTextPrimary}>
+                        Start Ride
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* Cancel Ride Button - In expanded view */}
@@ -1410,10 +1607,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#4285F4",
     borderColor: "#4285F4",
   },
+  actionButtonSuccess: {
+    backgroundColor: "#34C759",
+    borderColor: "#34C759",
+  },
   actionButtonTextPrimary: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#000000",
+    color: "#FFFFFF",
     letterSpacing: 0.3,
   },
   markerContainer: {

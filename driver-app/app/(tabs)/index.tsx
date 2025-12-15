@@ -18,6 +18,7 @@ import { useUser } from '@/context/UserContext';
 import MapComponent from '@/components/MapComponent';
 import { getUpcomingRides, deleteRide, type Ride } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { calculateTotalDistance } from '@/utils/distance';
 
 // Conditionally import Location only on native platforms
 let Location: any = null;
@@ -34,85 +35,6 @@ interface LocationCoords {
   longitude: number;
 }
 
-// Calculate distance between two coordinates using Haversine formula
-const calculateDistance = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number => {
-  const R = 6371; // Radius of the Earth in kilometers
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c; // Distance in kilometers
-  return distance;
-};
-
-// Calculate total distance for a ride (including passenger pickups)
-const calculateTotalDistance = (ride: Ride, driverLocation: LocationCoords | null): number => {
-  if (!ride.fromLatitude || !ride.fromLongitude || !ride.toLatitude || !ride.toLongitude) {
-    return 0;
-  }
-
-  let totalDistance = 0;
-  let currentLat = ride.fromLatitude;
-  let currentLon = ride.fromLongitude;
-
-  // If driver location is available, calculate distance from driver to start point
-  if (driverLocation) {
-    totalDistance += calculateDistance(
-      driverLocation.latitude,
-      driverLocation.longitude,
-      ride.fromLatitude,
-      ride.fromLongitude
-    );
-  }
-
-  // Calculate distance from start to destination
-  totalDistance += calculateDistance(
-    ride.fromLatitude,
-    ride.fromLongitude,
-    ride.toLatitude,
-    ride.toLongitude
-  );
-
-  // If there are passengers, add distance to their pickup locations
-  if (ride.passengers && ride.passengers.length > 0) {
-    ride.passengers.forEach((passenger) => {
-      if (passenger.pickupLatitude && passenger.pickupLongitude) {
-        // Distance from start to passenger pickup
-        totalDistance += calculateDistance(
-          currentLat,
-          currentLon,
-          passenger.pickupLatitude,
-          passenger.pickupLongitude
-        );
-        currentLat = passenger.pickupLatitude;
-        currentLon = passenger.pickupLongitude;
-      }
-    });
-  }
-
-  return totalDistance;
-};
-
-// Format distance for display (handles both km and miles)
-const formatDistance = (distance: number, isKm: boolean = true): string => {
-  if (isKm) {
-    // Convert km to miles for consistency with AddRideScreen
-    const miles = distance * 0.621371;
-    return `${miles.toFixed(1)} mi`;
-  }
-  // If already in miles
-  return `${distance.toFixed(1)} mi`;
-};
 
 // Calculate earnings for a ride based on booked seats
 const calculateEarnings = (ride: Ride): number => {
@@ -502,70 +424,80 @@ export default function HomeScreen(): React.JSX.Element {
             {todaysRides.map((ride) => (
               <View key={ride.id} style={styles.rideCard}>
                 <View style={styles.rideCardHeader}>
-                  <TouchableOpacity 
-                    onPress={() => handleRidePress(ride.id)}
+                <TouchableOpacity 
+                  onPress={() => handleRidePress(ride.id)}
                     activeOpacity={0.7}
                     style={styles.rideCardContent}>
-                    <View style={styles.rideHeader}>
-                      <View style={styles.rideTimeContainer}>
-                        <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
-                        <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
-                      </View>
-                      <View style={styles.seatsContainer}>
-                        <View style={styles.seatsInfo}>
-                        <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
-                          <Text style={styles.seatsLabel}>available</Text>
-                          {ride.totalSeats > ride.availableSeats && (
-                            <Text style={styles.bookedSeatsLabel}>
-                              {ride.totalSeats - ride.availableSeats} booked
-                            </Text>
-                          )}
-                        </View>
+                  <View style={styles.rideHeader}>
+                    <View style={styles.rideTimeContainer}>
+                      <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
+                      <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
+                    </View>
+                    <View style={styles.seatsContainer}>
+                      <View style={styles.seatsInfo}>
+                      <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
+                        <Text style={styles.seatsLabel}>available</Text>
+                        {ride.totalSeats > ride.availableSeats && (
+                          <Text style={styles.bookedSeatsLabel}>
+                            {ride.totalSeats - ride.availableSeats} booked
+                          </Text>
+                        )}
                       </View>
                     </View>
+                  </View>
 
-                    <View style={styles.routeContainer}>
-                      <View style={styles.routeItem}>
-                        <View style={styles.routeIndicator} />
-                        <View style={styles.routeContent}>
-                          <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.routeConnector} />
-                      <View style={styles.routeItem}>
-                        <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
-                        <View style={styles.routeContent}>
-                          <Text style={styles.routeAddress}>{ride.toAddress}</Text>
-                        </View>
+                  <View style={styles.routeContainer}>
+                    <View style={styles.routeItem}>
+                      <View style={styles.routeIndicator} />
+                      <View style={styles.routeContent}>
+                        <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
                       </View>
                     </View>
-                    {/* Distance and Price display */}
-                    <View style={styles.infoContainer}>
-                      {ride.distance !== undefined && (
+                    <View style={styles.routeConnector} />
+                    <View style={styles.routeItem}>
+                      <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
+                      <View style={styles.routeContent}>
+                        <Text style={styles.routeAddress}>{ride.toAddress}</Text>
+                      </View>
+                    </View>
+                  </View>
+                  {/* Distance and Price display */}
+                  <View style={styles.infoContainer}>
+                    {(() => {
+                      const totalDistance = calculateTotalDistance(ride);
+                      return totalDistance > 0 ? (
                         <View style={styles.infoItem}>
                           <IconSymbol size={14} name="mappin" color="#999999" />
                           <Text style={styles.infoValue}>
-                            {ride.distance.toFixed(1)} mi
+                            {totalDistance.toFixed(1)} mi
                           </Text>
                         </View>
-                      )}
-                      {ride.price && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                          <Text style={styles.priceValue}>
-                            ${ride.price.toFixed(2)}/seat
-                          </Text>
-                        </View>
-                      )}
-                      {ride.totalSeats > ride.availableSeats && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                          <Text style={styles.earningsValue}>
-                            ${calculateEarnings(ride).toFixed(2)} earned
-                          </Text>
-                        </View>
-                      )}
-                  </View>
+                      ) : null;
+                    })()}
+                    {ride.price && (
+                      <View style={styles.infoItem}>
+                        <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
+                        <Text style={styles.priceValue}>
+                          ${ride.price.toFixed(2)}/seat
+                        </Text>
+                      </View>
+                    )}
+                    {ride.totalSeats > ride.availableSeats && (
+                      <View style={styles.infoItem}>
+                        <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
+                        <Text style={styles.earningsValue}>
+                          ${calculateEarnings(ride).toFixed(2)} earned
+                        </Text>
+                      </View>
+                    )}
+                </View>
+                </TouchableOpacity>
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => router.push({ pathname: '/edit-ride', params: { rideId: ride.id.toString() } })}
+                    activeOpacity={0.7}>
+                    <IconSymbol size={18} name="pencil" color="#4285F4" />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.deleteButton}
@@ -573,6 +505,7 @@ export default function HomeScreen(): React.JSX.Element {
                     activeOpacity={0.7}>
                     <IconSymbol size={18} name="trash" color="#FF3B30" />
                   </TouchableOpacity>
+                </View>
                 </View>
                 {/* Start Ride Button - Only for today's rides */}
                 <TouchableOpacity
@@ -620,79 +553,90 @@ export default function HomeScreen(): React.JSX.Element {
             upcomingRides.map((ride) => (
               <View key={ride.id} style={styles.rideCard}>
                 <View style={styles.rideCardHeader}>
-                  <TouchableOpacity 
-                    onPress={() => handleRidePress(ride.id)}
+              <TouchableOpacity 
+                onPress={() => handleRidePress(ride.id)}
                     activeOpacity={0.7}
                     style={styles.rideCardContent}>
-                    <View style={styles.rideHeader}>
-                      <View style={styles.rideTimeContainer}>
-                        <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
-                        <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
-                      </View>
-                      <View style={styles.seatsContainer}>
-                        <View style={styles.seatsInfo}>
-                        <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
-                          <Text style={styles.seatsLabel}>available</Text>
-                          {ride.totalSeats > ride.availableSeats && (
-                            <Text style={styles.bookedSeatsLabel}>
-                              {ride.totalSeats - ride.availableSeats} booked
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={styles.routeContainer}>
-                      <View style={styles.routeItem}>
-                        <View style={styles.routeIndicator} />
-                        <View style={styles.routeContent}>
-                          <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.routeConnector} />
-                      <View style={styles.routeItem}>
-                        <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
-                        <View style={styles.routeContent}>
-                          <Text style={styles.routeAddress}>{ride.toAddress}</Text>
-                        </View>
-                      </View>
-                    </View>
-                    {/* Distance and Price display */}
-                    <View style={styles.infoContainer}>
-                      {ride.distance !== undefined && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="mappin" color="#999999" />
-                          <Text style={styles.infoValue}>
-                            {ride.distance.toFixed(1)} mi
-                          </Text>
-                        </View>
-                      )}
-                      {ride.price && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                          <Text style={styles.priceValue}>
-                            ${ride.price.toFixed(2)}/seat
-                          </Text>
-                        </View>
-                      )}
-                      {ride.totalSeats > ride.availableSeats && (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                          <Text style={styles.earningsValue}>
-                            ${calculateEarnings(ride).toFixed(2)} earned
-                          </Text>
-                        </View>
-                      )}
+                <View style={styles.rideHeader}>
+                  <View style={styles.rideTimeContainer}>
+                    <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
+                    <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
                   </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteRide(ride)}
-                    activeOpacity={0.7}>
-                    <IconSymbol size={18} name="trash" color="#FF3B30" />
-                  </TouchableOpacity>
+                  <View style={styles.seatsContainer}>
+                    <View style={styles.seatsInfo}>
+                    <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
+                      <Text style={styles.seatsLabel}>available</Text>
+                      {ride.totalSeats > ride.availableSeats && (
+                        <Text style={styles.bookedSeatsLabel}>
+                          {ride.totalSeats - ride.availableSeats} booked
+                        </Text>
+                      )}
+                    </View>
+                  </View>
                 </View>
+
+                <View style={styles.routeContainer}>
+                  <View style={styles.routeItem}>
+                    <View style={styles.routeIndicator} />
+                    <View style={styles.routeContent}>
+                      <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.routeConnector} />
+                  <View style={styles.routeItem}>
+                    <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
+                    <View style={styles.routeContent}>
+                      <Text style={styles.routeAddress}>{ride.toAddress}</Text>
+                    </View>
+                  </View>
+                </View>
+                {/* Distance and Price display */}
+                <View style={styles.infoContainer}>
+                  {(() => {
+                    const totalDistance = calculateTotalDistance(ride);
+                    return totalDistance > 0 ? (
+                      <View style={styles.infoItem}>
+                        <IconSymbol size={14} name="mappin" color="#999999" />
+                        <Text style={styles.infoValue}>
+                          {totalDistance.toFixed(1)} mi
+                        </Text>
+                      </View>
+                    ) : null;
+                  })()}
+                  {ride.price && (
+                    <View style={styles.infoItem}>
+                      <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
+                      <Text style={styles.priceValue}>
+                        ${ride.price.toFixed(2)}/seat
+                      </Text>
+                    </View>
+                  )}
+                  {ride.totalSeats > ride.availableSeats && (
+                    <View style={styles.infoItem}>
+                      <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
+                      <Text style={styles.earningsValue}>
+                        ${calculateEarnings(ride).toFixed(2)} earned
+                      </Text>
+                    </View>
+                  )}
               </View>
+              </TouchableOpacity>
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => router.push({ pathname: '/edit-ride', params: { rideId: ride.id.toString() } })}
+                  activeOpacity={0.7}>
+                  <IconSymbol size={18} name="pencil" color="#4285F4" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => handleDeleteRide(ride)}
+                  activeOpacity={0.7}>
+                  <IconSymbol size={18} name="trash" color="#FF3B30" />
+                </TouchableOpacity>
+              </View>
+              </View>
+            </View>
             ))
           )}
         </View>
@@ -1093,10 +1037,19 @@ const styles = StyleSheet.create({
   rideCardContent: {
     flex: 1,
   },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  editButton: {
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   deleteButton: {
     padding: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 4,
   },
 });

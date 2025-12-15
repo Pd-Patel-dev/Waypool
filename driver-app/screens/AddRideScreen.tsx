@@ -10,10 +10,12 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -46,6 +48,12 @@ export default function AddRideScreen(): React.JSX.Element {
   const [departureTime, setDepartureTime] = useState<string>('');
   const [availableSeats, setAvailableSeats] = useState<string>('');
   const [pricePerSeat, setPricePerSeat] = useState<string>('');
+  
+  // Date and Time Picker states
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedTime, setSelectedTime] = useState<Date>(new Date());
   
   // Coordinates for mapping
   const [fromCoords, setFromCoords] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -700,30 +708,85 @@ export default function AddRideScreen(): React.JSX.Element {
                 <View style={styles.inputRow}>
                 <View style={[styles.inputGroup, styles.inputHalf]}>
                   <Text style={styles.label}>Date</Text>
-                  <TextInput
-                    style={[styles.input, errors.departureDate && styles.inputError]}
-                    placeholder="MM/DD/YYYY"
-                    placeholderTextColor="#666666"
-                    value={departureDate}
-                    onChangeText={setDepartureDate}
-                    keyboardType="numbers-and-punctuation"
-                  />
+                  <TouchableOpacity
+                    style={[styles.input, styles.pickerInput, errors.departureDate && styles.inputError]}
+                    onPress={() => {
+                      console.log('Date picker button pressed, showDatePicker:', showDatePicker);
+                      setShowDatePicker(true);
+                      console.log('After setting showDatePicker to true');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.pickerText, !departureDate && styles.pickerPlaceholder]}>
+                      {departureDate || 'MM/DD/YYYY'}
+                    </Text>
+                    <IconSymbol size={18} name="calendar" color="#666666" />
+                  </TouchableOpacity>
                   {errors.departureDate && (
                     <Text style={styles.errorText}>{errors.departureDate}</Text>
+                  )}
+                  {Platform.OS === 'android' && showDatePicker && (
+                    <DateTimePicker
+                      value={selectedDate}
+                      mode="date"
+                      display="default"
+                      onChange={(event, date) => {
+                        console.log('Android date picker onChange:', event.type, date);
+                        setShowDatePicker(false);
+                        if (date && event.type !== 'dismissed') {
+                          setSelectedDate(date);
+                          // Format as MM/DD/YYYY
+                          const month = String(date.getMonth() + 1).padStart(2, '0');
+                          const day = String(date.getDate()).padStart(2, '0');
+                          const year = date.getFullYear();
+                          setDepartureDate(`${month}/${day}/${year}`);
+                        }
+                      }}
+                      minimumDate={new Date()}
+                    />
                   )}
                 </View>
 
                 <View style={[styles.inputGroup, styles.inputHalf]}>
                   <Text style={styles.label}>Time</Text>
-                  <TextInput
-                    style={[styles.input, errors.departureTime && styles.inputError]}
-                    placeholder="HH:MM AM/PM"
-                    placeholderTextColor="#666666"
-                    value={departureTime}
-                    onChangeText={setDepartureTime}
-                  />
+                  <TouchableOpacity
+                    style={[styles.input, styles.pickerInput, errors.departureTime && styles.inputError]}
+                    onPress={() => {
+                      console.log('Time picker button pressed');
+                      setShowTimePicker(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.pickerText, !departureTime && styles.pickerPlaceholder]}>
+                      {departureTime || 'HH:MM AM/PM'}
+                    </Text>
+                    <IconSymbol size={18} name="clock" color="#666666" />
+                  </TouchableOpacity>
                   {errors.departureTime && (
                     <Text style={styles.errorText}>{errors.departureTime}</Text>
+                  )}
+                  {Platform.OS === 'android' && showTimePicker && (
+                    <DateTimePicker
+                      value={selectedTime}
+                      mode="time"
+                      display="default"
+                      is24Hour={false}
+                      onChange={(event, time) => {
+                        console.log('Android time picker onChange:', event.type, time);
+                        setShowTimePicker(false);
+                        if (time && event.type !== 'dismissed') {
+                          setSelectedTime(time);
+                          // Format as HH:MM AM/PM
+                          let hours = time.getHours();
+                          const minutes = time.getMinutes();
+                          const ampm = hours >= 12 ? 'PM' : 'AM';
+                          hours = hours % 12;
+                          hours = hours ? hours : 12; // the hour '0' should be '12'
+                          const minutesStr = String(minutes).padStart(2, '0');
+                          setDepartureTime(`${hours}:${minutesStr} ${ampm}`);
+                        }
+                      }}
+                    />
                   )}
                 </View>
               </View>
@@ -784,6 +847,137 @@ export default function AddRideScreen(): React.JSX.Element {
             </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      )}
+
+      {/* Date Picker Modal - Outside ScrollView */}
+      {Platform.OS === 'ios' && (
+        <Modal
+          visible={showDatePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => {
+            console.log('Date Modal onRequestClose');
+            setShowDatePicker(false);
+          }}
+          presentationStyle="overFullScreen"
+        >
+          <TouchableOpacity
+            style={styles.pickerModalContainer}
+            activeOpacity={1}
+            onPress={() => setShowDatePicker(false)}
+          >
+            <View style={styles.pickerModalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.pickerModalHeader}>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('Date Cancel pressed');
+                    setShowDatePicker(false);
+                  }}
+                  style={styles.pickerModalButton}
+                >
+                  <Text style={styles.pickerModalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.pickerModalTitle}>Select Date</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('Date Done pressed');
+                    setShowDatePicker(false);
+                    // Format as MM/DD/YYYY
+                    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(selectedDate.getDate()).padStart(2, '0');
+                    const year = selectedDate.getFullYear();
+                    setDepartureDate(`${month}/${day}/${year}`);
+                  }}
+                  style={styles.pickerModalButton}
+                >
+                  <Text style={[styles.pickerModalButtonText, styles.pickerModalButtonDone]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                onChange={(event, date) => {
+                  console.log('Date changed:', date);
+                  if (date) {
+                    setSelectedDate(date);
+                  }
+                }}
+                minimumDate={new Date()}
+                style={styles.pickerIOS}
+                textColor="#FFFFFF"
+                themeVariant="dark"
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* Time Picker Modal - Outside ScrollView */}
+      {Platform.OS === 'ios' && (
+        <Modal
+          visible={showTimePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => {
+            console.log('Time Modal onRequestClose');
+            setShowTimePicker(false);
+          }}
+          presentationStyle="overFullScreen"
+        >
+          <TouchableOpacity
+            style={styles.pickerModalContainer}
+            activeOpacity={1}
+            onPress={() => setShowTimePicker(false)}
+          >
+            <View style={styles.pickerModalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.pickerModalHeader}>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('Time Cancel pressed');
+                    setShowTimePicker(false);
+                  }}
+                  style={styles.pickerModalButton}
+                >
+                  <Text style={styles.pickerModalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.pickerModalTitle}>Select Time</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('Time Done pressed');
+                    setShowTimePicker(false);
+                    // Format as HH:MM AM/PM
+                    let hours = selectedTime.getHours();
+                    const minutes = selectedTime.getMinutes();
+                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                    hours = hours % 12;
+                    hours = hours ? hours : 12; // the hour '0' should be '12'
+                    const minutesStr = String(minutes).padStart(2, '0');
+                    setDepartureTime(`${hours}:${minutesStr} ${ampm}`);
+                  }}
+                  style={styles.pickerModalButton}
+                >
+                  <Text style={[styles.pickerModalButtonText, styles.pickerModalButtonDone]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={selectedTime}
+                mode="time"
+                display="spinner"
+                is24Hour={false}
+                onChange={(event, time) => {
+                  console.log('Time changed:', time);
+                  if (time) {
+                    setSelectedTime(time);
+                  }
+                }}
+                style={styles.pickerIOS}
+                textColor="#FFFFFF"
+                themeVariant="dark"
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
       )}
     </SafeAreaView>
   );
@@ -1140,6 +1334,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '400',
   },
+  pickerInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pickerText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '400',
+    flex: 1,
+  },
+  pickerPlaceholder: {
+    color: '#666666',
+  },
   inputError: {
     borderColor: '#FF3B30',
   },
@@ -1178,6 +1386,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  pickerModalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  pickerModalContent: {
+    backgroundColor: '#1C1C1E',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
+  },
+  pickerModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  pickerModalButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  pickerModalButtonText: {
+    fontSize: 16,
+    color: '#999999',
+    fontWeight: '500',
+  },
+  pickerModalButtonDone: {
+    color: '#4285F4',
+    fontWeight: '600',
+  },
+  pickerIOS: {
+    height: 200,
+    backgroundColor: '#1C1C1E',
   },
 });
 

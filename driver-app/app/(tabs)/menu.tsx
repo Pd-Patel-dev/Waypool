@@ -154,6 +154,18 @@ export default function MenuScreen(): React.JSX.Element {
         </View>
 
         <View style={styles.menuSection}>
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/past-rides')}
+          >
+            <View style={styles.menuItemIcon}>
+              <IconSymbol size={20} name="clock" color="#4285F4" />
+            </View>
+            <Text style={styles.menuItemText}>Past Rides</Text>
+            <IconSymbol size={18} name="chevron.right" color="#666666" />
+          </TouchableOpacity>
+          
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
             <View style={styles.menuItemIcon}>
               <IconSymbol size={20} name="house" color="#4285F4" />

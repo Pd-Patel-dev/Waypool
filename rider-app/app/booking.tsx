@@ -220,10 +220,18 @@ export default function BookingScreen(): React.JSX.Element {
     setPickupDetails(addressDetails);
   };
 
-  const handleConfirmBooking = () => {
-    // TODO: Implement booking confirmation
-    console.log('Confirm booking with pickup:', pickupDetails);
-    // Navigate to confirmation screen or show success
+  const handleContinue = () => {
+    if (!pickupDetails || !ride) return;
+    
+    // Navigate to confirmation screen with ride and pickup details
+    router.push({
+      pathname: '/booking-confirm',
+      params: {
+        ride: JSON.stringify(ride),
+        pickupDetails: JSON.stringify(pickupDetails),
+        totalDistance: totalDistance?.toString() || '0',
+      },
+    });
   };
 
   if (isLoading || !ride) {
@@ -422,17 +430,17 @@ export default function BookingScreen(): React.JSX.Element {
               </View>
             )}
 
-            {/* Confirm Button */}
+            {/* Continue Button */}
             <TouchableOpacity
               style={[
                 styles.confirmButton,
                 !pickupDetails && styles.confirmButtonDisabled,
               ]}
-              onPress={handleConfirmBooking}
+              onPress={handleContinue}
               disabled={!pickupDetails}
               activeOpacity={0.8}
             >
-              <Text style={styles.confirmButtonText}>Confirm Booking</Text>
+              <Text style={styles.confirmButtonText}>Continue</Text>
             </TouchableOpacity>
           </View>
         </View>

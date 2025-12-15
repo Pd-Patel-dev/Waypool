@@ -71,7 +71,7 @@ app.listen(PORT, "0.0.0.0", () => {
   const os = require("os");
   const networkInterfaces = os.networkInterfaces();
   let localIP = "localhost";
-  
+
   // Find local IP address
   for (const interfaceName in networkInterfaces) {
     const addresses = networkInterfaces[interfaceName];
@@ -83,7 +83,7 @@ app.listen(PORT, "0.0.0.0", () => {
     }
     if (localIP !== "localhost") break;
   }
-  
+
   console.log(`🚀 Waypool Server is running on http://0.0.0.0:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`💻 Accessible from browser at: http://localhost:${PORT}`);
@@ -91,6 +91,8 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(
     `📱 Accessible from Android emulator at: http://10.0.2.2:${PORT}`
   );
-  console.log(`\n⚠️  Make sure your Mac firewall allows connections on port ${PORT}`);
+  console.log(
+    `\n⚠️  Make sure your Mac firewall allows connections on port ${PORT}`
+  );
   console.log(`   Test from iPhone Safari: http://${localIP}:${PORT}/health\n`);
 });

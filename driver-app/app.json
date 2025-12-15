@@ -69,7 +69,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Waypool Driver to use your location to show your position on the map and match you with riders."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
