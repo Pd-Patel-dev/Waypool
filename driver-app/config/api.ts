@@ -93,4 +93,13 @@ export const API_ENDPOINTS = {
     ACCEPT: (id: number) => `/api/driver/bookings/${id}/accept`,
     REJECT: (id: number) => `/api/driver/bookings/${id}/reject`,
   },
+  PROFILE: {
+    GET: "/api/driver/profile",
+    UPDATE: "/api/driver/profile",
+    UPDATE_PASSWORD: "/api/driver/profile/password",
+  },
+  VEHICLE: {
+    GET: "/api/driver/vehicle",
+    UPDATE: "/api/driver/vehicle",
+  },
 } as const;

@@ -1204,3 +1204,266 @@ export const getEarnings = async (
     } as ApiError;
   }
 };
+
+// Profile interfaces
+export interface Profile {
+  id: number;
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  photoUrl: string | null;
+  city: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateProfileRequest {
+  fullName?: string;
+  email?: string;
+  phoneNumber?: string;
+  photoUrl?: string | null;
+  city?: string | null;
+}
+
+export interface UpdateProfileResponse {
+  success: boolean;
+  message: string;
+  user?: Profile;
+  errors?: string[];
+}
+
+export interface UpdatePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface UpdatePasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+/**
+ * Get driver profile
+ */
+export const getProfile = async (driverId: number): Promise<Profile> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.PROFILE.GET}?driverId=${driverId}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to fetch profile",
+        status: response.status,
+      } as ApiError;
+    }
+
+    return (result as { success: boolean; user: Profile }).user;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Update driver profile
+ */
+export const updateProfile = async (
+  driverId: number,
+  updateData: UpdateProfileRequest
+): Promise<UpdateProfileResponse> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.PROFILE.UPDATE}?driverId=${driverId}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updateData),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to update profile",
+        errors: result.errors || [],
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result as UpdateProfileResponse;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Update driver password
+ */
+export const updatePassword = async (
+  driverId: number,
+  passwordData: UpdatePasswordRequest
+): Promise<UpdatePasswordResponse> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.PROFILE.UPDATE_PASSWORD}?driverId=${driverId}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(passwordData),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to update password",
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result as UpdatePasswordResponse;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+// Vehicle interfaces
+export interface Vehicle {
+  carMake: string | null;
+  carModel: string | null;
+  carYear: number | null;
+  carColor: string | null;
+}
+
+export interface UpdateVehicleRequest {
+  carMake?: string | null;
+  carModel?: string | null;
+  carYear?: number | null;
+  carColor?: string | null;
+}
+
+export interface UpdateVehicleResponse {
+  success: boolean;
+  message: string;
+  vehicle?: Vehicle;
+  errors?: string[];
+}
+
+/**
+ * Get driver vehicle information
+ */
+export const getVehicle = async (driverId: number): Promise<Vehicle> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.VEHICLE.GET}?driverId=${driverId}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to fetch vehicle information",
+        status: response.status,
+      } as ApiError;
+    }
+
+    return (result as { success: boolean; vehicle: Vehicle }).vehicle;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Update driver vehicle information
+ */
+export const updateVehicle = async (
+  driverId: number,
+  updateData: UpdateVehicleRequest
+): Promise<UpdateVehicleResponse> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.VEHICLE.UPDATE}?driverId=${driverId}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updateData),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to update vehicle information",
+        errors: result.errors || [],
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result as UpdateVehicleResponse;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};

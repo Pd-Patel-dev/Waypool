@@ -166,7 +166,11 @@ export default function MenuScreen(): React.JSX.Element {
             <IconSymbol size={18} name="chevron.right" color="#666666" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/profile')}
+          >
             <View style={styles.menuItemIcon}>
               <IconSymbol size={20} name="house" color="#4285F4" />
             </View>
@@ -174,7 +178,11 @@ export default function MenuScreen(): React.JSX.Element {
             <IconSymbol size={18} name="chevron.right" color="#666666" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/vehicle')}
+          >
             <View style={styles.menuItemIcon}>
               <IconSymbol size={20} name="car" color="#4285F4" />
             </View>
