@@ -26,6 +26,7 @@ const MAPPING = {
   'envelope.fill': 'email',
   'envelope': 'email',
   'line.3.horizontal': 'menu',
+  'line.3.horizontal.decrease': 'tune',
   'location': 'location-on',
   'location.fill': 'location-on',
   'target': 'place',
@@ -33,9 +34,15 @@ const MAPPING = {
   'mappin': 'room',
   'flag': 'flag',
   'car': 'directions-car',
+  'car.fill': 'directions-car',
+  'arrow.right.circle.fill': 'arrow-forward-circle',
   'star': 'star',
   'money': 'attach-money',
   'checkmark': 'check-circle',
+  'checkmark.circle.fill': 'check-circle',
+  'eye': 'visibility',
+  'xmark': 'close',
+  'bookmark': 'bookmark-border',
   'route': 'navigation',
   'trash': 'delete',
   'play.fill': 'play-arrow',
@@ -48,6 +55,8 @@ const MAPPING = {
   'info.circle': 'info',
   'chevron.up': 'keyboard-arrow-up',
   'chevron.down': 'keyboard-arrow-down',
+  'exclamationmark.triangle.fill': 'error',
+  'repeat': 'repeat',
 } as IconMapping;
 
 /**

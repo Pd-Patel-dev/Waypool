@@ -5,6 +5,8 @@ import notificationsRoutes from './notifications';
 import bookingsRoutes from './bookings';
 import profileRoutes from './profile';
 import vehicleRoutes from './vehicle';
+import locationRoutes from './location';
+import messagesRoutes from './messages';
 
 const router = express.Router();
 
@@ -15,6 +17,8 @@ router.use('/notifications', notificationsRoutes);
 router.use('/bookings', bookingsRoutes);
 router.use('/profile', profileRoutes);
 router.use('/vehicle', vehicleRoutes);
+router.use('/location', locationRoutes);
+router.use('/messages', messagesRoutes);
 
 export default router;
 

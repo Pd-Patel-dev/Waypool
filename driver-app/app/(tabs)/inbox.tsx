@@ -20,12 +20,12 @@ import {
   rejectBooking,
   type Notification,
 } from "@/services/api";
-import { Alert } from "react-native";
+import { Alert, Linking, Platform } from "react-native";
 
 export default function InboxScreen(): React.JSX.Element {
   const { user } = useUser();
   const [selectedTab, setSelectedTab] = useState<
-    "all" | "requests" | "messages"
+    "all" | "requests"
   >("all");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,11 +67,30 @@ export default function InboxScreen(): React.JSX.Element {
   const filteredItems = notifications.filter((item) => {
     if (selectedTab === "all") return true;
     if (selectedTab === "requests") return item.type === "booking";
-    if (selectedTab === "messages") return item.type === "message";
     return true;
   });
 
   const unreadCount = notifications.filter((item) => item.unread).length;
+
+  const openSMS = (phoneNumber: string, name?: string) => {
+    const cleanPhone = phoneNumber.replace(/\D/g, ''); // Remove non-digits
+    const smsUrl = Platform.OS === 'ios' 
+      ? `sms:${cleanPhone}` 
+      : `sms:${cleanPhone}`;
+    
+    Linking.canOpenURL(smsUrl)
+      .then((supported) => {
+        if (supported) {
+          return Linking.openURL(smsUrl);
+        } else {
+          Alert.alert('Error', 'Unable to open messaging app');
+        }
+      })
+      .catch((err) => {
+        console.error('Error opening SMS:', err);
+        Alert.alert('Error', 'Unable to open messaging app');
+      });
+  };
 
   const handleItemPress = async (item: Notification) => {
     if (!user?.id) return;
@@ -91,9 +110,9 @@ export default function InboxScreen(): React.JSX.Element {
     }
 
     // Navigate to detail screen
-    if (item.type === "message") {
-      // Open message/chat screen
-      console.log("Opening chat");
+    if (item.type === "message" && item.booking?.rider?.phoneNumber) {
+      // Open native SMS app
+      openSMS(item.booking.rider.phoneNumber, item.booking.rider.fullName);
     } else if (item.type === "booking" && item.booking) {
       // Navigate to booking request details screen
       router.push({
@@ -253,7 +272,9 @@ export default function InboxScreen(): React.JSX.Element {
         <View>
           <Text style={styles.headerTitle}>Inbox</Text>
           {unreadCount > 0 && (
-            <Text style={styles.headerSubtitle}>{unreadCount} unread</Text>
+            <Text style={styles.headerSubtitle}>
+              {unreadCount} unread
+            </Text>
           )}
         </View>
       </View>
@@ -286,20 +307,6 @@ export default function InboxScreen(): React.JSX.Element {
             ]}
           >
             Requests
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, selectedTab === "messages" && styles.tabActive]}
-          onPress={() => setSelectedTab("messages")}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              selectedTab === "messages" && styles.tabTextActive,
-            ]}
-          >
-            Messages
           </Text>
         </TouchableOpacity>
       </View>
@@ -439,6 +446,25 @@ export default function InboxScreen(): React.JSX.Element {
                       >
                         <Text style={styles.statusText}>Rejected</Text>
                       </View>
+                    )}
+                  {/* Message Button for confirmed bookings */}
+                  {item.type === "request" &&
+                    "bookingStatus" in item &&
+                    item.bookingStatus === "confirmed" &&
+                    notification.booking?.rider?.phoneNumber && (
+                      <TouchableOpacity
+                        style={styles.smsButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          openSMS(
+                            notification.booking!.rider!.phoneNumber,
+                            notification.booking!.rider!.fullName
+                          );
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <IconSymbol size={16} name="message.fill" color="#4285F4" />
+                      </TouchableOpacity>
                     )}
                 </View>
               </TouchableOpacity>
@@ -657,5 +683,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: "#FFFFFF",
+  },
+  avatarImageContainer: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 24,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#4285F4",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 6,
+    marginLeft: 8,
+  },
+  unreadBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  rideInfo: {
+    fontSize: 12,
+    fontWeight: "400",
+    color: "#666666",
+    marginTop: 4,
   },
 });

@@ -37,6 +37,9 @@ interface Ride {
   carModel?: string | null;
   carYear?: number | null;
   carColor?: string | null;
+  isRecurring?: boolean;
+  recurringPattern?: 'daily' | 'weekly' | 'monthly' | null;
+  recurringEndDate?: string | null;
   driver: {
     id: number;
     fullName: string;
@@ -674,6 +677,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#4285F4',
+  },
+  recurringCard: {
+    backgroundColor: '#0F0F0F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+  recurringHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  recurringTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  recurringContent: {
+    gap: 8,
+  },
+  recurringRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  recurringLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#999999',
+  },
+  recurringValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4285F4',
+    textTransform: 'capitalize',
   },
 });
 

@@ -28,7 +28,12 @@ export const calculateDistance = (
  * Route: Origin → Passenger Pickup 1 → Passenger Pickup 2 → ... → Destination
  */
 export const calculateTotalDistance = (ride: Ride): number => {
-  if (!ride.fromLatitude || !ride.fromLongitude || !ride.toLatitude || !ride.toLongitude) {
+  if (
+    !ride.fromLatitude ||
+    !ride.fromLongitude ||
+    !ride.toLatitude ||
+    !ride.toLongitude
+  ) {
     // Fallback to stored distance if coordinates are missing
     return ride.distance || 0;
   }
@@ -64,4 +69,3 @@ export const calculateTotalDistance = (ride: Ride): number => {
 
   return totalDistance;
 };
-

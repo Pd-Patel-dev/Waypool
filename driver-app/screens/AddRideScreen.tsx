@@ -52,15 +52,28 @@ export default function AddRideScreen(): React.JSX.Element {
   // Date and Time Picker states
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // Set initial date to today at midnight to allow selecting today and future dates
+  const getTodayAtMidnight = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  };
+  
+  const [selectedDate, setSelectedDate] = useState<Date>(getTodayAtMidnight());
   const [selectedTime, setSelectedTime] = useState<Date>(new Date());
   
   // Coordinates for mapping
   const [fromCoords, setFromCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [toCoords, setToCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
+  const [estimatedTimeMinutes, setEstimatedTimeMinutes] = useState<number | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
   
+  // New feature states
+  const [isRecurring, setIsRecurring] = useState<boolean>(false);
+  const [recurringPattern, setRecurringPattern] = useState<'daily' | 'weekly' | 'monthly' | null>(null);
+  const [recurringEndDate, setRecurringEndDate] = useState<string>('');
+  const [showRecurringEndDatePicker, setShowRecurringEndDatePicker] = useState(false);
   const mapRef = React.useRef<MapView>(null);
   
   // Get current location for sorting suggestions by proximity
@@ -260,7 +273,7 @@ export default function AddRideScreen(): React.JSX.Element {
     return points;
   };
 
-  // Fetch route from Google Directions API
+  // Fetch route from Google Directions API with traffic-aware estimates
   const fetchRoute = async (
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number }
@@ -270,7 +283,8 @@ export default function AddRideScreen(): React.JSX.Element {
       if (!GOOGLE_API_KEY) {
         throw new Error('Google Maps API key is not configured');
       }
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${GOOGLE_API_KEY}`;
+      // Use traffic_model=best_guess for accurate time estimates
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&traffic_model=best_guess&departure_time=now&key=${GOOGLE_API_KEY}`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -284,13 +298,21 @@ export default function AddRideScreen(): React.JSX.Element {
         const distanceInMeters = route.legs[0].distance.value;
         const distanceInMiles = distanceInMeters / 1609.34;
         setDistance(distanceInMiles);
+
+        // Get estimated time in minutes (use duration_in_traffic if available, otherwise duration)
+        const durationInSeconds = route.legs[0].duration_in_traffic?.value || route.legs[0].duration.value;
+        const durationInMinutes = Math.ceil(durationInSeconds / 60);
+        setEstimatedTimeMinutes(durationInMinutes);
       } else {
         // Fallback to straight line
         setRouteCoordinates([origin, destination]);
+        setEstimatedTimeMinutes(null);
       }
     } catch (error) {
+      console.error('Error fetching route:', error);
       // Fallback to straight line
       setRouteCoordinates([origin, destination]);
+      setEstimatedTimeMinutes(null);
     }
   };
 
@@ -338,10 +360,48 @@ export default function AddRideScreen(): React.JSX.Element {
 
     if (!departureDate.trim()) {
       newErrors.departureDate = 'Departure date is required';
+    } else {
+      // Validate that the date is not in the past
+      try {
+        const [month, day, year] = departureDate.split('/').map(Number);
+        const selectedDateObj = new Date(year, month - 1, day);
+        const today = getTodayAtMidnight();
+        
+        if (selectedDateObj < today) {
+          newErrors.departureDate = 'Departure date cannot be in the past';
+        }
+      } catch (error) {
+        newErrors.departureDate = 'Invalid date format';
+      }
     }
 
     if (!departureTime.trim()) {
       newErrors.departureTime = 'Departure time is required';
+    } else if (departureDate.trim()) {
+      // Validate that the date+time combination is not in the past
+      try {
+        const [month, day, year] = departureDate.split('/').map(Number);
+        const timeMatch = departureTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        
+        if (timeMatch) {
+          let hours = parseInt(timeMatch[1], 10);
+          const minutes = parseInt(timeMatch[2], 10);
+          const meridiem = timeMatch[3].toUpperCase();
+          
+          // Convert to 24-hour format
+          if (meridiem === 'PM' && hours !== 12) hours += 12;
+          if (meridiem === 'AM' && hours === 12) hours = 0;
+          
+          const selectedDateTime = new Date(year, month - 1, day, hours, minutes);
+          const now = new Date();
+          
+          if (selectedDateTime < now) {
+            newErrors.departureTime = 'Departure time cannot be in the past';
+          }
+        }
+      } catch (error) {
+        // Ignore validation errors if date/time parsing fails
+      }
     }
 
     if (!availableSeats.trim()) {
@@ -415,13 +475,16 @@ export default function AddRideScreen(): React.JSX.Element {
         availableSeats: parseInt(availableSeats),
         pricePerSeat: parseFloat(pricePerSeat),
         distance: distance || undefined,
+        estimatedTimeMinutes: estimatedTimeMinutes || undefined,
+        isRecurring: isRecurring,
+        recurringPattern: recurringPattern || undefined,
+        recurringEndDate: recurringEndDate || undefined,
       };
 
       // Call API to create ride
       const response = await createRide(rideData);
 
       if (response.success) {
-        
         // Show success alert
         Alert.alert(
           '🎉 Ride Created!',
@@ -436,9 +499,33 @@ export default function AddRideScreen(): React.JSX.Element {
       }
     } catch (error) {
       const apiError = error as ApiError;
-      setErrors({
-        general: apiError.message || 'Failed to create ride. Please try again.',
-      });
+      
+      // Handle duplicate ride error
+      if (apiError.status === 409 || apiError.message?.includes('duplicate') || apiError.message?.includes('similar ride')) {
+        Alert.alert(
+          'Duplicate Ride Detected',
+          apiError.message || 'A similar ride already exists for this route and time.',
+          [
+            {
+              text: 'View Existing Ride',
+              onPress: () => {
+                // Navigate to existing ride if ID is provided
+                if ((apiError as any).duplicateRideId) {
+                  router.push(`/ride-details?id=${(apiError as any).duplicateRideId}`);
+                }
+              },
+            },
+            {
+              text: 'Modify Time',
+              style: 'cancel',
+            },
+          ]
+        );
+      } else {
+        setErrors({
+          general: apiError.message || 'Failed to create ride. Please try again.',
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -742,7 +829,7 @@ export default function AddRideScreen(): React.JSX.Element {
                           setDepartureDate(`${month}/${day}/${year}`);
                         }
                       }}
-                      minimumDate={new Date()}
+                      minimumDate={getTodayAtMidnight()}
                     />
                   )}
                 </View>
@@ -825,6 +912,84 @@ export default function AddRideScreen(): React.JSX.Element {
               </View>
             </View>
 
+            {/* Estimated Distance & Time Display */}
+            {(distance || estimatedTimeMinutes) && (
+              <View style={styles.estimateCard}>
+                <View style={styles.estimateRow}>
+                  <IconSymbol size={20} name="map" color="#4285F4" />
+                  <View style={styles.estimateContent}>
+                    <Text style={styles.estimateLabel}>Route Estimate</Text>
+                    <View style={styles.estimateDetails}>
+                      {distance && (
+                        <Text style={styles.estimateText}>
+                          {distance.toFixed(1)} mi
+                        </Text>
+                      )}
+                      {estimatedTimeMinutes && (
+                        <Text style={styles.estimateText}>
+                          {estimatedTimeMinutes} min
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Recurring Ride Option */}
+            <View style={styles.recurringSection}>
+              <TouchableOpacity
+                style={styles.recurringToggle}
+                onPress={() => setIsRecurring(!isRecurring)}
+                activeOpacity={0.7}>
+                <View style={[styles.checkbox, isRecurring && styles.checkboxChecked]}>
+                  {isRecurring && <IconSymbol size={16} name="checkmark" color="#FFFFFF" />}
+                </View>
+                <Text style={styles.recurringLabel}>Make this a recurring ride</Text>
+              </TouchableOpacity>
+
+              {isRecurring && (
+                <View style={styles.recurringOptions}>
+                  <Text style={styles.recurringSubLabel}>Repeat</Text>
+                  <View style={styles.recurringButtons}>
+                    {(['daily', 'weekly', 'monthly'] as const).map((pattern) => (
+                      <TouchableOpacity
+                        key={pattern}
+                        style={[
+                          styles.recurringButton,
+                          recurringPattern === pattern && styles.recurringButtonActive,
+                        ]}
+                        onPress={() => setRecurringPattern(pattern)}
+                        activeOpacity={0.7}>
+                        <Text
+                          style={[
+                            styles.recurringButtonText,
+                            recurringPattern === pattern && styles.recurringButtonTextActive,
+                          ]}>
+                          {pattern.charAt(0).toUpperCase() + pattern.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {recurringPattern && (
+                    <View style={styles.recurringEndDateContainer}>
+                      <Text style={styles.recurringSubLabel}>End Date (Optional)</Text>
+                      <TouchableOpacity
+                        style={styles.recurringEndDateInput}
+                        onPress={() => setShowRecurringEndDatePicker(true)}
+                        activeOpacity={0.7}>
+                        <Text style={[styles.recurringEndDateText, !recurringEndDate && styles.placeholder]}>
+                          {recurringEndDate || 'No end date'}
+                        </Text>
+                        <IconSymbol size={18} name="calendar" color="#666666" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+
             {/* Error Message */}
             {errors.general && (
               <View style={styles.generalError}>
@@ -832,18 +997,26 @@ export default function AddRideScreen(): React.JSX.Element {
               </View>
             )}
 
-              {/* Submit Button */}
+            {/* Action Buttons */}
+            <View style={styles.actionButtonsContainer}>
               <TouchableOpacity
                 style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
-                onPress={handleSubmit}
+                onPress={async () => {
+                  await handleSubmit();
+                }}
                 disabled={isLoading}
                 activeOpacity={0.8}>
                 {isLoading ? (
                   <ActivityIndicator color="#000000" />
                 ) : (
-                  <Text style={styles.submitButtonText}>Create Ride</Text>
+                  <>
+                    <IconSymbol size={18} name="checkmark.circle.fill" color="#000000" />
+                    <Text style={styles.submitButtonText}>Create Ride</Text>
+                  </>
                 )}
               </TouchableOpacity>
+            </View>
+
             </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -882,6 +1055,10 @@ export default function AddRideScreen(): React.JSX.Element {
                   onPress={() => {
                     console.log('Date Done pressed');
                     setShowDatePicker(false);
+                    // Ensure date is at midnight to allow any time selection
+                    const dateAtMidnight = new Date(selectedDate);
+                    dateAtMidnight.setHours(0, 0, 0, 0);
+                    setSelectedDate(dateAtMidnight);
                     // Format as MM/DD/YYYY
                     const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
                     const day = String(selectedDate.getDate()).padStart(2, '0');
@@ -903,7 +1080,7 @@ export default function AddRideScreen(): React.JSX.Element {
                     setSelectedDate(date);
                   }
                 }}
-                minimumDate={new Date()}
+                minimumDate={getTodayAtMidnight()}
                 style={styles.pickerIOS}
                 textColor="#FFFFFF"
                 themeVariant="dark"
@@ -1371,12 +1548,249 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
+  estimateCard: {
+    backgroundColor: '#0F0F0F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+  estimateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  estimateContent: {
+    flex: 1,
+  },
+  estimateLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999999',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  estimateDetails: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  estimateText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  recurringSection: {
+    backgroundColor: '#0F0F0F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+  recurringToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#666666',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#4285F4',
+    borderColor: '#4285F4',
+  },
+  recurringLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  recurringOptions: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A1A',
+  },
+  recurringSubLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#999999',
+    marginBottom: 12,
+  },
+  recurringButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  recurringButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#333333',
+    alignItems: 'center',
+  },
+  recurringButtonActive: {
+    backgroundColor: '#4285F4',
+    borderColor: '#4285F4',
+  },
+  recurringButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#999999',
+  },
+  recurringButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  recurringEndDateContainer: {
+    marginTop: 12,
+  },
+  recurringEndDateInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  recurringEndDateText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  placeholder: {
+    color: '#666666',
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A1A1A',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1A1A1A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalMapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  modalMap: {
+    flex: 1,
+  },
+  modalRouteInfo: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#0F0F0F',
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A1A',
+    padding: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 16,
+  },
+  modalRouteMarker: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4285F4',
+    marginTop: 4,
+  },
+  modalRouteMarkerDest: {
+    backgroundColor: '#FF3B30',
+  },
+  modalRouteContent: {
+    flex: 1,
+  },
+  modalRouteLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666666',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  modalRouteAddress: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  modalRouteCity: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#999999',
+  },
+  modalRouteStats: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A1A',
+  },
+  modalStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalStatText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
   submitButton: {
+    width: '100%',
     backgroundColor: '#4285F4',
     borderRadius: 16,
     paddingVertical: 16,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
+    justifyContent: 'center',
+    gap: 8,
   },
   submitButtonDisabled: {
     opacity: 0.5,

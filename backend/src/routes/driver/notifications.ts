@@ -24,14 +24,14 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     // Get all notifications for this driver
-    const notifications = await prisma.notification.findMany({
+    const notifications = await prisma.notifications.findMany({
       where: {
         driverId: driverId,
       },
       include: {
-        booking: {
+        bookings: {
           include: {
-            rider: {
+            users: {
               select: {
                 id: true,
                 fullName: true,
@@ -39,7 +39,7 @@ router.get('/', async (req: Request, res: Response) => {
                 phoneNumber: true,
               },
             },
-            ride: {
+            rides: {
               select: {
                 id: true,
                 fromAddress: true,
@@ -53,7 +53,7 @@ router.get('/', async (req: Request, res: Response) => {
             },
           },
         },
-        ride: {
+        rides: {
           select: {
             id: true,
             fromAddress: true,
@@ -72,7 +72,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     // Format notifications for frontend
-    const formattedNotifications = notifications.map((notification) => {
+    const formattedNotifications = notifications.map((notification: any) => {
       const timeAgo = getTimeAgo(notification.createdAt);
 
       return {
@@ -83,40 +83,40 @@ router.get('/', async (req: Request, res: Response) => {
         time: timeAgo,
         unread: !notification.isRead,
         createdAt: notification.createdAt.toISOString(),
-        booking: notification.booking && notification.booking.rider && notification.booking.ride
+        booking: notification.bookings && notification.bookings.users && notification.bookings.rides
           ? {
-              id: notification.booking.id,
-              confirmationNumber: notification.booking.confirmationNumber,
-              numberOfSeats: (notification.booking as any).numberOfSeats || 1,
-              status: notification.booking.status,
-              pickupAddress: notification.booking.pickupAddress,
-              pickupCity: notification.booking.pickupCity,
-              pickupState: notification.booking.pickupState,
+              id: notification.bookings.id,
+              confirmationNumber: notification.bookings.confirmationNumber,
+              numberOfSeats: (notification.bookings as any).numberOfSeats || 1,
+              status: notification.bookings.status,
+              pickupAddress: notification.bookings.pickupAddress,
+              pickupCity: notification.bookings.pickupCity,
+              pickupState: notification.bookings.pickupState,
               rider: {
-                id: notification.booking.rider.id,
-                fullName: notification.booking.rider.fullName,
-                email: notification.booking.rider.email,
-                phoneNumber: notification.booking.rider.phoneNumber,
+                id: notification.bookings.users.id,
+                fullName: notification.bookings.users.fullName,
+                email: notification.bookings.users.email,
+                phoneNumber: notification.bookings.users.phoneNumber,
               },
               ride: {
-                id: notification.booking.ride.id,
-                fromAddress: notification.booking.ride.fromAddress,
-                toAddress: notification.booking.ride.toAddress,
-                fromCity: notification.booking.ride.fromCity,
-                toCity: notification.booking.ride.toCity,
-                departureDate: notification.booking.ride.departureDate,
-                departureTime: notification.booking.ride.departureTime,
-                pricePerSeat: notification.booking.ride.pricePerSeat,
+                id: notification.bookings.rides.id,
+                fromAddress: notification.bookings.rides.fromAddress,
+                toAddress: notification.bookings.rides.toAddress,
+                fromCity: notification.bookings.rides.fromCity,
+                toCity: notification.bookings.rides.toCity,
+                departureDate: notification.bookings.rides.departureDate,
+                departureTime: notification.bookings.rides.departureTime,
+                pricePerSeat: notification.bookings.rides.pricePerSeat,
               },
             }
           : null,
-        ride: notification.ride
+        ride: notification.rides
           ? {
-              id: notification.ride.id,
-              fromAddress: notification.ride.fromAddress,
-              toAddress: notification.ride.toAddress,
-              fromCity: notification.ride.fromCity,
-              toCity: notification.ride.toCity,
+              id: notification.rides.id,
+              fromAddress: notification.rides.fromAddress,
+              toAddress: notification.rides.toAddress,
+              fromCity: notification.rides.fromCity,
+              toCity: notification.rides.toCity,
             }
           : null,
       };
@@ -174,7 +174,7 @@ router.put('/:id/read', async (req: Request, res: Response) => {
     }
 
     // Verify ownership
-    const notification = await prisma.notification.findUnique({
+    const notification = await prisma.notifications.findUnique({
       where: { id: notificationId },
     });
 
@@ -193,7 +193,7 @@ router.put('/:id/read', async (req: Request, res: Response) => {
     }
 
     // Mark as read
-    await prisma.notification.update({
+    await prisma.notifications.update({
       where: { id: notificationId },
       data: {
         isRead: true,
@@ -232,7 +232,7 @@ router.put('/read-all', async (req: Request, res: Response) => {
     }
 
     // Mark all as read
-    await prisma.notification.updateMany({
+    await prisma.notifications.updateMany({
       where: {
         driverId: driverId,
         isRead: false,

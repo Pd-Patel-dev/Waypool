@@ -25,10 +25,14 @@ export default function RootLayout() {
         <Stack.Screen name="booking-request" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="past-rides" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="past-ride-details" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="upcoming-ride-details" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="ride-completion" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="edit-ride" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="profile" options={{ headerShown: false, presentation: 'card' }} />
         <Stack.Screen name="vehicle" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="help-support" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="settings" options={{ headerShown: false, presentation: 'card' }} />
+        <Stack.Screen name="booking-history" options={{ headerShown: false, presentation: 'card' }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

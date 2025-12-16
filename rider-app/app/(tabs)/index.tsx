@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
-import { getUpcomingRides, type Ride } from '@/services/api';
+import { getUpcomingRides, getRiderBookings, type Ride, type RiderBooking } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 export default function HomeScreen(): React.JSX.Element {
@@ -20,6 +20,8 @@ export default function HomeScreen(): React.JSX.Element {
   const [rides, setRides] = useState<Ride[]>([]);
   const [isLoadingRides, setIsLoadingRides] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [activeBooking, setActiveBooking] = useState<RiderBooking | null>(null);
+  const [isLoadingActiveBooking, setIsLoadingActiveBooking] = useState<boolean>(false);
 
   useEffect(() => {
     // If no user is logged in, redirect to welcome screen
@@ -45,16 +47,42 @@ export default function HomeScreen(): React.JSX.Element {
     }
   }, [user]);
 
+  const fetchActiveBooking = useCallback(async () => {
+    if (!user?.id) return;
+    
+    setIsLoadingActiveBooking(true);
+    try {
+      const userId = typeof user.id === "string" ? parseInt(user.id) : user.id;
+      const response = await getRiderBookings(userId);
+      if (response.success) {
+        // Find active booking (confirmed status with ride status "in-progress")
+        const active = response.bookings.find(
+          (booking) =>
+            booking.status === "confirmed" &&
+            booking.ride.status === "in-progress" &&
+            booking.pickupStatus !== "picked_up"
+        );
+        setActiveBooking(active || null);
+      }
+    } catch (error) {
+      console.error('Error fetching active booking:', error);
+    } finally {
+      setIsLoadingActiveBooking(false);
+    }
+  }, [user]);
+
   useFocusEffect(
     useCallback(() => {
       fetchRides();
-    }, [fetchRides])
+      fetchActiveBooking();
+    }, [fetchRides, fetchActiveBooking])
   );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchRides();
-  }, [fetchRides]);
+    fetchActiveBooking();
+  }, [fetchRides, fetchActiveBooking]);
 
   const formatDate = (dateString: string): string => {
     try {
@@ -118,6 +146,74 @@ export default function HomeScreen(): React.JSX.Element {
             </Text>
           </View>
         </View>
+
+        {/* Active Ride Card */}
+        {activeBooking && (
+          <View style={styles.activeRideContainer}>
+            <View style={styles.activeRideHeader}>
+              <View style={styles.activeRideBadge}>
+                <View style={styles.activeRideDot} />
+                <Text style={styles.activeRideBadgeText}>Active Ride</Text>
+              </View>
+            </View>
+            
+            <TouchableOpacity
+              style={styles.activeRideCard}
+              activeOpacity={0.9}
+              onPress={() => {
+                router.push({
+                  pathname: '/track-driver',
+                  params: {
+                    booking: JSON.stringify(activeBooking),
+                  },
+                });
+              }}
+            >
+              <View style={styles.activeRideContent}>
+                <View style={styles.activeRideDriverInfo}>
+                  <View style={styles.activeRideDriverAvatar}>
+                    <Text style={styles.activeRideDriverAvatarText}>
+                      {activeBooking.ride.driverName.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.activeRideDriverDetails}>
+                    <Text style={styles.activeRideDriverName}>
+                      {activeBooking.ride.driverName}
+                    </Text>
+                    <Text style={styles.activeRideRoute}>
+                      {activeBooking.ride.fromCity} → {activeBooking.ride.toCity}
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={styles.activeRideActions}>
+                  <TouchableOpacity
+                    style={styles.trackButton}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      router.push({
+                        pathname: '/track-driver',
+                        params: {
+                          booking: JSON.stringify(activeBooking),
+                        },
+                      });
+                    }}
+                  >
+                    <IconSymbol name="location.fill" size={18} color="#FFFFFF" />
+                    <Text style={styles.trackButtonText}>Track</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              <View style={styles.activeRidePickup}>
+                <IconSymbol name="mappin" size={14} color="#4285F4" />
+                <Text style={styles.activeRidePickupText} numberOfLines={1}>
+                  Pickup: {activeBooking.pickupAddress}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Quick Actions */}
         <View style={styles.quickActionsContainer}>
@@ -457,5 +553,115 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: '#999999',
+  },
+  activeRideContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  activeRideHeader: {
+    marginBottom: 12,
+  },
+  activeRideBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#34C75920',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+  },
+  activeRideDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#34C759',
+  },
+  activeRideBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#34C759',
+  },
+  activeRideCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#34C75940',
+    shadowColor: '#34C759',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  activeRideContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  activeRideDriverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  activeRideDriverAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#4285F4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  activeRideDriverAvatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  activeRideDriverDetails: {
+    flex: 1,
+  },
+  activeRideDriverName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  activeRideRoute: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#999999',
+  },
+  activeRideActions: {
+    marginLeft: 12,
+  },
+  trackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4285F4',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 8,
+  },
+  trackButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  activeRidePickup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2A2A2C',
+    gap: 8,
+  },
+  activeRidePickupText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#CCCCCC',
+    flex: 1,
   },
 });

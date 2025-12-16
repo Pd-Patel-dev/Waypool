@@ -6,24 +6,25 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Platform,
-  Linking,
   Alert,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
-import { type Ride, getRideById } from "@/services/api";
+import { type Ride, getRideById, cancelRide } from "@/services/api";
 import { useUser } from "@/context/UserContext";
+import { Platform } from "react-native";
 import { calculateTotalDistance } from "@/utils/distance";
 
-export default function PastRideDetailsScreen(): React.JSX.Element {
+export default function UpcomingRideDetailsScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
   const { user } = useUser();
   const [rideData, setRideData] = useState<Ride | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const rideId = params.rideId ? parseInt(params.rideId as string) : null;
 
@@ -92,15 +93,12 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
     );
   }
 
-  // Use stored totalEarnings from database, or calculate if not available (for backward compatibility)
   const pricePerSeat = rideData.pricePerSeat || rideData.price || 0;
   const totalSeatsBooked = rideData.passengers?.reduce((sum, passenger) => {
     const seats = (passenger as any).numberOfSeats || 1;
     return sum + seats;
   }, 0) || 0;
-  const totalEarnings = rideData.totalEarnings !== undefined && rideData.totalEarnings !== null
-    ? rideData.totalEarnings
-    : totalSeatsBooked * pricePerSeat;
+  const potentialEarnings = totalSeatsBooked * pricePerSeat;
   const passengerCount = rideData.passengers?.length || 0;
 
   const formatDateTime = (dateString: string, fallbackDate?: string, fallbackTime?: string): string => {
@@ -182,6 +180,68 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
         }
       : undefined;
 
+  // Get status badge info
+  const getStatusBadge = () => {
+    if (rideData.status === 'in-progress') {
+      return { text: 'IN PROGRESS', color: '#4285F4', bgColor: 'rgba(66, 133, 244, 0.15)' };
+    }
+    if (rideData.status === 'completed') {
+      return { text: 'COMPLETED', color: '#34C759', bgColor: 'rgba(52, 199, 89, 0.15)' };
+    }
+    if (rideData.status === 'cancelled') {
+      return { text: 'CANCELLED', color: '#FF3B30', bgColor: 'rgba(255, 59, 48, 0.15)' };
+    }
+    return { text: 'SCHEDULED', color: '#FFD60A', bgColor: 'rgba(255, 214, 10, 0.15)' };
+  };
+
+  const statusBadge = getStatusBadge();
+
+  const handleCancelRide = () => {
+    if (!rideData || !user?.id) return;
+
+    const passengerCount = rideData.passengers?.length || 0;
+    const hasConfirmedBookings = rideData.passengers?.some(
+      (p) => p.status === "confirmed"
+    );
+
+    Alert.alert(
+      "Cancel Ride",
+      hasConfirmedBookings
+        ? `This ride has ${passengerCount} confirmed booking${passengerCount !== 1 ? "s" : ""}. Cancelling will notify all passengers and refund their bookings. Are you sure you want to cancel?`
+        : "Are you sure you want to cancel this ride?",
+      [
+        {
+          text: "No",
+          style: "cancel",
+        },
+        {
+          text: "Yes, Cancel",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setIsCancelling(true);
+              await cancelRide(rideData.id, user.id);
+              Alert.alert("Success", "Ride cancelled successfully", [
+                {
+                  text: "OK",
+                  onPress: () => router.back(),
+                },
+              ]);
+            } catch (error: any) {
+              console.error("Error cancelling ride:", error);
+              Alert.alert(
+                "Error",
+                error.message || "Failed to cancel ride. Please try again."
+              );
+            } finally {
+              setIsCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar style="light" />
@@ -204,27 +264,31 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
       >
         {/* Status Badge */}
         <View style={styles.statusSection}>
-          <View style={styles.statusBadge}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Completed</Text>
+          <View style={[styles.statusBadge, { backgroundColor: statusBadge.bgColor }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusBadge.color }]} />
+            <Text style={[styles.statusText, { color: statusBadge.color }]}>
+              {statusBadge.text}
+            </Text>
           </View>
         </View>
 
-        {/* Earnings Card - Prominent */}
-        <View style={styles.earningsCard}>
-          <Text style={styles.earningsLabel}>Total Earnings</Text>
-          <Text style={styles.earningsAmount}>${totalEarnings.toFixed(2)}</Text>
-          <View style={styles.earningsBreakdown}>
-            <Text style={styles.earningsBreakdownText}>
-              {totalSeatsBooked} seat{totalSeatsBooked !== 1 ? "s" : ""} × ${pricePerSeat.toFixed(2)} per seat
-            </Text>
-            {passengerCount > 0 && (
+        {/* Potential Earnings Card - Only if passengers booked */}
+        {totalSeatsBooked > 0 && (
+          <View style={styles.earningsCard}>
+            <Text style={styles.earningsLabel}>Potential Earnings</Text>
+            <Text style={styles.earningsAmount}>${potentialEarnings.toFixed(2)}</Text>
+            <View style={styles.earningsBreakdown}>
               <Text style={styles.earningsBreakdownText}>
-                ({passengerCount} passenger{passengerCount !== 1 ? "s" : ""})
+                {totalSeatsBooked} seat{totalSeatsBooked !== 1 ? "s" : ""} × ${pricePerSeat.toFixed(2)} per seat
               </Text>
-            )}
+              {passengerCount > 0 && (
+                <Text style={styles.earningsBreakdownText}>
+                  ({passengerCount} passenger{passengerCount !== 1 ? "s" : ""})
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Recurring Ride Badge */}
         {rideData.isRecurring && (
@@ -274,7 +338,7 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
         {/* Route Information */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <IconSymbol size={18} name="map" color="#4285F4" />
+            <IconSymbol size={18} name="mappin" color="#4285F4" />
             <Text style={styles.sectionTitle}>Route</Text>
           </View>
           <View style={styles.routeContainer}>
@@ -429,9 +493,15 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
           </View>
           <View style={styles.sectionContent}>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Passengers</Text>
+              <Text style={styles.detailLabel}>Available Seats</Text>
               <Text style={styles.detailValue}>
-                {passengerCount} passenger{passengerCount !== 1 ? "s" : ""}
+                {rideData.availableSeats} of {rideData.totalSeats}
+              </Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Booked Seats</Text>
+              <Text style={styles.detailValue}>
+                {totalSeatsBooked} seat{totalSeatsBooked !== 1 ? "s" : ""}
               </Text>
             </View>
             {totalDistance > 0 && (
@@ -461,63 +531,115 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
             {rideData.passengers.map((passenger, index) => (
               <View key={`passenger-info-${passenger.id || index}`} style={styles.passengerCard}>
                 <View style={styles.passengerInfo}>
-                  <Text style={styles.passengerName}>
-                    {passenger.riderName || `Passenger ${index + 1}`}
-                  </Text>
+                  <View style={styles.passengerHeader}>
+                    <Text style={styles.passengerName}>
+                      {passenger.riderName || `Passenger ${index + 1}`}
+                    </Text>
+                    {passenger.status === 'confirmed' && (
+                      <View style={styles.confirmedBadge}>
+                        <Text style={styles.confirmedText}>Confirmed</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.passengerPickup}>
                     Pickup: {passenger.pickupAddress}
                   </Text>
-                </View>
-                {passenger.riderPhone && (
-                  <View style={styles.passengerActions}>
-                    <TouchableOpacity
-                      style={styles.callButton}
-                      onPress={() => {
-                        const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
-                        const phoneUrl = Platform.OS === 'ios' ? `telprompt:${cleanPhone}` : `tel:${cleanPhone}`;
-                        Linking.canOpenURL(phoneUrl)
-                          .then((supported) => {
-                            if (supported) {
-                              return Linking.openURL(phoneUrl);
-                            } else {
+                  {passenger.numberOfSeats && passenger.numberOfSeats > 1 && (
+                    <Text style={styles.passengerSeats}>
+                      {passenger.numberOfSeats} seats booked
+                    </Text>
+                  )}
+                  {passenger.confirmationNumber && (
+                    <Text style={styles.confirmationNumber}>
+                      Confirmation: {passenger.confirmationNumber}
+                    </Text>
+                  )}
+                  {/* Call and Message Buttons */}
+                  {passenger.riderPhone && (
+                    <View style={styles.contactButtons}>
+                      <TouchableOpacity
+                        style={styles.callButton}
+                        onPress={() => {
+                          const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
+                          const phoneUrl = Platform.OS === 'ios' ? `telprompt:${cleanPhone}` : `tel:${cleanPhone}`;
+                          Linking.canOpenURL(phoneUrl)
+                            .then((supported) => {
+                              if (supported) {
+                                return Linking.openURL(phoneUrl);
+                              } else {
+                                Alert.alert('Error', 'Unable to make phone call.');
+                              }
+                            })
+                            .catch((err) => {
+                              console.error('Error opening phone:', err);
                               Alert.alert('Error', 'Unable to make phone call.');
-                            }
-                          })
-                          .catch((err) => {
-                            console.error('Error opening phone:', err);
-                            Alert.alert('Error', 'Unable to make phone call.');
-                          });
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <IconSymbol size={16} name="phone.fill" color="#4285F4" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.messageButton}
-                      onPress={() => {
-                        const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
-                        const smsUrl = `sms:${cleanPhone}`;
-                        Linking.canOpenURL(smsUrl)
-                          .then((supported) => {
-                            if (supported) {
-                              return Linking.openURL(smsUrl);
-                            } else {
+                            });
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <IconSymbol size={16} name="phone.fill" color="#4285F4" />
+                        <Text style={styles.contactButtonText}>Call</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.messageButton}
+                        onPress={() => {
+                          const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
+                          const smsUrl = `sms:${cleanPhone}`;
+                          Linking.canOpenURL(smsUrl)
+                            .then((supported) => {
+                              if (supported) {
+                                return Linking.openURL(smsUrl);
+                              } else {
+                                Alert.alert('Error', 'Unable to open messaging app');
+                              }
+                            })
+                            .catch((err) => {
+                              console.error('Error opening SMS:', err);
                               Alert.alert('Error', 'Unable to open messaging app');
-                            }
-                          })
-                          .catch((err) => {
-                            console.error('Error opening SMS:', err);
-                            Alert.alert('Error', 'Unable to open messaging app');
-                          });
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <IconSymbol size={16} name="message.fill" color="#4285F4" />
-                    </TouchableOpacity>
-                  </View>
-                )}
+                            });
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <IconSymbol size={16} name="message.fill" color="#4285F4" />
+                        <Text style={styles.messageButtonText}>Message</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Empty State for No Passengers */}
+        {(!rideData.passengers || rideData.passengers.length === 0) && (
+          <View style={styles.emptyPassengersSection}>
+            <IconSymbol size={48} name="person.2.fill" color="#666666" />
+            <Text style={styles.emptyPassengersText}>No passengers yet</Text>
+            <Text style={styles.emptyPassengersSubtext}>
+              Passengers will appear here once they book a seat
+            </Text>
+          </View>
+        )}
+
+        {/* Cancel Ride Button - Only show for scheduled rides */}
+        {rideData.status === "scheduled" && (
+          <View style={styles.cancelButtonContainer}>
+            <TouchableOpacity
+              style={[styles.cancelButton, isCancelling && styles.cancelButtonDisabled]}
+              onPress={handleCancelRide}
+              disabled={isCancelling}
+              activeOpacity={0.8}
+            >
+              {isCancelling ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <IconSymbol size={18} name="xmark.circle.fill" color="#FFFFFF" />
+                  <Text style={styles.cancelButtonText}>Cancel Ride</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -572,7 +694,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: "rgba(52, 199, 89, 0.15)",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -582,12 +703,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#34C759",
   },
   statusText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#34C759",
     textTransform: "uppercase",
   },
   earningsCard: {
@@ -610,7 +729,7 @@ const styles = StyleSheet.create({
   earningsAmount: {
     fontSize: 48,
     fontWeight: "800",
-    color: "#34C759",
+    color: "#FFD60A",
     marginBottom: 8,
     letterSpacing: -1,
   },
@@ -779,44 +898,51 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#1A1A1A",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
   },
   passengerInfo: {
     flex: 1,
   },
-  passengerActions: {
+  passengerHeader: {
     flexDirection: "row",
-    gap: 8,
+    justifyContent: "space-between",
     alignItems: "center",
-  },
-  callButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#1A1A1A",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  messageButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#1A1A1A",
-    justifyContent: "center",
-    alignItems: "center",
+    marginBottom: 4,
   },
   passengerName: {
     fontSize: 16,
     fontWeight: "600",
     color: "#FFFFFF",
-    marginBottom: 4,
+    flex: 1,
+  },
+  confirmedBadge: {
+    backgroundColor: "rgba(52, 199, 89, 0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  confirmedText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#34C759",
+    textTransform: "uppercase",
   },
   passengerPickup: {
     fontSize: 13,
     fontWeight: "400",
     color: "#999999",
+    marginBottom: 4,
+  },
+  passengerSeats: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#4285F4",
+    marginBottom: 4,
+  },
+  confirmationNumber: {
+    fontSize: 11,
+    fontWeight: "400",
+    color: "#666666",
+    fontFamily: "monospace",
   },
   emptyContainer: {
     flex: 1,
@@ -828,44 +954,82 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#999999",
   },
-  recurringCard: {
-    backgroundColor: "#0F0F0F",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#1A1A1A",
-  },
-  recurringHeader: {
-    flexDirection: "row",
+  emptyPassengersSection: {
     alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
+    paddingVertical: 40,
+    marginTop: 20,
   },
-  recurringTitle: {
-    fontSize: 16,
-    fontWeight: "700",
+  emptyPassengersText: {
+    fontSize: 18,
+    fontWeight: "600",
     color: "#FFFFFF",
-    letterSpacing: -0.3,
+    marginTop: 16,
+    marginBottom: 8,
   },
-  recurringContent: {
-    gap: 8,
-  },
-  recurringRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  recurringLabel: {
+  emptyPassengersSubtext: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "400",
     color: "#999999",
+    textAlign: "center",
   },
-  recurringValue: {
+  cancelButtonContainer: {
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  cancelButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FF3B30",
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: "#FF3B30",
+  },
+  cancelButtonDisabled: {
+    opacity: 0.6,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  contactButtons: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+    alignSelf: "flex-start",
+  },
+  callButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#1A1A1A",
+  },
+  messageButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#1A1A1A",
+  },
+  contactButtonText: {
     fontSize: 14,
     fontWeight: "600",
     color: "#4285F4",
-    textTransform: "capitalize",
+  },
+  messageButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#4285F4",
   },
 });
 

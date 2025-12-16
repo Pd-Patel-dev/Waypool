@@ -35,6 +35,11 @@ router.post('/', async (req: Request, res: Response) => {
       availableSeats,
       pricePerSeat,
       distance,
+      estimatedTimeMinutes,
+      isRecurring,
+      recurringPattern,
+      recurringEndDate,
+      isDraft,
     } = req.body;
 
     // Validate required fields
@@ -80,8 +85,18 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
+    // Validate recurring ride fields
+    if (isRecurring === true) {
+      if (!recurringPattern || !['daily', 'weekly', 'monthly'].includes(recurringPattern)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Recurring pattern must be "daily", "weekly", or "monthly" when isRecurring is true',
+        });
+      }
+    }
+
     // Verify driver exists
-    const driver = await prisma.user.findUnique({
+    const driver = await prisma.users.findUnique({
       where: { id: parseInt(driverId) },
     });
 
@@ -92,8 +107,94 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
+    // Check if driver has an in-progress ride (cannot have multiple rides running simultaneously)
+    // Only check if not a draft - drafts are allowed even with active rides
+    if (!isDraft) {
+      const inProgressRide = await prisma.rides.findFirst({
+        where: {
+          driverId: parseInt(driverId),
+          status: 'in-progress',
+        },
+        select: {
+          id: true,
+          status: true,
+          fromAddress: true,
+          toAddress: true,
+          departureDate: true,
+          departureTime: true,
+        },
+      });
+
+      if (inProgressRide) {
+        return res.status(400).json({
+          success: false,
+          message: `You have a ride in progress. Please complete or cancel your current ride before creating a new one.`,
+          activeRideId: inProgressRide.id,
+        });
+      }
+    }
+    
+    // Note: We allow multiple scheduled rides for different dates
+    // Duplicate ride check (same date/route/time) is handled below
+
+    // Check for duplicate ride (same driver, route, date, and time within 30 minutes)
+    // Only check if not a draft
+    if (!isDraft) {
+      const existingRides = await prisma.rides.findMany({
+        where: {
+          driverId: parseInt(driverId),
+          fromLatitude: { gte: parseFloat(fromLatitude) - 0.01, lte: parseFloat(fromLatitude) + 0.01 },
+          fromLongitude: { gte: parseFloat(fromLongitude) - 0.01, lte: parseFloat(fromLongitude) + 0.01 },
+          toLatitude: { gte: parseFloat(toLatitude) - 0.01, lte: parseFloat(toLatitude) + 0.01 },
+          toLongitude: { gte: parseFloat(toLongitude) - 0.01, lte: parseFloat(toLongitude) + 0.01 },
+          departureDate,
+          status: { not: 'cancelled' },
+        },
+      });
+
+      // Check if any existing ride has the same time (within 30 minutes)
+      for (const existingRide of existingRides) {
+        const existingTime = existingRide.departureTime;
+        const newTime = departureTime;
+        
+        // Parse times and compare
+        const existingTimeMatch = existingTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        const newTimeMatch = newTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        
+        if (existingTimeMatch && newTimeMatch && 
+            existingTimeMatch[1] && existingTimeMatch[2] && existingTimeMatch[3] &&
+            newTimeMatch[1] && newTimeMatch[2] && newTimeMatch[3]) {
+          let existingHours = parseInt(existingTimeMatch[1], 10);
+          const existingMinutes = parseInt(existingTimeMatch[2], 10);
+          const existingMeridiem = existingTimeMatch[3].toUpperCase();
+          
+          let newHours = parseInt(newTimeMatch[1], 10);
+          const newMinutes = parseInt(newTimeMatch[2], 10);
+          const newMeridiem = newTimeMatch[3].toUpperCase();
+          
+          if (existingMeridiem === 'PM' && existingHours !== 12) existingHours += 12;
+          if (existingMeridiem === 'AM' && existingHours === 12) existingHours = 0;
+          if (newMeridiem === 'PM' && newHours !== 12) newHours += 12;
+          if (newMeridiem === 'AM' && newHours === 12) newHours = 0;
+          
+          const existingTotalMinutes = existingHours * 60 + existingMinutes;
+          const newTotalMinutes = newHours * 60 + newMinutes;
+          const timeDifference = Math.abs(existingTotalMinutes - newTotalMinutes);
+          
+          // If same date and within 30 minutes, it's a duplicate
+          if (timeDifference <= 30) {
+            return res.status(409).json({
+              success: false,
+              message: 'A similar ride already exists for this route and time. Please check your existing rides or modify the departure time.',
+              duplicateRideId: existingRide.id,
+            });
+          }
+        }
+      }
+    }
+
     // Create the ride
-    const ride = await prisma.ride.create({
+    const ride = await prisma.rides.create({
       data: {
         driverId: parseInt(driverId),
         driverName,
@@ -119,7 +220,12 @@ router.post('/', async (req: Request, res: Response) => {
         availableSeats: parseInt(availableSeats),
         pricePerSeat: parseFloat(pricePerSeat),
         distance: distance ? parseFloat(distance) : null,
-        status: 'scheduled',
+        ...(estimatedTimeMinutes !== undefined && { estimatedTimeMinutes: parseInt(estimatedTimeMinutes) }),
+        isRecurring: isRecurring === true,
+        recurringPattern: recurringPattern || null,
+        recurringEndDate: recurringEndDate || null,
+        isDraft: isDraft === true,
+        status: isDraft ? 'draft' : 'scheduled',
       },
     });
 
@@ -213,7 +319,7 @@ router.get('/past', async (req: Request, res: Response) => {
     }
 
     // Get completed rides for the specific driver
-    const rides = await prisma.ride.findMany({
+    const rides = await prisma.rides.findMany({
       where: {
         driverId: driverId,
         status: 'completed',
@@ -226,7 +332,7 @@ router.get('/past', async (req: Request, res: Response) => {
             },
           },
           include: {
-            rider: {
+            users: {
               select: {
                 id: true,
                 fullName: true,
@@ -281,8 +387,8 @@ router.get('/past', async (req: Request, res: Response) => {
       const passengers = ride.bookings.map((booking) => ({
         id: booking.id,
         riderId: booking.riderId,
-        riderName: booking.rider?.fullName,
-        riderPhone: booking.rider?.phoneNumber,
+        riderName: booking.users?.fullName,
+        riderPhone: booking.users?.phoneNumber,
         pickupAddress: booking.pickupAddress,
         pickupCity: booking.pickupCity || '',
         pickupState: booking.pickupState || '',
@@ -292,6 +398,8 @@ router.get('/past', async (req: Request, res: Response) => {
         confirmationNumber: booking.confirmationNumber,
         numberOfSeats: booking.numberOfSeats || 1,
         status: booking.status,
+        pickupStatus: booking.pickupStatus || 'pending',
+        pickedUpAt: booking.pickedUpAt,
       }));
       
       return {
@@ -318,6 +426,10 @@ router.get('/past', async (req: Request, res: Response) => {
         totalEarnings: ride.totalEarnings,
         status: ride.status,
         distance: ride.distance,
+        isRecurring: ride.isRecurring,
+        recurringPattern: ride.recurringPattern,
+        recurringEndDate: ride.recurringEndDate,
+        parentRideId: ride.parentRideId,
         carMake: ride.carMake,
         carModel: ride.carModel,
         carYear: ride.carYear,
@@ -361,7 +473,7 @@ router.get('/upcoming', async (req: Request, res: Response) => {
     }
 
     // Get rides for the specific driver (scheduled and in-progress only, exclude cancelled and completed)
-    const rides = await prisma.ride.findMany({
+    const rides = await prisma.rides.findMany({
       where: {
         driverId: driverId,
         status: {
@@ -374,7 +486,7 @@ router.get('/upcoming', async (req: Request, res: Response) => {
             status: 'confirmed',
           },
           include: {
-            rider: {
+            users: {
               select: {
                 id: true,
                 fullName: true,
@@ -432,8 +544,8 @@ router.get('/upcoming', async (req: Request, res: Response) => {
       const passengers = ride.bookings.map((booking) => ({
         id: booking.id,
         riderId: booking.riderId,
-        riderName: booking.rider?.fullName,
-        riderPhone: booking.rider?.phoneNumber,
+        riderName: booking.users?.fullName,
+        riderPhone: booking.users?.phoneNumber,
         pickupAddress: booking.pickupAddress,
         pickupCity: booking.pickupCity || '',
         pickupState: booking.pickupState || '',
@@ -441,7 +553,10 @@ router.get('/upcoming', async (req: Request, res: Response) => {
         pickupLatitude: booking.pickupLatitude,
         pickupLongitude: booking.pickupLongitude,
         confirmationNumber: booking.confirmationNumber,
+        numberOfSeats: booking.numberOfSeats || 1,
         status: booking.status,
+        pickupStatus: booking.pickupStatus || 'pending',
+        pickedUpAt: booking.pickedUpAt,
       }));
       
       return {
@@ -473,6 +588,10 @@ router.get('/upcoming', async (req: Request, res: Response) => {
         carColor: ride.carColor,
         driverName: ride.driverName,
         driverPhone: ride.driverPhone,
+        isRecurring: ride.isRecurring,
+        recurringPattern: ride.recurringPattern,
+        recurringEndDate: ride.recurringEndDate,
+        parentRideId: ride.parentRideId,
         passengers: passengers,
       };
     });
@@ -509,7 +628,7 @@ router.get('/earnings', async (req: Request, res: Response) => {
     }
 
     // Get all completed rides for the driver with bookings to calculate earnings
-    const completedRides = await prisma.ride.findMany({
+    const completedRides = await prisma.rides.findMany({
       where: {
         driverId: driverId,
         status: 'completed',
@@ -595,7 +714,7 @@ router.get('/earnings', async (req: Request, res: Response) => {
     }));
 
     // Calculate total distance (if available)
-    const ridesWithDistance = await prisma.ride.findMany({
+    const ridesWithDistance = await prisma.rides.findMany({
       where: {
         driverId: driverId,
         status: 'completed',
@@ -660,10 +779,10 @@ router.get('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const ride = await prisma.ride.findUnique({
+    const ride = await prisma.rides.findUnique({
       where: { id: rideId },
       include: {
-        driver: {
+        users: {
           select: {
             id: true,
             fullName: true,
@@ -683,7 +802,7 @@ router.get('/:id', async (req: Request, res: Response) => {
             },
           },
           include: {
-            rider: {
+            users: {
               select: {
                 id: true,
                 fullName: true,
@@ -749,8 +868,8 @@ router.get('/:id', async (req: Request, res: Response) => {
     const passengers = ride.bookings.map((booking) => ({
       id: booking.id,
       riderId: booking.riderId,
-      riderName: booking.rider.fullName,
-      riderPhone: booking.rider.phoneNumber,
+      riderName: booking.users.fullName,
+      riderPhone: booking.users.phoneNumber,
       pickupAddress: booking.pickupAddress,
       pickupCity: booking.pickupCity || '',
       pickupState: booking.pickupState || '',
@@ -760,6 +879,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       confirmationNumber: booking.confirmationNumber,
       numberOfSeats: booking.numberOfSeats || 1,
       status: booking.status,
+      pickupStatus: booking.pickupStatus || 'pending',
+      pickedUpAt: booking.pickedUpAt,
     }));
 
     console.log(`✅ Returning ride ${rideId} with ${passengers.length} passengers`);
@@ -797,8 +918,12 @@ router.get('/:id', async (req: Request, res: Response) => {
         totalEarnings: ride.totalEarnings,
         status: ride.status,
         distance: ride.distance,
+        isRecurring: ride.isRecurring,
+        recurringPattern: ride.recurringPattern,
+        recurringEndDate: ride.recurringEndDate,
+        parentRideId: ride.parentRideId,
         passengers: passengers,
-        driver: ride.driver || null,
+        driver: ride.users || null,
         createdAt: ride.createdAt,
         updatedAt: ride.updatedAt,
       },
@@ -848,7 +973,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     // Find the ride first to verify ownership
-    const ride = await prisma.ride.findUnique({
+    const ride = await prisma.rides.findUnique({
       where: { id: rideId },
       include: {
         bookings: {
@@ -883,7 +1008,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     // Delete the ride
-    await prisma.ride.delete({
+    await prisma.rides.delete({
       where: { id: rideId },
     });
 
@@ -939,7 +1064,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     // Find the ride with bookings
-    const ride = await prisma.ride.findUnique({
+    const ride = await prisma.rides.findUnique({
       where: { id: rideId },
       include: {
         bookings: {
@@ -949,7 +1074,7 @@ router.put('/:id', async (req: Request, res: Response) => {
             },
           },
           include: {
-            rider: {
+            users: {
               select: {
                 id: true,
                 fullName: true,
@@ -1048,7 +1173,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     // Update the ride
-    const updatedRide = await prisma.ride.update({
+    const updatedRide = await prisma.rides.update({
       where: { id: rideId },
       data: updateData,
     });
@@ -1057,7 +1182,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (bookingsCount > 0 && changes.length > 0) {
       const changeMessage = changes.join(', ');
       const notificationPromises = bookings.map((booking: typeof bookings[0]) =>
-        prisma.notification.create({
+        prisma.notifications.create({
           data: {
             riderId: booking.riderId,
             type: 'ride-updated',
@@ -1130,7 +1255,7 @@ router.put('/:id/cancel', async (req: Request, res: Response) => {
     }
 
     // Find the ride first to verify ownership
-    const ride = await prisma.ride.findUnique({
+    const ride = await prisma.rides.findUnique({
       where: { id: rideId },
       include: {
         bookings: {
@@ -1174,7 +1299,7 @@ router.put('/:id/cancel', async (req: Request, res: Response) => {
     // Cancel the ride and all associated bookings in a transaction
     await prisma.$transaction(async (tx) => {
       // Update ride status to cancelled
-      await tx.ride.update({
+      await tx.rides.update({
         where: { id: rideId },
         data: {
           status: 'cancelled',
@@ -1183,7 +1308,7 @@ router.put('/:id/cancel', async (req: Request, res: Response) => {
 
       // Cancel all confirmed bookings
       if (ride.bookings.length > 0) {
-        await tx.booking.updateMany({
+        await tx.bookings.updateMany({
           where: {
             rideId: rideId,
             status: 'confirmed',
@@ -1194,7 +1319,7 @@ router.put('/:id/cancel', async (req: Request, res: Response) => {
         });
 
         // Restore available seats
-        await tx.ride.update({
+        await tx.rides.update({
           where: { id: rideId },
           data: {
             availableSeats: {
@@ -1256,7 +1381,7 @@ router.put('/:id/start', async (req: Request, res: Response) => {
     }
 
     // Find the ride with confirmed bookings
-    const ride = await prisma.ride.findUnique({
+    const ride = await prisma.rides.findUnique({
       where: { id: rideId },
       include: {
         bookings: {
@@ -1264,7 +1389,7 @@ router.put('/:id/start', async (req: Request, res: Response) => {
             status: 'confirmed',
           },
           include: {
-            rider: {
+            users: {
               select: {
                 id: true,
                 fullName: true,
@@ -1314,8 +1439,30 @@ router.put('/:id/start', async (req: Request, res: Response) => {
       });
     }
 
+    // Check if driver already has another ride in progress
+    const activeRide = await prisma.rides.findFirst({
+      where: {
+        driverId: driverId,
+        status: 'in-progress',
+        id: { not: rideId }, // Exclude the current ride
+      },
+      select: {
+        id: true,
+        fromAddress: true,
+        toAddress: true,
+      },
+    });
+
+    if (activeRide) {
+      return res.status(400).json({
+        success: false,
+        message: `You already have a ride in progress. Please complete your current ride (ID: ${activeRide.id}) before starting a new one.`,
+        activeRideId: activeRide.id,
+      });
+    }
+
     // Update ride status to in-progress
-    await prisma.ride.update({
+    await prisma.rides.update({
       where: { id: rideId },
       data: {
         status: 'in-progress',
@@ -1325,7 +1472,7 @@ router.put('/:id/start', async (req: Request, res: Response) => {
     // Create notifications for all confirmed passengers
     if (ride.bookings.length > 0) {
       const notificationPromises = ride.bookings.map((booking) =>
-        prisma.notification.create({
+        prisma.notifications.create({
           data: {
             riderId: booking.riderId, // Store notification for the rider
             type: 'ride-started',
@@ -1396,7 +1543,7 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     }
 
     // Find the ride with confirmed bookings
-    const ride = await prisma.ride.findUnique({
+    const ride = await prisma.rides.findUnique({
       where: { id: rideId },
       include: {
         bookings: {
@@ -1404,7 +1551,7 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
             status: 'confirmed',
           },
           include: {
-            rider: {
+            users: {
               select: {
                 id: true,
                 fullName: true,
@@ -1447,6 +1594,31 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       });
     }
 
+    // Check if ride is started
+    if (ride.status !== 'in-progress') {
+      return res.status(400).json({
+        success: false,
+        message: 'Ride must be started before it can be completed',
+      });
+    }
+
+    // Check if all passengers are picked up
+    if (ride.bookings.length > 0) {
+      const allPickedUp = ride.bookings.every(
+        (booking) => booking.pickupStatus === 'picked_up'
+      );
+
+      if (!allPickedUp) {
+        const unpickedCount = ride.bookings.filter(
+          (booking) => booking.pickupStatus !== 'picked_up'
+        ).length;
+        return res.status(400).json({
+          success: false,
+          message: `Cannot complete ride. ${unpickedCount} passenger${unpickedCount !== 1 ? 's' : ''} still need${unpickedCount !== 1 ? '' : 's'} to be marked as picked up.`,
+        });
+      }
+    }
+
     // Calculate total earnings: sum of (numberOfSeats * pricePerSeat) for all confirmed bookings
     let totalEarnings = 0;
     if (ride.bookings.length > 0) {
@@ -1459,7 +1631,7 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     // Complete the ride and all associated bookings in a transaction
     await prisma.$transaction(async (tx) => {
       // Update ride status to completed and store total earnings
-      await tx.ride.update({
+      await tx.rides.update({
         where: { id: rideId },
         data: {
           status: 'completed',
@@ -1469,7 +1641,7 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
 
       // Mark all confirmed bookings as completed
       if (ride.bookings.length > 0) {
-        await tx.booking.updateMany({
+        await tx.bookings.updateMany({
           where: {
             rideId: rideId,
             status: 'confirmed',
@@ -1484,7 +1656,7 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     // Create notifications for all passengers
     if (ride.bookings.length > 0) {
       const notificationPromises = ride.bookings.map((booking) =>
-        prisma.notification.create({
+        prisma.notifications.create({
           data: {
             riderId: booking.riderId, // Store notification for the rider
             type: 'ride-completed',

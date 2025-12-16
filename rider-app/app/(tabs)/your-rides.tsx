@@ -92,7 +92,8 @@ export default function YourRidesScreen(): React.JSX.Element {
     if (rideStatus === "cancelled") return "#FF3B30";
     if (status === "cancelled" || status === "rejected") return "#FF3B30";
     if (status === "pending") return "#FF9500";
-    if (isPast || status === "completed" || rideStatus === "completed")
+    // Only show completed when status is actually completed, not just when date has passed
+    if (status === "completed" || rideStatus === "completed")
       return "#999999";
     return "#34C759";
   };
@@ -107,7 +108,8 @@ export default function YourRidesScreen(): React.JSX.Element {
     if (status === "cancelled") return "Cancelled";
     if (status === "rejected") return "Rejected";
     if (status === "pending") return "Pending";
-    if (isPast || status === "completed" || rideStatus === "completed")
+    // Only show completed when status is actually completed, not just when date has passed
+    if (status === "completed" || rideStatus === "completed")
       return "Completed";
     return "Confirmed";
   };
@@ -130,10 +132,11 @@ export default function YourRidesScreen(): React.JSX.Element {
     if (
       booking.status === "cancelled" ||
       booking.status === "rejected" ||
-      booking.status === "completed"
+      booking.status === "completed" ||
+      booking.ride.status === "completed"
     )
       return true;
-    // Include if past
+    // Include if past (but still show as "Confirmed" status, not "Completed")
     if (booking.isPast) return true;
     return false;
   });

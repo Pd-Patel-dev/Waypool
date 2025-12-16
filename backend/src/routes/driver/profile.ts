@@ -20,7 +20,7 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: driverId },
       select: {
         id: true,
@@ -73,7 +73,7 @@ router.put('/', async (req: Request, res: Response) => {
     }
 
     // Check if user exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { id: driverId },
     });
 
@@ -95,7 +95,7 @@ router.put('/', async (req: Request, res: Response) => {
         errors.push('Invalid email format');
       } else {
         // Check if email is already taken by another user
-        const emailUser = await prisma.user.findUnique({
+        const emailUser = await prisma.users.findUnique({
           where: { email: email.trim().toLowerCase() },
         });
         if (emailUser && emailUser.id !== driverId) {
@@ -138,7 +138,7 @@ router.put('/', async (req: Request, res: Response) => {
     }
 
     // Update user
-    const updatedUser = await prisma.user.update({
+    const updatedUser = await prisma.users.update({
       where: { id: driverId },
       data: updateData,
       select: {
@@ -204,7 +204,7 @@ router.put('/password', async (req: Request, res: Response) => {
     }
 
     // Get user with password
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: driverId },
       select: {
         id: true,
@@ -233,7 +233,7 @@ router.put('/password', async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
     // Update password
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: driverId },
       data: {
         password: hashedPassword,

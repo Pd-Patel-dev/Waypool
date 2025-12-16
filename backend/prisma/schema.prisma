@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,113 +6,139 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
+model bookings {
+  id                   Int             @id @default(autoincrement())
+  rideId               Int
+  riderId              Int
+  confirmationNumber   String          @unique
+  pickupAddress        String
+  pickupCity           String?
+  pickupState          String?
+  pickupZipCode        String?
+  pickupLatitude       Float
+  pickupLongitude      Float
+  status               String          @default("pending")
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  numberOfSeats        Int             @default(1)
+  pickupStatus         String          @default("pending")
+  pickedUpAt           DateTime?
+  pickupPinHash        String?
+  pickupPinEncrypted   String?
+  pickupPinExpiresAt   DateTime?
+  pickupPinAttempts    Int             @default(0)
+  pickupPinLockedUntil DateTime?
+  rides                rides           @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  users                users           @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  notifications        notifications[]
+  messages             messages[]
+}
+
+model notifications {
+  id                                  Int       @id @default(autoincrement())
+  driverId                            Int?
+  type                                String
+  title                               String
+  message                             String
+  bookingId                           Int?
+  rideId                              Int?
+  isRead                              Boolean   @default(false)
+  createdAt                           DateTime  @default(now())
+  updatedAt                           DateTime  @updatedAt
+  riderId                             Int?
+  bookings                            bookings? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  users_notifications_driverIdTousers users?    @relation("notifications_driverIdTousers", fields: [driverId], references: [id], onDelete: Cascade)
+  rides                               rides?    @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  users_notifications_riderIdTousers  users?    @relation("notifications_riderIdTousers", fields: [riderId], references: [id], onDelete: Cascade)
+}
+
+model rides {
+  id                   Int             @id @default(autoincrement())
+  driverId             Int
+  driverName           String
+  driverPhone          String
+  carMake              String?
+  carModel             String?
+  carYear              Int?
+  carColor             String?
+  fromAddress          String
+  fromCity             String
+  fromState            String
+  fromZipCode          String
+  fromLatitude         Float
+  fromLongitude        Float
+  toAddress            String
+  toCity               String
+  toState              String
+  toZipCode            String
+  toLatitude           Float
+  toLongitude          Float
+  departureDate        String
+  departureTime        String
+  availableSeats       Int
+  pricePerSeat         Float
+  distance             Float?
+  status               String          @default("scheduled")
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  totalEarnings        Float?
+  estimatedTimeMinutes Int?
+  isRecurring          Boolean         @default(false)
+  recurringPattern     String?
+  recurringEndDate     String?
+  parentRideId         Int?
+  isDraft              Boolean         @default(false)
+  bookings             bookings[]
+  notifications        notifications[]
+  messages             messages[]
+  users                users           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  rides                rides?          @relation("ridesTorides", fields: [parentRideId], references: [id])
+  other_rides          rides[]         @relation("ridesTorides")
+}
+
+model users {
+  id                                          Int             @id @default(autoincrement())
+  fullName                                    String
+  email                                       String          @unique
+  phoneNumber                                 String
+  password                                    String
+  createdAt                                   DateTime        @default(now())
+  updatedAt                                   DateTime        @updatedAt
+  city                                        String?
+  photoUrl                                    String?
+  carColor                                    String?
+  carMake                                     String?
+  carModel                                    String?
+  carYear                                     Int?
+  isDriver                                    Boolean         @default(false)
+  isRider                                     Boolean         @default(false)
+  lastLocationLatitude                        Float?
+  lastLocationLongitude                       Float?
+  lastLocationUpdate                          DateTime?
+  bookings                                    bookings[]
+  notifications_notifications_driverIdTousers notifications[] @relation("notifications_driverIdTousers")
+  notifications_notifications_riderIdTousers  notifications[] @relation("notifications_riderIdTousers")
+  rides                                       rides[]
+  messages_sent                               messages[]      @relation("messages_sender")
+  messages_received                           messages[]      @relation("messages_receiver")
+}
+
+model messages {
   id          Int      @id @default(autoincrement())
-  fullName    String
-  email       String   @unique
-  phoneNumber String
-  password    String   // Hashed password
-  isDriver    Boolean  @default(false) // True if user is a driver
-  isRider     Boolean  @default(false) // True if user is a rider
-  photoUrl    String?  // Profile photo URL (optional, for drivers)
-  city        String?  // City (optional, for drivers)
-  carMake     String?  // Car make (optional, for drivers)
-  carModel    String?  // Car model (optional, for drivers)
-  carYear     Int?     // Car year (optional, for drivers)
-  carColor    String?  // Car color (optional, for drivers)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  rides              Ride[]   // Rides created by this driver
-  bookings           Booking[] // Bookings made by this rider
-  driverNotifications Notification[] @relation("DriverNotifications") // Notifications received by this driver
-  riderNotifications  Notification[] @relation("RiderNotifications") // Notifications received by this rider
-
-  @@map("users")
-}
-
-model Ride {
-  id              Int      @id @default(autoincrement())
-  driverId        Int
-  driverName      String
-  driverPhone     String
-  carMake         String?
-  carModel        String?
-  carYear         Int?
-  carColor        String?
-  fromAddress     String
-  fromCity        String
-  fromState       String
-  fromZipCode     String
-  fromLatitude    Float
-  fromLongitude   Float
-  toAddress       String
-  toCity          String
-  toState         String
-  toZipCode       String
-  toLatitude      Float
-  toLongitude     Float
-  departureDate   String
-  departureTime   String
-  availableSeats  Int
-  pricePerSeat    Float
-  distance        Float?
-  totalEarnings   Float?   // Total earnings from completed ride (calculated when ride is completed)
-  status          String   @default("scheduled") // scheduled, in-progress, completed, cancelled
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  bookings        Booking[]
-  notifications   Notification[]
-
-  @@map("rides")
-}
-
-model Booking {
-  id                Int      @id @default(autoincrement())
-  rideId            Int
-  riderId           Int
-  confirmationNumber String   @unique
-  pickupAddress     String
-  pickupCity        String?
-  pickupState       String?
-  pickupZipCode     String?
-  pickupLatitude    Float
-  pickupLongitude   Float
-  numberOfSeats     Int      @default(1)
-  status            String   @default("pending") // pending, confirmed, rejected, cancelled, completed
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  // Relations
-  ride              Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
-  rider             User     @relation(fields: [riderId], references: [id], onDelete: Cascade)
-  notifications     Notification[]
-
-  @@map("bookings")
-}
-
-model Notification {
-  id          Int      @id @default(autoincrement())
-  driverId    Int?     // Driver who receives the notification (optional)
-  riderId     Int?     // Rider who receives the notification (optional)
-  type        String   // 'booking', 'cancellation', 'message', 'ride-started', 'ride-completed', etc.
-  title       String
+  senderId    Int
+  receiverId  Int
+  rideId      Int?
+  bookingId   Int?
   message     String
-  bookingId   Int?     // Optional: reference to booking if notification is about a booking
-  rideId      Int?     // Optional: reference to ride if notification is about a ride
   isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  sender      users    @relation("messages_sender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    users    @relation("messages_receiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  rides       rides?   @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  bookings    bookings? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
-  // Relations
-  driver      User?    @relation("DriverNotifications", fields: [driverId], references: [id], onDelete: Cascade)
-  rider       User?    @relation("RiderNotifications", fields: [riderId], references: [id], onDelete: Cascade)
-  booking     Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  ride        Ride?    @relation(fields: [rideId], references: [id], onDelete: Cascade)
-
-  @@map("notifications")
+  @@index([senderId, receiverId])
+  @@index([receiverId, isRead])
+  @@map("messages")
 }

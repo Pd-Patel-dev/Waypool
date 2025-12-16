@@ -14,7 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { useUser } from "@/context/UserContext";
-import { cancelBooking, type RiderBooking } from "@/services/api";
+import { cancelBooking, getPickupPIN, type RiderBooking } from "@/services/api";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { calculateDistance } from "@/utils/distance";
 
@@ -24,12 +24,21 @@ export default function BookingDetailsScreen(): React.JSX.Element {
   const [booking, setBooking] = useState<RiderBooking | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [pickupPIN, setPickupPIN] = useState<string | null>(null);
+  const [pinExpiresAt, setPinExpiresAt] = useState<string | null>(null);
+  const [isLoadingPIN, setIsLoadingPIN] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
 
   useEffect(() => {
     if (params.booking) {
       try {
         const bookingData = JSON.parse(params.booking as string);
         setBooking(bookingData);
+        
+        // Fetch PIN if booking is confirmed
+        if (bookingData.status === "confirmed" && user?.id) {
+          fetchPickupPIN(bookingData.id);
+        }
       } catch (error) {
         console.error("Error parsing booking data:", error);
         Alert.alert("Error", "Invalid booking data");
@@ -40,7 +49,41 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     } else {
       setIsLoading(false);
     }
-  }, [params.booking]);
+  }, [params.booking, user?.id]);
+
+  const fetchPickupPIN = async (bookingId: number) => {
+    if (!user?.id) return;
+    
+    setIsLoadingPIN(true);
+    setPinError(null);
+    
+    try {
+      const riderId = typeof user.id === "string" ? parseInt(user.id) : user.id;
+      const result = await getPickupPIN(bookingId, riderId);
+      
+      if (result.success) {
+        setPickupPIN(result.pin);
+        setPinExpiresAt(result.expiresAt);
+      }
+    } catch (error: any) {
+      console.error("Error fetching pickup PIN:", error);
+      setPinError(error.message || "Failed to load pickup PIN");
+    } finally {
+      setIsLoadingPIN(false);
+    }
+  };
+
+  const handleCopyPIN = () => {
+    if (pickupPIN) {
+      // For now, just show an alert with the PIN
+      // In production, you'd use a clipboard library like @react-native-clipboard/clipboard
+      Alert.alert(
+        "Pickup PIN",
+        `Your pickup PIN is: ${pickupPIN}\n\nTell this code to your driver when they arrive.`,
+        [{ text: "OK" }]
+      );
+    }
+  };
 
   const formatDate = (dateString: string): string => {
     try {
@@ -140,7 +183,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
       return;
     }
 
-    if (booking.status === "completed" || booking.isPast) {
+    if (booking.status === "completed" || booking.ride.status === "completed") {
       Alert.alert(
         "Cannot Cancel",
         "This booking cannot be cancelled as it has already been completed."
@@ -219,7 +262,8 @@ export default function BookingDetailsScreen(): React.JSX.Element {
 
   const canCancel =
     (booking.status === "pending" || booking.status === "confirmed") &&
-    !booking.isPast;
+    booking.status !== "completed" &&
+    booking.ride.status !== "completed";
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -254,7 +298,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                     ? "#FF3B3020"
                     : booking.status === "pending"
                     ? "#FF950020"
-                    : booking.isPast || booking.status === "completed"
+                    : booking.status === "completed" || booking.ride.status === "completed"
                     ? "#99999920"
                     : "#34C75920",
               },
@@ -270,7 +314,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                       ? "#FF3B30"
                       : booking.status === "pending"
                       ? "#FF9500"
-                      : booking.isPast || booking.status === "completed"
+                      : booking.status === "completed" || booking.ride.status === "completed"
                       ? "#999999"
                       : "#34C759",
                 },
@@ -286,7 +330,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                       ? "#FF3B30"
                       : booking.status === "pending"
                       ? "#FF9500"
-                      : booking.isPast || booking.status === "completed"
+                      : booking.status === "completed" || booking.ride.status === "completed"
                       ? "#999999"
                       : "#34C759",
                 },
@@ -298,7 +342,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                 ? "Rejected"
                 : booking.status === "pending"
                 ? "Pending"
-                : booking.isPast || booking.status === "completed"
+                : booking.status === "completed" || booking.ride.status === "completed"
                 ? "Completed"
                 : "Confirmed"}
             </Text>
@@ -421,6 +465,52 @@ export default function BookingDetailsScreen(): React.JSX.Element {
             </Text>
           </View>
         </View>
+
+        {/* Pickup PIN Card - Only show for confirmed bookings */}
+        {booking.status === "confirmed" && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Your Pickup PIN</Text>
+            {isLoadingPIN ? (
+              <View style={styles.pinLoadingContainer}>
+                <ActivityIndicator size="small" color="#4285F4" />
+                <Text style={styles.pinLoadingText}>Loading PIN...</Text>
+              </View>
+            ) : pinError ? (
+              <View style={styles.pinErrorContainer}>
+                <Text style={styles.pinErrorText}>{pinError}</Text>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={() => fetchPickupPIN(booking.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : pickupPIN ? (
+              <View style={styles.pinContainer}>
+                <View style={styles.pinDisplay}>
+                  <Text style={styles.pinValue}>{pickupPIN}</Text>
+                  <TouchableOpacity
+                    style={styles.copyButton}
+                    onPress={handleCopyPIN}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol name="doc.on.doc" size={18} color="#4285F4" />
+                    <Text style={styles.copyButtonText}>Copy</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.pinInstructions}>
+                  Tell this code to your driver when they arrive for pickup
+                </Text>
+                {pinExpiresAt && (
+                  <Text style={styles.pinExpiry}>
+                    Expires: {new Date(pinExpiresAt).toLocaleString()}
+                  </Text>
+                )}
+              </View>
+            ) : null}
+          </View>
+        )}
 
         {/* Driver Card */}
         <View style={styles.card}>
@@ -789,5 +879,80 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#FFFFFF",
+  },
+  pinLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingVertical: 20,
+  },
+  pinLoadingText: {
+    fontSize: 14,
+    color: "#999999",
+  },
+  pinErrorContainer: {
+    alignItems: "center",
+    paddingVertical: 20,
+  },
+  pinErrorText: {
+    fontSize: 14,
+    color: "#FF3B30",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  retryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#4285F4",
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  pinContainer: {
+    alignItems: "center",
+  },
+  pinDisplay: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    marginBottom: 12,
+  },
+  pinValue: {
+    fontSize: 48,
+    fontWeight: "700",
+    color: "#4285F4",
+    letterSpacing: 8,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  copyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "rgba(66, 133, 244, 0.15)",
+    borderRadius: 8,
+  },
+  copyButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#4285F4",
+  },
+  pinInstructions: {
+    fontSize: 13,
+    color: "#999999",
+    textAlign: "center",
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  pinExpiry: {
+    fontSize: 11,
+    color: "#666666",
+    textAlign: "center",
   },
 });

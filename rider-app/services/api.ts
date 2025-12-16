@@ -286,6 +286,68 @@ export interface CancelBookingResponse {
   message: string;
 }
 
+export interface DriverLocationResponse {
+  success: boolean;
+  driverLocation: {
+    latitude: number;
+    longitude: number;
+    updatedAt: string | null;
+  } | null;
+  pickupLocation: {
+    latitude: number;
+    longitude: number;
+    address: string;
+  };
+  ride: {
+    id: number;
+    status: string;
+    fromLatitude: number;
+    fromLongitude: number;
+    toLatitude: number;
+    toLongitude: number;
+  };
+  booking: {
+    id: number;
+    pickupStatus: string;
+  };
+}
+
+export async function getDriverLocation(
+  rideId: number,
+  riderId: number
+): Promise<DriverLocationResponse> {
+  try {
+    const response = await fetchWithAuth(
+      `${API_URL}/api/rider/tracking/${rideId}?riderId=${riderId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to fetch driver location',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
 export interface BookingRequest {
   rideId: number;
   riderId: number;
@@ -381,6 +443,52 @@ export async function cancelBooking(bookingId: number, riderId: number): Promise
     if (!response.ok) {
       throw {
         message: result.message || 'Failed to cancel booking',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+/**
+ * Get pickup PIN for a booking
+ * @param bookingId - The ID of the booking
+ * @param riderId - The ID of the rider (required for security)
+ */
+export interface PickupPINResponse {
+  success: boolean;
+  pin: string;
+  expiresAt: string | null;
+  pickupStatus: string;
+  message?: string;
+}
+
+export async function getPickupPIN(bookingId: number, riderId: number): Promise<PickupPINResponse> {
+  try {
+    const response = await fetchWithAuth(
+      `${API_URL}/api/rider/bookings/${bookingId}/pickup-pin?riderId=${riderId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to fetch pickup PIN',
         status: response.status,
       } as ApiError;
     }

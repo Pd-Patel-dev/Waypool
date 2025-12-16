@@ -92,6 +92,7 @@ export const API_ENDPOINTS = {
   BOOKINGS: {
     ACCEPT: (id: number) => `/api/driver/bookings/${id}/accept`,
     REJECT: (id: number) => `/api/driver/bookings/${id}/reject`,
+    PICKUP_COMPLETE: (id: number) => `/api/driver/bookings/${id}/pickup-complete`,
   },
   PROFILE: {
     GET: "/api/driver/profile",
@@ -101,5 +102,13 @@ export const API_ENDPOINTS = {
   VEHICLE: {
     GET: "/api/driver/vehicle",
     UPDATE: "/api/driver/vehicle",
+  },
+  LOCATION: {
+    UPDATE: "/api/driver/location",
+  },
+  MESSAGES: {
+    CONVERSATIONS: "/api/driver/messages/conversations",
+    GET_MESSAGES: (partnerId: number) => `/api/driver/messages/${partnerId}`,
+    SEND: "/api/driver/messages",
   },
 } as const;

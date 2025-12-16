@@ -132,6 +132,10 @@ export default function BookingRequestScreen(): React.JSX.Element {
   const handleCallRider = () => {
     if (!notification?.booking?.rider.phoneNumber) return;
     const phoneNumber = notification.booking.rider.phoneNumber.replace(/\D/g, "");
+    if (!phoneNumber || phoneNumber.length === 0) {
+      Alert.alert("Error", "Invalid phone number");
+      return;
+    }
     const url = Platform.OS === "ios" ? `telprompt:${phoneNumber}` : `tel:${phoneNumber}`;
     Linking.openURL(url).catch((err) => {
       console.error("Error opening phone:", err);
@@ -142,6 +146,10 @@ export default function BookingRequestScreen(): React.JSX.Element {
   const handleMessageRider = () => {
     if (!notification?.booking?.rider.phoneNumber) return;
     const phoneNumber = notification.booking.rider.phoneNumber.replace(/\D/g, "");
+    if (!phoneNumber || phoneNumber.length === 0) {
+      Alert.alert("Error", "Invalid phone number");
+      return;
+    }
     const url = `sms:${phoneNumber}`;
     Linking.openURL(url).catch((err) => {
       console.error("Error opening messages:", err);

@@ -190,11 +190,27 @@ export default function MenuScreen(): React.JSX.Element {
             <IconSymbol size={18} name="chevron.right" color="#666666" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={[styles.menuItem, styles.menuItemLast]} activeOpacity={0.7}>
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/help-support')}
+          >
             <View style={styles.menuItemIcon}>
-              <IconSymbol size={20} name="envelope" color="#4285F4" />
+              <IconSymbol size={20} name="questionmark.circle" color="#4285F4" />
             </View>
             <Text style={styles.menuItemText}>Help & Support</Text>
+            <IconSymbol size={18} name="chevron.right" color="#666666" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.menuItem, styles.menuItemLast]} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/settings')}
+          >
+            <View style={styles.menuItemIcon}>
+              <IconSymbol size={20} name="gearshape" color="#4285F4" />
+            </View>
+            <Text style={styles.menuItemText}>Settings</Text>
             <IconSymbol size={18} name="chevron.right" color="#666666" />
           </TouchableOpacity>
         </View>

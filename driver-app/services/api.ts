@@ -33,9 +33,10 @@ export interface SignupResponse {
 }
 
 export interface ApiError {
-  success: false;
+  success?: false;
   message: string;
   errors?: string[];
+  status?: number;
 }
 
 export interface LoginRequest {
@@ -86,6 +87,8 @@ export interface Passenger {
   pickupLongitude?: number;
   confirmationNumber?: string;
   status?: string;
+  pickupStatus?: "pending" | "picked_up";
+  pickedUpAt?: string | null;
 }
 
 export interface Ride {
@@ -120,6 +123,10 @@ export interface Ride {
   totalEarnings?: number; // Total earnings from completed ride
   status?: "scheduled" | "in-progress" | "completed" | "cancelled";
   distance?: number; // Distance in kilometers
+  isRecurring?: boolean;
+  recurringPattern?: 'daily' | 'weekly' | 'monthly' | null;
+  recurringEndDate?: string | null;
+  parentRideId?: number | null;
   passengers?: Passenger[]; // List of enrolled passengers
   driver?: {
     id: number;
@@ -159,6 +166,11 @@ export interface CreateRideRequest {
   availableSeats: number;
   pricePerSeat: number;
   distance?: number;
+  estimatedTimeMinutes?: number;
+  isRecurring?: boolean;
+  recurringPattern?: 'daily' | 'weekly' | 'monthly' | null;
+  recurringEndDate?: string;
+  isDraft?: boolean;
 }
 
 export interface CreateRideResponse {
@@ -1050,6 +1062,69 @@ export const rejectBooking = async (
 };
 
 /**
+ * Mark a passenger as picked up (with PIN verification)
+ * @param bookingId - The ID of the booking
+ * @param driverId - The ID of the driver (required for security)
+ * @param pin - The 4-digit PIN provided by the passenger
+ */
+export interface PickupCompleteResponse {
+  success: boolean;
+  message: string;
+  booking?: {
+    id: number;
+    pickupStatus: string;
+    pickedUpAt: string | null;
+    rider: {
+      id: number;
+      fullName: string;
+    };
+  };
+  attemptsRemaining?: number;
+}
+
+export const markPassengerPickedUp = async (
+  bookingId: number,
+  driverId: number,
+  pin: string
+): Promise<PickupCompleteResponse> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.BOOKINGS.PICKUP_COMPLETE(
+        bookingId
+      )}?driverId=${driverId}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ pin }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || "Failed to mark passenger as picked up",
+        status: response.status,
+        attemptsRemaining: result.attemptsRemaining,
+      } as ApiError & { attemptsRemaining?: number };
+    }
+
+    return result as PickupCompleteResponse;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
  * Start a ride (update status to in-progress)
  * @param rideId - The ID of the ride
  * @param driverId - The ID of the driver (required for security)
@@ -1387,6 +1462,61 @@ export interface UpdateVehicleResponse {
   errors?: string[];
 }
 
+export interface UpdateLocationResponse {
+  success: boolean;
+  message: string;
+}
+
+/**
+ * Update driver's current location
+ * @param driverId - The ID of the driver
+ * @param latitude - Current latitude
+ * @param longitude - Current longitude
+ */
+export const updateDriverLocation = async (
+  driverId: number,
+  latitude: number,
+  longitude: number
+): Promise<UpdateLocationResponse> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.LOCATION.UPDATE}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          driverId,
+          latitude,
+          longitude,
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to update location",
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result as UpdateLocationResponse;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
 /**
  * Get driver vehicle information
  */
@@ -1456,6 +1586,189 @@ export const updateVehicle = async (
     }
 
     return result as UpdateVehicleResponse;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+// ==================== MESSAGING ====================
+
+export interface Message {
+  id: number;
+  senderId: number;
+  receiverId: number;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  sender: {
+    id: number;
+    fullName: string;
+    photoUrl: string | null;
+  };
+}
+
+export interface Conversation {
+  partnerId: number;
+  partnerName: string;
+  partnerPhoto: string | null;
+  lastMessage: string;
+  lastMessageTime: string;
+  unreadCount: number;
+  rideId: number | null;
+  ride?: {
+    id: number;
+    fromAddress: string;
+    toAddress: string;
+    departureDate: string;
+    departureTime: string;
+  } | null;
+}
+
+export interface ConversationsResponse {
+  success: boolean;
+  conversations: Conversation[];
+  message?: string;
+}
+
+export interface MessagesResponse {
+  success: boolean;
+  messages: Message[];
+  message?: string;
+}
+
+export interface SendMessageRequest {
+  senderId: number;
+  receiverId: number;
+  message: string;
+  rideId?: number;
+  bookingId?: number;
+}
+
+export interface SendMessageResponse {
+  success: boolean;
+  message: Message;
+}
+
+/**
+ * Get all conversations for a driver
+ */
+export const getConversations = async (
+  driverId: number
+): Promise<ConversationsResponse> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.MESSAGES.CONVERSATIONS}?driverId=${driverId}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to fetch conversations",
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Get messages with a specific partner
+ */
+export const getMessages = async (
+  driverId: number,
+  partnerId: number,
+  rideId?: number
+): Promise<MessagesResponse> => {
+  try {
+    const url = new URL(
+      `${API_BASE_URL}${API_ENDPOINTS.MESSAGES.GET_MESSAGES(partnerId)}`
+    );
+    url.searchParams.append("driverId", driverId.toString());
+    if (rideId) {
+      url.searchParams.append("rideId", rideId.toString());
+    }
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to fetch messages",
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Send a message
+ */
+export const sendMessage = async (
+  data: SendMessageRequest
+): Promise<SendMessageResponse> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}${API_ENDPOINTS.MESSAGES.SEND}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to send message",
+      } as ApiError;
+    }
+
+    return result;
   } catch (error) {
     if (error && typeof error === "object" && "message" in error) {
       throw error;

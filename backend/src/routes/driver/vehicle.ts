@@ -19,7 +19,7 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: driverId },
       select: {
         id: true,
@@ -74,7 +74,7 @@ router.put('/', async (req: Request, res: Response) => {
     }
 
     // Check if user exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { id: driverId },
     });
 
@@ -121,7 +121,7 @@ router.put('/', async (req: Request, res: Response) => {
     }
 
     // Update user vehicle information
-    const updatedUser = await prisma.user.update({
+    const updatedUser = await prisma.users.update({
       where: { id: driverId },
       data: updateData,
       select: {

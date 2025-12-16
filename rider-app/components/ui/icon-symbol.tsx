@@ -40,6 +40,11 @@ const MAPPING = {
   'dollarsign.circle.fill': 'attach-money',
   'minus': 'remove',
   'plus': 'add',
+  'arrowtriangle.up.fill': 'arrow-upward',
+  'arrowtriangle.up': 'arrow-upward',
+  'mappin.circle.fill': 'place',
+  'location.fill': 'my-location',
+  'repeat': 'repeat',
 } as IconMapping;
 
 /**
