@@ -32,6 +32,7 @@ model bookings {
   users                users           @relation(fields: [riderId], references: [id], onDelete: Cascade)
   notifications        notifications[]
   messages             messages[]
+  ratings              ratings[]
 }
 
 model notifications {
@@ -75,6 +76,7 @@ model rides {
   toLongitude          Float
   departureDate        String
   departureTime        String
+  totalSeats           Int             @default(1)
   availableSeats       Int
   pricePerSeat         Float
   distance             Float?
@@ -91,6 +93,7 @@ model rides {
   bookings             bookings[]
   notifications        notifications[]
   messages             messages[]
+  ratings              ratings[]
   users                users           @relation(fields: [driverId], references: [id], onDelete: Cascade)
   rides                rides?          @relation("ridesTorides", fields: [parentRideId], references: [id])
   other_rides          rides[]         @relation("ridesTorides")
@@ -115,12 +118,24 @@ model users {
   lastLocationLatitude                        Float?
   lastLocationLongitude                       Float?
   lastLocationUpdate                          DateTime?
+  notifyBookings                              Boolean         @default(true)
+  notifyMessages                              Boolean         @default(true)
+  notifyRideUpdates                           Boolean         @default(true)
+  notifyPromotions                            Boolean         @default(true)
+  shareLocationEnabled                        Boolean         @default(true)
+  pushToken                                   String?
+  pushTokenType                               String?
+  pushTokenPlatform                           String?
+  pushTokenDeviceId                           String?
+  pushTokenUpdatedAt                          DateTime?
   bookings                                    bookings[]
   notifications_notifications_driverIdTousers notifications[] @relation("notifications_driverIdTousers")
   notifications_notifications_riderIdTousers  notifications[] @relation("notifications_riderIdTousers")
   rides                                       rides[]
   messages_sent                               messages[]      @relation("messages_sender")
   messages_received                           messages[]      @relation("messages_receiver")
+  ratings_given                               ratings[]       @relation("ratings_rater")
+  ratings_received                            ratings[]       @relation("ratings_rated")
 }
 
 model messages {
@@ -141,4 +156,25 @@ model messages {
   @@index([senderId, receiverId])
   @@index([receiverId, isRead])
   @@map("messages")
+}
+
+model ratings {
+  id            Int       @id @default(autoincrement())
+  rideId        Int
+  bookingId     Int?
+  raterId       Int       // User who gave the rating (driver or rider)
+  ratedUserId   Int       // User who received the rating
+  rating        Int       // 1-5 stars
+  feedback      String?   // Optional text feedback
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  rides         rides     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  bookings      bookings? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  rater         users     @relation("ratings_rater", fields: [raterId], references: [id], onDelete: Cascade)
+  ratedUser     users     @relation("ratings_rated", fields: [ratedUserId], references: [id], onDelete: Cascade)
+
+  @@index([ratedUserId])
+  @@index([rideId])
+  @@index([rideId, bookingId, raterId])
+  @@map("ratings")
 }

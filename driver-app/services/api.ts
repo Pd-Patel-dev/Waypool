@@ -273,6 +273,81 @@ export const logout = async (): Promise<LogoutResponse> => {
 };
 
 /**
+ * Individual ride earning details
+ */
+export interface RideEarning {
+  rideId: number;
+  date: string; // ISO date string for parsing
+  displayDate?: string; // Formatted date for display
+  from: string;
+  to: string;
+  seatsBooked: number;
+  pricePerSeat: number;
+  distance: number;
+  earnings: number;
+}
+
+/**
+ * Get earnings data for driver
+ */
+export interface EarningsData {
+  total: number;
+  totalRides: number;
+  totalSeatsBooked: number;
+  totalDistance: number;
+  averagePerRide: number;
+  thisWeek: number;
+  thisMonth: number;
+  byDate: { [key: string]: number };
+  recentRides: RideEarning[];
+  currency: string;
+}
+
+// Export EarningsSummary as an alias for EarningsData for backwards compatibility
+export type EarningsSummary = EarningsData;
+
+export interface EarningsResponse {
+  success: boolean;
+  earnings: EarningsData;
+  message?: string;
+}
+
+export const getEarnings = async (driverId: number): Promise<EarningsResponse> => {
+  const url = `${API_BASE_URL}${API_ENDPOINTS.EARNINGS.GET}?driverId=${driverId}`;
+  console.log("🔌 Get earnings request to:", url);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to get earnings",
+      } as ApiError;
+    }
+
+    return result as EarningsResponse;
+  } catch (error) {
+    console.error("❌ Get earnings error:", error);
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
  * Check if email is available
  */
 export const checkEmail = async (
@@ -582,12 +657,14 @@ export const createRide = async (data: CreateRideRequest): Promise<CreateRideRes
  */
 export const cancelRide = async (rideId: number, driverId: number): Promise<{ success: boolean; message: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.RIDES.CANCEL(rideId)}`, {
+    // driverId should be sent as query parameter, not in body
+    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.CANCEL(rideId)}?driverId=${driverId}`;
+    
+    const response = await fetch(url, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ driverId }),
     });
 
     const result = await response.json();
@@ -617,12 +694,14 @@ export const cancelRide = async (rideId: number, driverId: number): Promise<{ su
  */
 export const startRide = async (rideId: number, driverId: number): Promise<{ success: boolean; message: string; ride?: Ride }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.RIDES.START(rideId)}`, {
+    // driverId should be sent as query parameter, not in body
+    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.START(rideId)}?driverId=${driverId}`;
+    
+    const response = await fetch(url, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ driverId }),
     });
 
     const result = await response.json();
@@ -650,14 +729,25 @@ export const startRide = async (rideId: number, driverId: number): Promise<{ suc
 /**
  * Complete a ride
  */
-export const completeRide = async (rideId: number, driverId: number): Promise<{ success: boolean; message: string; totalEarnings?: number; ride?: Ride }> => {
+export const completeRide = async (
+  rideId: number,
+  driverId: number,
+  driverLatitude: number,
+  driverLongitude: number
+): Promise<{ success: boolean; message: string; totalEarnings?: number; ride?: Ride; distanceToDestination?: number }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.RIDES.COMPLETE(rideId)}`, {
+    // driverId should be sent as query parameter, location in body
+    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.COMPLETE(rideId)}?driverId=${driverId}`;
+    
+    const response = await fetch(url, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ driverId }),
+      body: JSON.stringify({
+        driverLatitude,
+        driverLongitude,
+      }),
     });
 
     const result = await response.json();
@@ -687,10 +777,11 @@ export const completeRide = async (rideId: number, driverId: number): Promise<{ 
  */
 export const markPassengerPickedUp = async (
   bookingId: number,
+  driverId: number,
   pin: string
 ): Promise<{ success: boolean; message: string; booking?: any }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.BOOKINGS.PICKUP_COMPLETE(bookingId)}`, {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.BOOKINGS.PICKUP_COMPLETE(bookingId)}?driverId=${driverId}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -766,7 +857,49 @@ export const updateDriverLocation = async (
 /**
  * Get notifications for the driver
  */
-export const getNotifications = async (driverId: number): Promise<{ success: boolean; notifications: any[] }> => {
+export interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  time: string;
+  unread: boolean;
+  createdAt: string;
+  booking?: {
+    id: number;
+    confirmationNumber: string;
+    numberOfSeats: number;
+    status: string;
+    pickupAddress: string;
+    pickupCity: string | null;
+    pickupState: string | null;
+    rider: {
+      id: number;
+      fullName: string;
+      email: string;
+      phoneNumber: string;
+    };
+    ride: {
+      id: number;
+      fromAddress: string;
+      toAddress: string;
+      fromCity: string | null;
+      toCity: string | null;
+      departureDate: string;
+      departureTime: string;
+      pricePerSeat: number | null;
+    };
+  };
+  ride?: {
+    id: number;
+    fromAddress: string;
+    toAddress: string;
+    fromCity: string | null;
+    toCity: string | null;
+  };
+}
+
+export const getNotifications = async (driverId: number): Promise<{ success: boolean; notifications: Notification[] }> => {
   try {
     const url = `${API_BASE_URL}${API_ENDPOINTS.NOTIFICATIONS.GET_ALL}?driverId=${driverId}`;
 
@@ -789,6 +922,161 @@ export const getNotifications = async (driverId: number): Promise<{ success: boo
     return result;
   } catch (error: any) {
     console.error("❌ Error fetching notifications:", error);
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Mark a notification as read
+ */
+export const markNotificationRead = async (
+  notificationId: number,
+  driverId: number
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.NOTIFICATIONS.MARK_READ(notificationId)}?driverId=${driverId}`;
+
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to mark notification as read",
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error("❌ Error marking notification as read:", error);
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Mark all notifications as read
+ */
+export const markAllNotificationsRead = async (
+  driverId: number
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.NOTIFICATIONS.MARK_ALL_READ}?driverId=${driverId}`;
+
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to mark notifications as read",
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error("❌ Error marking all notifications as read:", error);
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Accept a booking request
+ */
+export const acceptBooking = async (
+  bookingId: number,
+  driverId: number
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.BOOKINGS.ACCEPT(bookingId)}?driverId=${driverId}`;
+
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to accept booking",
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error("❌ Error accepting booking:", error);
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Reject a booking request
+ */
+export const rejectBooking = async (
+  bookingId: number,
+  driverId: number
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.BOOKINGS.REJECT(bookingId)}?driverId=${driverId}`;
+
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to reject booking",
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error("❌ Error rejecting booking:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }

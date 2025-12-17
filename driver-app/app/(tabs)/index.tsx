@@ -88,12 +88,14 @@ export default function HomeScreen(): React.JSX.Element {
           const servicesEnabled = await Location.hasServicesEnabledAsync();
           if (!servicesEnabled) {
             setLocationError('Location services are disabled');
+            showLocationErrorAlert('services');
             return;
           }
 
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status !== 'granted') {
             setLocationError('Location permission denied');
+            showLocationErrorAlert('permission');
             return;
           }
 
@@ -129,10 +131,13 @@ export default function HomeScreen(): React.JSX.Element {
         } catch (error: any) {
           console.error('Error getting location:', error);
           let errorMessage = 'Failed to get location';
+          
           if (error?.message?.includes("timeout")) {
             errorMessage = 'Location request timed out';
+            showLocationErrorAlert('timeout');
           } else if (error?.message?.includes("permission")) {
             errorMessage = 'Location permission denied';
+            showLocationErrorAlert('permission');
           }
           setLocationError(errorMessage);
           

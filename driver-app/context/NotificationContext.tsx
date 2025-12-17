@@ -9,6 +9,7 @@ import {
   handleNotificationTap,
 } from '@/services/notificationService';
 import { useUser } from './UserContext';
+import { websocketService } from '@/services/websocket';
 
 interface NotificationContextType {
   badgeCount: number;
@@ -109,15 +110,45 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
   }, [user?.id, handleNotificationReceived, handleNotificationResponse, refreshBadgeCount]);
 
-  // Refresh badge count periodically (every 30 seconds)
+  // Setup WebSocket for real-time badge updates (replaces polling)
   useEffect(() => {
     if (!user?.id || !isNotificationsEnabled) return;
 
-    const interval = setInterval(() => {
-      refreshBadgeCount();
-    }, 30000); // 30 seconds
+    const driverId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+    
+    // Connect to WebSocket
+    websocketService.connect(driverId);
 
-    return () => clearInterval(interval);
+    // Listen for real-time notification events
+    const handleNewNotification = () => {
+      console.log('📨 Real-time notification received via WebSocket');
+      refreshBadgeCount();
+    };
+
+    const handleNotificationRead = () => {
+      console.log('✅ Notification marked as read via WebSocket');
+      refreshBadgeCount();
+    };
+
+    websocketService.on('notification:new', handleNewNotification);
+    websocketService.on('notification:read', handleNotificationRead);
+    websocketService.on('notification:badge_update', refreshBadgeCount);
+
+    // Fallback: Refresh badge count every 60 seconds (reduced from 30s since we have WebSocket)
+    const interval = setInterval(() => {
+      if (!websocketService.isConnected()) {
+        console.log('⚠️ WebSocket disconnected, falling back to polling');
+        refreshBadgeCount();
+      }
+    }, 60000); // 60 seconds
+
+    return () => {
+      websocketService.off('notification:new', handleNewNotification);
+      websocketService.off('notification:read', handleNotificationRead);
+      websocketService.off('notification:badge_update');
+      clearInterval(interval);
+      websocketService.disconnect();
+    };
   }, [user?.id, isNotificationsEnabled, refreshBadgeCount]);
 
   const value = {
@@ -133,4 +164,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     </NotificationContext.Provider>
   );
 }
+
+
+
+
 

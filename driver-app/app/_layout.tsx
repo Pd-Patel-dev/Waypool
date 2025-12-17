@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { UserProvider } from '@/context/UserContext';
 import { NotificationProvider } from '@/context/NotificationContext';
+import { RealtimeProvider } from '@/context/RealtimeContext';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -17,7 +18,8 @@ export default function RootLayout() {
   return (
     <UserProvider>
       <NotificationProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <RealtimeProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="login" options={{ headerShown: false, presentation: 'card' }} />
@@ -38,6 +40,7 @@ export default function RootLayout() {
           </Stack>
           <StatusBar style="auto" />
         </ThemeProvider>
+        </RealtimeProvider>
       </NotificationProvider>
     </UserProvider>
   );

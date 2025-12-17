@@ -155,7 +155,7 @@ export default function RideCompletionScreen(): React.JSX.Element {
       });
 
       if (result.action === Share.sharedAction) {
-        console.log("Earnings shared successfully");
+        // Shared successfully
       }
     } catch (error: any) {
       Alert.alert("Error", error.message || "Failed to share earnings");

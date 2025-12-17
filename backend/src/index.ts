@@ -2,12 +2,18 @@ import "dotenv/config";
 import express from "express";
 import type { Request, Response } from "express";
 import cors from "cors";
+import { createServer } from "http";
 import { getDatabaseStatus, disconnectDatabase } from "./utils/database";
 import driverRoutes from "./routes/driver";
 import riderRoutes from "./routes/rider";
+import { socketService } from "./services/socketService";
 
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// Initialize Socket.IO
+socketService.initialize(httpServer);
 
 // Track server start time for uptime calculation
 const serverStartTime = Date.now();
@@ -67,7 +73,7 @@ process.on("SIGTERM", async () => {
 });
 
 // Start server - Listen on ALL interfaces (0.0.0.0) not just localhost
-app.listen(PORT, "0.0.0.0", () => {
+httpServer.listen(PORT, "0.0.0.0", () => {
   const os = require("os");
   const networkInterfaces = os.networkInterfaces();
   let localIP = "localhost";
