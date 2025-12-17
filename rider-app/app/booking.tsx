@@ -8,6 +8,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +16,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import AddressAutocomplete, { type AddressDetails } from '@/components/AddressAutocomplete';
+import { useUser } from '@/context/UserContext';
+import { bookRide, type ApiError } from '@/services/api';
 
 // Conditionally import Location only on native platforms
 let Location: any = null;
@@ -34,17 +37,25 @@ interface Ride {
   fromLongitude: number;
   toLatitude: number;
   toLongitude: number;
+  price?: number;
+  departureTime?: string;
+  driverName?: string;
+  availableSeats?: number;
+  totalSeats?: number;
 }
 
 export default function BookingScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
+  const { user } = useUser();
   const [ride, setRide] = useState<Ride | null>(null);
   const [pickupAddress, setPickupAddress] = useState<string>('');
   const [pickupDetails, setPickupDetails] = useState<AddressDetails | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [totalDistance, setTotalDistance] = useState<number | null>(null);
+  const [numberOfSeats, setNumberOfSeats] = useState<number>(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBooking, setIsBooking] = useState(false);
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
@@ -368,21 +379,86 @@ export default function BookingScreen(): React.JSX.Element {
         </View>
 
         {/* Content */}
-        <View style={styles.contentContainer}>
+        <ScrollView 
+          style={styles.contentContainer}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
+        >
           <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Select Your Pickup Location</Text>
-            
-            <AddressAutocomplete
-              value={pickupAddress}
-              onChangeText={setPickupAddress}
-              onSelectAddress={handleSelectPickup}
-              placeholder="Enter your pickup address"
-              currentLocation={currentLocation}
-            />
+            {/* Pickup Location Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Select Your Pickup Location</Text>
+              
+              <AddressAutocomplete
+                value={pickupAddress}
+                onChangeText={setPickupAddress}
+                onSelectAddress={handleSelectPickup}
+                placeholder="Enter your pickup address"
+                currentLocation={currentLocation}
+              />
+            </View>
+
+            {/* Seat Selection Section */}
+            <View style={styles.section}>
+              <View style={styles.seatSelectionContainer}>
+                <Text style={styles.seatSelectionLabel}>Number of Seats</Text>
+              <View style={styles.seatSelector}>
+                <TouchableOpacity
+                  style={[styles.seatButton, numberOfSeats <= 1 && styles.seatButtonDisabled]}
+                  onPress={() => setNumberOfSeats(Math.max(1, numberOfSeats - 1))}
+                  disabled={numberOfSeats <= 1}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol name="minus" size={20} color={numberOfSeats <= 1 ? "#666666" : "#FFFFFF"} />
+                </TouchableOpacity>
+                <View style={styles.seatCountContainer}>
+                  <Text style={styles.seatCount}>{numberOfSeats}</Text>
+                  <Text style={styles.seatCountLabel}>
+                    {numberOfSeats === 1 ? 'seat' : 'seats'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.seatButton,
+                    ride.availableSeats !== undefined && numberOfSeats >= ride.availableSeats && styles.seatButtonDisabled
+                  ]}
+                  onPress={() => {
+                    const maxSeats = ride.availableSeats !== undefined ? ride.availableSeats : 10;
+                    setNumberOfSeats(Math.min(maxSeats, numberOfSeats + 1));
+                  }}
+                  disabled={ride.availableSeats !== undefined && numberOfSeats >= ride.availableSeats}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol 
+                    name="plus" 
+                    size={20} 
+                    color={
+                      ride.availableSeats !== undefined && numberOfSeats >= ride.availableSeats 
+                        ? "#666666" 
+                        : "#FFFFFF"
+                    } 
+                  />
+                </TouchableOpacity>
+              </View>
+              {ride.availableSeats !== undefined && (
+                <Text style={styles.availableSeatsText}>
+                  {ride.availableSeats} seat{ride.availableSeats !== 1 ? 's' : ''} available
+                </Text>
+              )}
+              {ride.price && (
+                <Text style={styles.totalPriceText}>
+                  Total: ${(ride.price * numberOfSeats).toFixed(2)}
+                </Text>
+              )}
+              </View>
+            </View>
 
             {/* Route Info - Stops */}
             {pickupDetails && (
-              <View style={styles.routeInfo}>
+              <View style={styles.section}>
+                <View style={styles.routeInfo}>
                 <Text style={styles.stopsTitle}>Route Stops</Text>
                 
                 {/* Stop 1: Original Pickup */}
@@ -428,13 +504,14 @@ export default function BookingScreen(): React.JSX.Element {
                   </View>
                 )}
               </View>
+            </View>
             )}
 
             {/* Continue Button */}
             <TouchableOpacity
               style={[
                 styles.confirmButton,
-                !pickupDetails && styles.confirmButtonDisabled,
+                (!pickupDetails || isBooking || numberOfSeats < 1) && styles.confirmButtonDisabled,
               ]}
               onPress={handleContinue}
               disabled={!pickupDetails}
@@ -442,8 +519,9 @@ export default function BookingScreen(): React.JSX.Element {
             >
               <Text style={styles.confirmButtonText}>Continue</Text>
             </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -525,10 +603,15 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 20,
+  },
   content: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 20,
+  },
+  section: {
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 16,
@@ -537,7 +620,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   routeInfo: {
-    marginTop: 16,
     backgroundColor: '#1C1C1E',
     borderRadius: 12,
     padding: 12,
@@ -631,7 +713,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 16,
   },
   confirmButtonDisabled: {
     backgroundColor: '#2A2A2C',
@@ -656,6 +737,67 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#4285F4',
+  },
+  seatSelectionContainer: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#2A2A2C',
+  },
+  seatSelectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  seatSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  seatButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#4285F4',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  seatButtonDisabled: {
+    backgroundColor: '#2A2A2C',
+    opacity: 0.5,
+  },
+  seatCountContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  seatCount: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  seatCountLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#999999',
+  },
+  availableSeatsText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#999999',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  totalPriceText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4285F4',
+    textAlign: 'center',
+    marginTop: 8,
   },
 });
 
