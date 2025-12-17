@@ -1,6 +1,8 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { sendRideStartedNotification } from '../../services/pushNotificationService';
+import { socketService } from '../../services/socketService';
 
 const router = express.Router();
 
@@ -107,89 +109,80 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Check if driver has an in-progress ride (cannot have multiple rides running simultaneously)
-    // Only check if not a draft - drafts are allowed even with active rides
-    if (!isDraft) {
-      const inProgressRide = await prisma.rides.findFirst({
-        where: {
-          driverId: parseInt(driverId),
-          status: 'in-progress',
-        },
-        select: {
-          id: true,
-          status: true,
-          fromAddress: true,
-          toAddress: true,
-          departureDate: true,
-          departureTime: true,
-        },
-      });
-
-      if (inProgressRide) {
-        return res.status(400).json({
-          success: false,
-          message: `You have a ride in progress. Please complete or cancel your current ride before creating a new one.`,
-          activeRideId: inProgressRide.id,
-        });
-      }
-    }
-    
-    // Note: We allow multiple scheduled rides for different dates
-    // Duplicate ride check (same date/route/time) is handled below
-
-    // Check for duplicate ride (same driver, route, date, and time within 30 minutes)
+    // Note: We allow multiple scheduled rides in advance with a minimum 5-hour gap
+    // This includes allowing future rides even if there's a ride currently in progress
+    // Check for time conflicts (minimum 5-hour gap between rides)
     // Only check if not a draft
     if (!isDraft) {
       const existingRides = await prisma.rides.findMany({
         where: {
           driverId: parseInt(driverId),
-          fromLatitude: { gte: parseFloat(fromLatitude) - 0.01, lte: parseFloat(fromLatitude) + 0.01 },
-          fromLongitude: { gte: parseFloat(fromLongitude) - 0.01, lte: parseFloat(fromLongitude) + 0.01 },
-          toLatitude: { gte: parseFloat(toLatitude) - 0.01, lte: parseFloat(toLatitude) + 0.01 },
-          toLongitude: { gte: parseFloat(toLongitude) - 0.01, lte: parseFloat(toLongitude) + 0.01 },
-          departureDate,
-          status: { not: 'cancelled' },
+          status: { in: ['scheduled', 'in-progress'] }, // Only check active rides, not completed or cancelled
+        },
+        select: {
+          id: true,
+          departureDate: true,
+          departureTime: true,
+          fromAddress: true,
+          toAddress: true,
         },
       });
 
-      // Check if any existing ride has the same time (within 30 minutes)
-      for (const existingRide of existingRides) {
-        const existingTime = existingRide.departureTime;
-        const newTime = departureTime;
+      // Helper function to parse date and time into a Date object
+      const parseDateTime = (dateStr: string, timeStr: string): Date => {
+        // dateStr format: "MM/DD/YYYY"
+        // timeStr format: "HH:MM AM/PM"
+        const dateParts = dateStr.split('/').map(Number);
         
-        // Parse times and compare
-        const existingTimeMatch = existingTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
-        const newTimeMatch = newTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (dateParts.length !== 3 || dateParts.some(isNaN)) {
+          throw new Error('Invalid date format');
+        }
         
-        if (existingTimeMatch && newTimeMatch && 
-            existingTimeMatch[1] && existingTimeMatch[2] && existingTimeMatch[3] &&
-            newTimeMatch[1] && newTimeMatch[2] && newTimeMatch[3]) {
-          let existingHours = parseInt(existingTimeMatch[1], 10);
-          const existingMinutes = parseInt(existingTimeMatch[2], 10);
-          const existingMeridiem = existingTimeMatch[3].toUpperCase();
+        const month = dateParts[0]!;
+        const day = dateParts[1]!;
+        const year = dateParts[2]!;
+        
+        const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        
+        if (!timeMatch || !timeMatch[1] || !timeMatch[2] || !timeMatch[3]) {
+          throw new Error('Invalid time format');
+        }
+        
+        let hours = parseInt(timeMatch[1], 10);
+        const minutes = parseInt(timeMatch[2], 10);
+        const meridiem = timeMatch[3].toUpperCase();
+        
+        // Convert to 24-hour format
+        if (meridiem === 'PM' && hours !== 12) hours += 12;
+        if (meridiem === 'AM' && hours === 12) hours = 0;
+        
+        return new Date(year, month - 1, day, hours, minutes);
+      };
+
+      try {
+        const newRideDateTime = parseDateTime(departureDate, departureTime);
+        const MIN_GAP_HOURS = 5;
+        const MIN_GAP_MS = MIN_GAP_HOURS * 60 * 60 * 1000; // 5 hours in milliseconds
+
+        // Check if any existing ride conflicts (less than 5 hours gap)
+        for (const existingRide of existingRides) {
+          const existingDateTime = parseDateTime(existingRide.departureDate, existingRide.departureTime);
+          const timeDifference = Math.abs(newRideDateTime.getTime() - existingDateTime.getTime());
           
-          let newHours = parseInt(newTimeMatch[1], 10);
-          const newMinutes = parseInt(newTimeMatch[2], 10);
-          const newMeridiem = newTimeMatch[3].toUpperCase();
-          
-          if (existingMeridiem === 'PM' && existingHours !== 12) existingHours += 12;
-          if (existingMeridiem === 'AM' && existingHours === 12) existingHours = 0;
-          if (newMeridiem === 'PM' && newHours !== 12) newHours += 12;
-          if (newMeridiem === 'AM' && newHours === 12) newHours = 0;
-          
-          const existingTotalMinutes = existingHours * 60 + existingMinutes;
-          const newTotalMinutes = newHours * 60 + newMinutes;
-          const timeDifference = Math.abs(existingTotalMinutes - newTotalMinutes);
-          
-          // If same date and within 30 minutes, it's a duplicate
-          if (timeDifference <= 30) {
+          // If gap is less than 5 hours, reject the ride
+          if (timeDifference < MIN_GAP_MS) {
+            const hoursDiff = (timeDifference / (1000 * 60 * 60)).toFixed(1);
             return res.status(409).json({
               success: false,
-              message: 'A similar ride already exists for this route and time. Please check your existing rides or modify the departure time.',
-              duplicateRideId: existingRide.id,
+              message: `You have another ride scheduled too close to this time. Please ensure at least ${MIN_GAP_HOURS} hours between rides. Current gap: ${hoursDiff} hours.`,
+              conflictingRideId: existingRide.id,
             });
           }
         }
+      } catch (dateParseError) {
+        console.error('Error parsing ride dates:', dateParseError);
+        // If date parsing fails, allow the ride (fail open)
+        // This shouldn't happen with valid input from the app
       }
     }
 
@@ -217,6 +210,7 @@ router.post('/', async (req: Request, res: Response) => {
         toLongitude: parseFloat(toLongitude),
         departureDate,
         departureTime,
+        totalSeats: parseInt(availableSeats),
         availableSeats: parseInt(availableSeats),
         pricePerSeat: parseFloat(pricePerSeat),
         distance: distance ? parseFloat(distance) : null,
@@ -285,7 +279,7 @@ router.post('/', async (req: Request, res: Response) => {
         toLongitude: ride.toLongitude,
         departureTime: departureISO,
         availableSeats: ride.availableSeats,
-        totalSeats: ride.availableSeats,
+        totalSeats: ride.totalSeats,
         price: ride.pricePerSeat,
         status: ride.status,
         distance: ride.distance,
@@ -420,7 +414,7 @@ router.get('/past', async (req: Request, res: Response) => {
         departureDate: ride.departureDate,
         departureTimeString: ride.departureTime,
         availableSeats: ride.availableSeats,
-        totalSeats: ride.availableSeats,
+        totalSeats: ride.totalSeats,
         price: ride.pricePerSeat,
         pricePerSeat: ride.pricePerSeat,
         totalEarnings: ride.totalEarnings,
@@ -566,7 +560,7 @@ router.get('/upcoming', async (req: Request, res: Response) => {
         toLongitude: ride.toLongitude,
         departureTime: departureISO,
         availableSeats: ride.availableSeats,
-        totalSeats: ride.availableSeats,
+        totalSeats: ride.totalSeats,
         price: ride.pricePerSeat,
         status: ride.status,
         distance: ride.distance,
@@ -900,7 +894,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         departureTime: ride.departureTime,
         departureTimeISO: departureISO,
         availableSeats: ride.availableSeats,
-        totalSeats: ride.availableSeats,
+        totalSeats: ride.totalSeats,
         price: ride.pricePerSeat,
         pricePerSeat: ride.pricePerSeat,
         totalEarnings: ride.totalEarnings,
@@ -1478,7 +1472,37 @@ router.put('/:id/start', async (req: Request, res: Response) => {
 
       await Promise.all(notificationPromises);
       console.log(`✅ Created ${ride.bookings.length} notifications for ride start`);
+
+      // Send push notifications to all passengers
+      const passengerIds = ride.bookings.map(booking => booking.riderId);
+      try {
+        await sendRideStartedNotification(passengerIds, {
+          rideId: ride.id,
+          driverName: ride.driverName || 'Driver',
+          fromAddress: ride.fromAddress,
+        });
+      } catch (pushError) {
+        console.error('❌ Error sending push notifications:', pushError);
+      }
     }
+
+    // Emit real-time event to all passengers
+    ride.bookings.forEach((booking) => {
+      socketService.emitToRider(booking.riderId, 'ride:started', {
+        rideId: ride.id,
+        driverName: ride.driverName,
+        fromAddress: ride.fromAddress,
+        toAddress: ride.toAddress,
+        message: 'Your ride has started. Please be ready for pickup.',
+      });
+    });
+
+    // Emit real-time event to all users in the ride room
+    socketService.emitToRide(rideId, 'ride:status_changed', {
+      rideId: ride.id,
+      status: 'in-progress',
+      startedAt: new Date().toISOString(),
+    });
 
     console.log(`✅ Ride ${rideId} started by driver ${driverId}`);
 
@@ -1504,6 +1528,8 @@ router.put('/:id/start', async (req: Request, res: Response) => {
 router.put('/:id/complete', async (req: Request, res: Response) => {
   try {
     const rideIdParam = req.params.id;
+    const { driverLatitude, driverLongitude } = req.body;
+    
     if (!rideIdParam) {
       return res.status(400).json({
         success: false,
@@ -1527,6 +1553,14 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: 'Driver ID is required',
+      });
+    }
+
+    // Validate driver location is provided
+    if (driverLatitude === undefined || driverLongitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Driver location is required to complete the ride',
       });
     }
 
@@ -1589,6 +1623,42 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
         message: 'Ride must be started before it can be completed',
       });
     }
+
+    // Verify driver location - must be within 100 meters of destination
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371000; // Earth's radius in meters
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δφ = (lat2 - lat1) * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+      return R * c; // Distance in meters
+    };
+
+    const distanceToDestination = calculateDistance(
+      parseFloat(driverLatitude),
+      parseFloat(driverLongitude),
+      ride.toLatitude,
+      ride.toLongitude
+    );
+
+    const MAX_DISTANCE_METERS = 100; // 100 meters radius
+    
+    if (distanceToDestination > MAX_DISTANCE_METERS) {
+      console.log(`❌ Driver too far from destination: ${distanceToDestination.toFixed(0)}m away`);
+      return res.status(400).json({
+        success: false,
+        message: `You must be within ${MAX_DISTANCE_METERS} meters of the destination to complete the ride. You are currently ${Math.round(distanceToDestination)} meters away.`,
+        distanceToDestination: Math.round(distanceToDestination),
+      });
+    }
+
+    console.log(`✅ Driver location verified: ${distanceToDestination.toFixed(0)}m from destination`);
 
     // Check if all passengers are picked up
     if (ride.bookings.length > 0) {
@@ -1666,10 +1736,116 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
 
     console.log(`✅ Ride ${rideId} completed by driver ${driverId} with earnings: $${totalEarnings.toFixed(2)}`);
 
+    // Fetch the completed ride with all details for the response
+    const completedRide = await prisma.rides.findUnique({
+      where: { id: rideId },
+      include: {
+        bookings: {
+          include: {
+            users: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phoneNumber: true,
+                photoUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Helper to parse date/time to ISO
+    const parseDateTimeToISO = (dateStr: string, timeStr: string): string => {
+      try {
+        const dateParts = dateStr.split('/').map(Number);
+        if (dateParts.length !== 3) return new Date().toISOString();
+        const [month, day, year] = dateParts;
+        if (!month || !day || !year) return new Date().toISOString();
+        const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (!timeMatch || !timeMatch[1] || !timeMatch[2] || !timeMatch[3]) {
+          return new Date().toISOString();
+        }
+        let hours = parseInt(timeMatch[1], 10);
+        const minutes = parseInt(timeMatch[2], 10);
+        const meridiem = timeMatch[3].toUpperCase();
+        if (meridiem === 'PM' && hours !== 12) hours += 12;
+        if (meridiem === 'AM' && hours === 12) hours = 0;
+        return new Date(year, month - 1, day, hours, minutes).toISOString();
+      } catch {
+        return new Date().toISOString();
+      }
+    };
+
+    // Format passengers
+    const passengers = completedRide?.bookings.map((booking: any) => ({
+      id: booking.id,
+      riderId: booking.riderId,
+      riderName: booking.users?.fullName,
+      riderPhone: booking.users?.phoneNumber,
+      pickupAddress: booking.pickupAddress,
+      pickupCity: booking.pickupCity || '',
+      pickupState: booking.pickupState || '',
+      pickupZipCode: booking.pickupZipCode || '',
+      pickupLatitude: booking.pickupLatitude,
+      pickupLongitude: booking.pickupLongitude,
+      confirmationNumber: booking.confirmationNumber,
+      numberOfSeats: booking.numberOfSeats || 1,
+      status: booking.status,
+      pickupStatus: booking.pickupStatus || 'pending',
+      pickedUpAt: booking.pickedUpAt,
+    })) || [];
+
+    const departureISO = completedRide ? parseDateTimeToISO(completedRide.departureDate, completedRide.departureTime) : '';
+
+    // Emit real-time event to all passengers
+    ride.bookings.forEach((booking) => {
+      socketService.emitToRider(booking.riderId, 'ride:completed', {
+        rideId: ride.id,
+        fromAddress: ride.fromAddress,
+        toAddress: ride.toAddress,
+        totalEarnings: totalEarnings,
+        message: 'Your ride has been completed. Thank you for using Waypool!',
+      });
+    });
+
+    // Emit real-time event to all users in the ride room
+    socketService.emitToRide(rideId, 'ride:status_changed', {
+      rideId: ride.id,
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      totalEarnings: totalEarnings,
+    });
+
     return res.json({
       success: true,
       message: 'Ride completed successfully',
       totalEarnings: totalEarnings,
+      ride: completedRide ? {
+        id: completedRide.id,
+        fromAddress: completedRide.fromAddress,
+        toAddress: completedRide.toAddress,
+        fromCity: completedRide.fromCity,
+        toCity: completedRide.toCity,
+        fromState: completedRide.fromState,
+        toState: completedRide.toState,
+        fromLatitude: completedRide.fromLatitude,
+        fromLongitude: completedRide.fromLongitude,
+        toLatitude: completedRide.toLatitude,
+        toLongitude: completedRide.toLongitude,
+        departureTime: departureISO,
+        departureDate: completedRide.departureDate,
+        departureTimeString: completedRide.departureTime,
+        distance: completedRide.distance,
+        estimatedTimeMinutes: completedRide.estimatedTimeMinutes,
+        pricePerSeat: completedRide.pricePerSeat,
+        totalEarnings: totalEarnings,
+        status: completedRide.status,
+        passengers: passengers,
+        createdAt: completedRide.createdAt.toISOString(),
+        updatedAt: completedRide.updatedAt.toISOString(),
+      } : null,
     });
   } catch (error) {
     console.error('❌ Error completing ride:', error);

@@ -10,9 +10,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { getRideById } from '@/services/api';
 
 
 interface Ride {
@@ -163,6 +164,29 @@ export default function RideDetailsScreen(): React.JSX.Element {
       setIsLoading(false);
     }
   }, [params.ride, fetchRoute]);
+
+  // Refresh ride data when screen comes back into focus
+  useFocusEffect(
+    useCallback(() => {
+      const refreshRideData = async () => {
+        if (ride?.id) {
+          try {
+            console.log('🔄 Refreshing ride data for ride ID:', ride.id);
+            const response = await getRideById(ride.id);
+            if (response.success && response.ride) {
+              console.log('✅ Updated ride data - Available seats:', response.ride.availableSeats);
+              setRide(response.ride);
+            }
+          } catch (error) {
+            console.error('❌ Error refreshing ride data:', error);
+            // Keep existing ride data if refresh fails
+          }
+        }
+      };
+
+      refreshRideData();
+    }, [ride?.id])
+  );
 
   const formatDate = (dateString: string): string => {
     try {

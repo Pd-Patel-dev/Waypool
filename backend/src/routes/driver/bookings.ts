@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import { sendBookingAcceptedNotification } from '../../services/pushNotificationService';
+import { socketService } from '../../services/socketService';
 
 const router = express.Router();
 
@@ -146,6 +148,7 @@ router.put('/:id/accept', async (req: Request, res: Response) => {
     const expiryDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
 
     // Accept the booking and decrement available seats in a transaction
+    // Accept booking and decrement seats in a transaction
     await prisma.$transaction(async (tx) => {
       // Update booking status to confirmed and set PIN
       await tx.bookings.update({
@@ -160,7 +163,7 @@ router.put('/:id/accept', async (req: Request, res: Response) => {
         },
       });
 
-      // Decrement available seats
+      // Decrement available seats now that booking is accepted
       await tx.rides.update({
         where: { id: booking.rideId },
         data: {
@@ -184,9 +187,35 @@ router.put('/:id/accept', async (req: Request, res: Response) => {
           isRead: false,
         },
       });
+
+      // Send push notification to rider
+      const departureDate = new Date(booking.rides.departureTime);
+      await sendBookingAcceptedNotification(booking.riderId, {
+        bookingId: booking.id,
+        driverName: booking.rides.driverName || 'Driver',
+        rideDate: departureDate.toLocaleDateString(),
+        rideTime: departureDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
     } catch (notificationError) {
       console.error('❌ Error creating acceptance notification:', notificationError);
     }
+
+    // Emit real-time event to rider
+    socketService.emitToRider(booking.riderId, 'booking:accepted', {
+      bookingId: booking.id,
+      rideId: booking.rides.id,
+      driverName: booking.rides.driverName,
+      pickupPIN: pickupPIN, // Send PIN via WebSocket for instant access
+      message: 'Your ride request has been accepted',
+    });
+
+    // Emit real-time event to driver (update their inbox)
+    socketService.emitToDriver(driverId, 'booking:status_changed', {
+      bookingId: booking.id,
+      rideId: booking.rides.id,
+      status: 'confirmed',
+      availableSeats: booking.rides.availableSeats - booking.numberOfSeats,
+    });
 
     console.log(`✅ Booking ${bookingId} accepted by driver ${driverId}`);
 
@@ -284,7 +313,7 @@ router.put('/:id/reject', async (req: Request, res: Response) => {
       });
     }
 
-    // Reject the booking
+    // Reject the booking (no need to restore seats since they weren't decremented)
     await prisma.bookings.update({
       where: { id: bookingId },
       data: {
@@ -308,6 +337,21 @@ router.put('/:id/reject', async (req: Request, res: Response) => {
     } catch (notificationError) {
       console.error('❌ Error creating rejection notification:', notificationError);
     }
+
+    // Emit real-time event to rider
+    socketService.emitToRider(booking.riderId, 'booking:rejected', {
+      bookingId: booking.id,
+      rideId: booking.rides.id,
+      driverName: booking.rides.driverName,
+      message: 'Your ride request has been rejected',
+    });
+
+    // Emit real-time event to driver (update their inbox)
+    socketService.emitToDriver(driverId, 'booking:status_changed', {
+      bookingId: booking.id,
+      rideId: booking.rides.id,
+      status: 'rejected',
+    });
 
     console.log(`✅ Booking ${bookingId} rejected by driver ${driverId}`);
 
@@ -516,6 +560,20 @@ router.put('/:id/pickup-complete', async (req: Request, res: Response) => {
           },
         },
       },
+    });
+
+    // Emit real-time event to rider
+    socketService.emitToRider(booking.riderId, 'passenger:picked_up', {
+      bookingId: booking.id,
+      rideId: booking.rides.id,
+      message: 'You have been marked as picked up',
+    });
+
+    // Emit real-time event to all passengers in the ride
+    socketService.emitToRide(booking.rides.id, 'ride:passenger_picked_up', {
+      bookingId: booking.id,
+      passengerName: booking.users.fullName,
+      pickedUpAt: now.toISOString(),
     });
 
     console.log(`✅ Passenger ${booking.users.fullName} marked as picked up for booking ${bookingId}`);

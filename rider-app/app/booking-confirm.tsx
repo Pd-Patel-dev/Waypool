@@ -175,8 +175,7 @@ export default function BookingConfirmScreen(): React.JSX.Element {
 
   const pricePerSeat = ride.price || 0;
   const subtotal = pricePerSeat * numberOfSeats;
-  const tax = subtotal * 0.08; // 8% tax
-  const total = subtotal + tax;
+  const total = subtotal; // No tax applied
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -323,10 +322,6 @@ export default function BookingConfirmScreen(): React.JSX.Element {
               ${pricePerSeat.toFixed(2)} × {numberOfSeats} seat{numberOfSeats !== 1 ? 's' : ''}
             </Text>
             <Text style={styles.pricingValue}>${subtotal.toFixed(2)}</Text>
-          </View>
-          <View style={styles.pricingRow}>
-            <Text style={styles.pricingLabel}>Tax (8%)</Text>
-            <Text style={styles.pricingValue}>${tax.toFixed(2)}</Text>
           </View>
           <View style={styles.pricingDivider} />
           <View style={styles.pricingRow}>

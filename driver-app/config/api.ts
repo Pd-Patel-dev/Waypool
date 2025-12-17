@@ -113,4 +113,8 @@ export const API_ENDPOINTS = {
     GET_MESSAGES: (partnerId: number) => `/api/driver/messages/${partnerId}`,
     SEND: "/api/driver/messages",
   },
+  EARNINGS: {
+    GET: "/api/driver/earnings",
+    SUMMARY: "/api/driver/earnings/summary",
+  },
 } as const;

@@ -7,6 +7,9 @@ import profileRoutes from './profile';
 import vehicleRoutes from './vehicle';
 import locationRoutes from './location';
 import messagesRoutes from './messages';
+import ratingsRoutes from './ratings';
+import pushTokenRoutes from './pushToken';
+import earningsRoutes from './earnings';
 
 const router = express.Router();
 
@@ -19,6 +22,9 @@ router.use('/profile', profileRoutes);
 router.use('/vehicle', vehicleRoutes);
 router.use('/location', locationRoutes);
 router.use('/messages', messagesRoutes);
+router.use('/ratings', ratingsRoutes);
+router.use('/push-token', pushTokenRoutes);
+router.use('/earnings', earningsRoutes);
 
 export default router;
 

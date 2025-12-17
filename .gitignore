@@ -29,9 +29,7 @@ build/
 expo-env.d.ts
 web-build/
 
-# Native builds
-ios/
-android/
+# Native builds (keep ios/ and android/ for Expo, ignore build artifacts)
 *.jks
 *.p8
 *.p12
@@ -39,6 +37,11 @@ android/
 *.mobileprovision
 *.pem
 .kotlin/
+*/ios/Pods/
+*/ios/build/
+*/android/build/
+*/android/.gradle/
+*/android/app/build/
 
 # Metro bundler
 .metro-health-check*

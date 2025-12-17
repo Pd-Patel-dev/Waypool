@@ -13,7 +13,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Allow Waypool Rider to use your location to show your position on the map and find nearby rides.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Waypool Rider to use your location to show your position on the map and find nearby rides."
-      }
+      },
+      "bundleIdentifier": "com.anonymous.riderapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +27,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "config": {
         "googleMaps": {
