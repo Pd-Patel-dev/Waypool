@@ -5,7 +5,6 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   ActivityIndicator,
 } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -179,33 +178,23 @@ export default function AddressAutocomplete({
       
       {showPredictions && predictions.length > 0 && (
         <View style={styles.predictionsContainer}>
-          <FlatList
-            data={predictions}
-            keyExtractor={(item) => item.place_id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.predictionItem}
-                onPress={() => handleSelectPrediction(item)}
-              >
-                <IconSymbol name="mappin" size={16} color="#4285F4" style={styles.predictionIcon} />
-                <View style={styles.predictionText}>
-                  <Text style={styles.predictionMainText}>
-                    {item.structured_formatting.main_text}
-                  </Text>
-                  <Text style={styles.predictionSecondaryText}>
-                    {item.structured_formatting.secondary_text}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            style={styles.predictionsList}
-            nestedScrollEnabled={true}
-            keyboardShouldPersistTaps="handled"
-            scrollEnabled={true}
-            showsVerticalScrollIndicator={true}
-            bounces={false}
-            removeClippedSubviews={false}
-          />
+          {predictions.map((item) => (
+            <TouchableOpacity
+              key={item.place_id}
+              style={styles.predictionItem}
+              onPress={() => handleSelectPrediction(item)}
+            >
+              <IconSymbol name="mappin" size={16} color="#4285F4" style={styles.predictionIcon} />
+              <View style={styles.predictionText}>
+                <Text style={styles.predictionMainText}>
+                  {item.structured_formatting.main_text}
+                </Text>
+                <Text style={styles.predictionSecondaryText}>
+                  {item.structured_formatting.secondary_text}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
     </View>

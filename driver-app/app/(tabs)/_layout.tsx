@@ -1,13 +1,46 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useUser } from '@/context/UserContext';
+import { useNotifications } from '@/context/NotificationContext';
+import { getNotifications } from '@/services/api';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 8);
+  const { user } = useUser();
+  const { badgeCount: systemBadgeCount } = useNotifications();
+  const [notificationBadgeCount, setNotificationBadgeCount] = React.useState(0);
+
+  // Fetch notification count from API
+  React.useEffect(() => {
+    const fetchBadgeCount = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const driverId = typeof user.id === "string" ? parseInt(user.id) : user.id;
+        const response = await getNotifications(driverId);
+        if (response.success) {
+          const unreadNotifications = response.notifications.filter((n) => n.unread).length;
+          setNotificationBadgeCount(unreadNotifications);
+        }
+      } catch (error) {
+        console.error("Error fetching badge count:", error);
+      }
+    };
+
+    fetchBadgeCount();
+    const interval = setInterval(fetchBadgeCount, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [user?.id]);
+
+  // Use the higher of system badge or unread notifications
+  const displayBadgeCount = Math.max(systemBadgeCount, notificationBadgeCount);
   
   return (
     <Tabs
@@ -70,11 +103,20 @@ export default function TabLayout() {
         options={{
           title: 'Inbox',
           tabBarIcon: ({ color, focused }) => (
+            <View style={styles.iconContainer}>
               <IconSymbol 
               size={24} 
                 name={focused ? "envelope.fill" : "envelope"}
               color={color} 
               />
+              {displayBadgeCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {displayBadgeCount > 99 ? '99+' : displayBadgeCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           ),
         }}
       />
@@ -94,4 +136,29 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#000000',
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+});
 

@@ -231,82 +231,18 @@ export default function BookingScreen(): React.JSX.Element {
     setPickupDetails(addressDetails);
   };
 
-  const handleConfirmBooking = () => {
-    if (!pickupDetails || !ride || !user) return;
-
-    // Show confirmation dialog
-    const totalPrice = ride.price ? ride.price * numberOfSeats : 0;
-    Alert.alert(
-      'Confirm Booking',
-      `Are you sure you want to book this ride?\n\n` +
-      `Pickup: ${pickupDetails.fullAddress}\n` +
-      `Destination: ${ride.toAddress}\n` +
-      `Seats: ${numberOfSeats}\n` +
-      `${totalDistance !== null ? `Distance: ${totalDistance.toFixed(1)} mi\n` : ''}` +
-      `${ride.price ? `Price per seat: $${ride.price.toFixed(2)}\n` : ''}` +
-      `${ride.price ? `Total: $${totalPrice.toFixed(2)}\n` : ''}` +
-      `${ride.departureTime ? `Departure: ${new Date(ride.departureTime).toLocaleString()}\n` : ''}`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm',
-          style: 'default',
-          onPress: async () => {
-            setIsBooking(true);
-            try {
-              // Call booking API
-              const response = await bookRide({
-                rideId: ride.id,
-                riderId: parseInt(user.id),
-                numberOfSeats: numberOfSeats,
-                pickupAddress: pickupDetails.fullAddress,
-                pickupCity: pickupDetails.city || undefined,
-                pickupState: pickupDetails.state || undefined,
-                pickupZipCode: pickupDetails.zipCode || undefined,
-                pickupLatitude: pickupDetails.latitude!,
-                pickupLongitude: pickupDetails.longitude!,
-              });
-
-              if (response.success && response.booking) {
-                // Show success message with confirmation number
-                Alert.alert(
-                  'Booking Confirmed! 🎉',
-                  `Your ride has been successfully booked!\n\n` +
-                  `Confirmation Number: ${response.booking.confirmationNumber}\n` +
-                  `Seats: ${response.booking.numberOfSeats}\n\n` +
-                  `You will receive a confirmation shortly.`,
-                  [
-                    {
-                      text: 'OK',
-                      onPress: () => {
-                        // Navigate back to home screen
-                        router.replace('/(tabs)');
-                      },
-                    },
-                  ],
-                  { cancelable: false }
-                );
-              } else {
-                throw new Error(response.message || 'Booking failed');
-              }
-            } catch (error) {
-              const apiError = error as ApiError;
-              Alert.alert(
-                'Booking Failed',
-                apiError.message || 'There was an error processing your booking. Please try again.',
-                [{ text: 'OK' }]
-              );
-            } finally {
-              setIsBooking(false);
-            }
-          },
-        },
-      ],
-      { cancelable: true }
-    );
+  const handleContinue = () => {
+    if (!pickupDetails || !ride) return;
+    
+    // Navigate to confirmation screen with ride and pickup details
+    router.push({
+      pathname: '/booking-confirm',
+      params: {
+        ride: JSON.stringify(ride),
+        pickupDetails: JSON.stringify(pickupDetails),
+        totalDistance: totalDistance?.toString() || '0',
+      },
+    });
   };
 
   if (isLoading || !ride) {
@@ -571,24 +507,17 @@ export default function BookingScreen(): React.JSX.Element {
             </View>
             )}
 
-            {/* Confirm Button */}
-            <View style={styles.section}>
-              <TouchableOpacity
+            {/* Continue Button */}
+            <TouchableOpacity
               style={[
                 styles.confirmButton,
                 (!pickupDetails || isBooking || numberOfSeats < 1) && styles.confirmButtonDisabled,
               ]}
-              onPress={handleConfirmBooking}
-              disabled={!pickupDetails || isBooking || numberOfSeats < 1}
+              onPress={handleContinue}
+              disabled={!pickupDetails}
               activeOpacity={0.8}
             >
-              {isBooking ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.confirmButtonText}>
-                  Confirm Booking {ride.price ? `($${(ride.price * numberOfSeats).toFixed(2)})` : ''}
-                </Text>
-              )}
+              <Text style={styles.confirmButtonText}>Continue</Text>
             </TouchableOpacity>
             </View>
           </View>

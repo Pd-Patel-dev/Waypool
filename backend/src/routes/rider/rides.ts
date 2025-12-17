@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/upcoming', async (req: Request, res: Response) => {
   try {
     // Get all scheduled rides that have available seats
-    const rides = await prisma.ride.findMany({
+    const rides = await prisma.rides.findMany({
       where: {
         status: 'scheduled',
         availableSeats: {
@@ -19,7 +19,7 @@ router.get('/upcoming', async (req: Request, res: Response) => {
         },
       },
       include: {
-        driver: {
+        users: {
           select: {
             id: true,
             fullName: true,
@@ -97,11 +97,11 @@ router.get('/upcoming', async (req: Request, res: Response) => {
         carYear: ride.carYear,
         carColor: ride.carColor,
         driver: {
-          id: ride.driver.id,
-          fullName: ride.driver.fullName,
-          email: ride.driver.email,
-          phoneNumber: ride.driver.phoneNumber,
-          photoUrl: ride.driver.photoUrl,
+          id: ride.users.id,
+          fullName: ride.users.fullName,
+          email: ride.users.email,
+          phoneNumber: ride.users.phoneNumber,
+          photoUrl: ride.users.photoUrl,
         },
       };
     });
@@ -126,7 +126,7 @@ router.get('/upcoming', async (req: Request, res: Response) => {
  */
 router.post('/book', async (req: Request, res: Response) => {
   try {
-    const { rideId, riderId, numberOfSeats, pickupAddress, pickupCity, pickupState, pickupZipCode, pickupLatitude, pickupLongitude } = req.body;
+    const { rideId, riderId, pickupAddress, pickupCity, pickupState, pickupZipCode, pickupLatitude, pickupLongitude, numberOfSeats } = req.body;
 
     // Validate required fields
     if (!rideId || !riderId || !numberOfSeats || !pickupAddress || pickupLatitude === undefined || pickupLongitude === undefined) {
@@ -176,9 +176,11 @@ router.post('/book', async (req: Request, res: Response) => {
       });
     }
 
+    const seatsToBook = numberOfSeats || 1;
+
     // Find the ride
-    const ride = await prisma.ride.findUnique({
-      where: { id: parsedRideId },
+    const ride = await prisma.rides.findUnique({
+      where: { id: parseInt(rideId) },
     });
 
     if (!ride) {
@@ -196,19 +198,38 @@ router.post('/book', async (req: Request, res: Response) => {
       });
     }
 
-    // Check if rider already has a booking for this ride
-    const existingBooking = await prisma.booking.findFirst({
+    // Validate number of seats requested
+    if (seatsToBook > ride.availableSeats) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${ride.availableSeats} seat${ride.availableSeats !== 1 ? 's' : ''} available on this ride`,
+      });
+    }
+
+    if (seatsToBook < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Number of seats must be at least 1',
+      });
+    }
+
+    // Check if rider already has a pending or confirmed booking for this ride
+    const existingBooking = await prisma.bookings.findFirst({
       where: {
-        rideId: parsedRideId,
-        riderId: parsedRiderId,
-        status: 'confirmed',
+        rideId: parseInt(rideId),
+        riderId: parseInt(riderId),
+        status: {
+          in: ['pending', 'confirmed'],
+        },
       },
     });
 
     if (existingBooking) {
       return res.status(400).json({
         success: false,
-        message: 'You already have a confirmed booking for this ride',
+        message: existingBooking.status === 'pending' 
+          ? 'You already have a pending request for this ride'
+          : 'You already have a confirmed booking for this ride',
       });
     }
 
@@ -218,126 +239,132 @@ router.post('/book', async (req: Request, res: Response) => {
     const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
     const confirmationNumber = `WP-${dateStr}-${randomStr}`;
 
-    // Create booking in a transaction
-    const booking = await prisma.$transaction(async (tx) => {
-      // Create the booking
-      const newBooking = await tx.booking.create({
-        data: {
-          rideId: parsedRideId,
-          riderId: parsedRiderId,
-          numberOfSeats: seats,
-          confirmationNumber,
-          pickupAddress,
-          pickupCity: pickupCity || null,
-          pickupState: pickupState || null,
-          pickupZipCode: pickupZipCode || null,
-          pickupLatitude: parseFloat(pickupLatitude),
-          pickupLongitude: parseFloat(pickupLongitude),
-          status: 'confirmed',
-        },
-        include: {
-          ride: {
-            include: {
-              driver: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  email: true,
-                  phoneNumber: true,
-                  photoUrl: true,
-                },
+    // Create booking as pending (request) - don't decrement seats yet
+    const booking = await prisma.bookings.create({
+      data: {
+        rideId: parseInt(rideId),
+        riderId: parseInt(riderId),
+        confirmationNumber,
+        pickupAddress,
+        pickupCity: pickupCity || null,
+        pickupState: pickupState || null,
+        pickupZipCode: pickupZipCode || null,
+        pickupLatitude: parseFloat(pickupLatitude),
+        pickupLongitude: parseFloat(pickupLongitude),
+        numberOfSeats: seatsToBook,
+        status: 'pending', // Start as pending request
+      },
+      include: {
+        rides: {
+          include: {
+            users: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phoneNumber: true,
+                photoUrl: true,
               },
             },
           },
-          rider: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-              phoneNumber: true,
-            },
+        },
+        users: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phoneNumber: true,
           },
         },
-      });
-
-      // Update ride available seats
-      await tx.ride.update({
-        where: { id: parsedRideId },
-        data: {
-          availableSeats: {
-            decrement: seats,
-          },
-        },
-      });
-
-      return newBooking;
+      },
     });
+
+    // Create notification for the driver (as a request)
+    try {
+      const bookingSeats = booking.numberOfSeats || seatsToBook;
+      await prisma.notifications.create({
+        data: {
+          driverId: booking.rides.driverId,
+          type: 'booking',
+          title: 'Ride Request',
+          message: `${booking.users.fullName} requested ${bookingSeats} seat${bookingSeats !== 1 ? 's' : ''} on your ride from ${booking.rides.fromAddress} to ${booking.rides.toAddress}`,
+          bookingId: booking.id,
+          rideId: booking.rides.id,
+          isRead: false,
+        },
+      });
+      console.log(`✅ Notification created for driver ${booking.rides.driverId} about booking request ${booking.id}`);
+    } catch (notificationError) {
+      // Don't fail the booking if notification creation fails
+      console.error('❌ Error creating notification:', notificationError);
+    }
 
     return res.json({
       success: true,
-      message: 'Booking confirmed successfully',
-        booking: {
-          id: booking.id,
-          confirmationNumber: booking.confirmationNumber,
-          numberOfSeats: booking.numberOfSeats,
-          pickupAddress: booking.pickupAddress,
-          pickupCity: booking.pickupCity,
-          pickupState: booking.pickupState,
-          status: booking.status,
-          createdAt: booking.createdAt,
+      message: 'Ride request sent successfully. Waiting for driver approval.',
+      booking: {
+        id: booking.id,
+        confirmationNumber: booking.confirmationNumber,
+        numberOfSeats: booking.numberOfSeats,
+        pickupAddress: booking.pickupAddress,
+        pickupCity: booking.pickupCity,
+        pickupState: booking.pickupState,
+        numberOfSeats: booking.numberOfSeats || seatsToBook,
+        status: booking.status,
+        createdAt: booking.createdAt,
         ride: {
-          id: booking.ride.id,
-          fromAddress: booking.ride.fromAddress,
-          toAddress: booking.ride.toAddress,
-          departureDate: booking.ride.departureDate,
-          departureTime: booking.ride.departureTime,
-          pricePerSeat: booking.ride.pricePerSeat,
-          driver: booking.ride.driver,
+          id: booking.rides.id,
+          fromAddress: booking.rides.fromAddress,
+          toAddress: booking.rides.toAddress,
+          departureDate: booking.rides.departureDate,
+          departureTime: booking.rides.departureTime,
+          pricePerSeat: booking.rides.pricePerSeat,
+          driver: booking.rides.users,
         },
-        rider: booking.rider,
+        rider: booking.users,
       },
     });
   } catch (error) {
-    console.error('❌ Error creating booking:', error);
+    console.error('❌ Error fetching bookings:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to create booking',
+      message: 'Failed to fetch bookings',
+      bookings: {
+        upcoming: [],
+        past: [],
+      },
     });
   }
 });
 
 /**
- * GET /api/rider/rides/my-bookings
- * Get all bookings for the current rider
+ * GET /api/rider/rides/bookings
+ * Get all bookings for a rider
+ * Query params: riderId (required)
  */
-router.get('/my-bookings', async (req: Request, res: Response) => {
+router.get('/bookings', async (req: Request, res: Response) => {
   try {
-    const { riderId } = req.query;
+    const riderId = req.query.riderId && typeof req.query.riderId === 'string' 
+      ? parseInt(req.query.riderId) 
+      : null;
 
-    if (!riderId) {
+    if (!riderId || isNaN(riderId)) {
       return res.status(400).json({
         success: false,
         message: 'Rider ID is required',
-      });
-    }
-
-    const parsedRiderId = parseInt(riderId as string);
-    if (isNaN(parsedRiderId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid rider ID',
+        bookings: [],
       });
     }
 
     // Get all bookings for this rider
-    const bookings = await prisma.booking.findMany({
+    const bookings = await prisma.bookings.findMany({
       where: {
-        riderId: parsedRiderId,
+        riderId: riderId,
       },
       include: {
-        ride: {
+        rides: {
           include: {
-            driver: {
+            users: {
               select: {
                 id: true,
                 fullName: true,
@@ -357,12 +384,14 @@ router.get('/my-bookings', async (req: Request, res: Response) => {
     // Helper function to parse date and time to ISO string
     const parseDateTimeToISO = (dateStr: string, timeStr: string): string => {
       try {
+        // Parse MM/DD/YYYY format
         const dateParts = dateStr.split('/').map(Number);
         if (dateParts.length !== 3) return new Date().toISOString();
         
         const [month, day, year] = dateParts;
         if (!month || !day || !year) return new Date().toISOString();
         
+        // Parse time with AM/PM
         const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
         if (!timeMatch || !timeMatch[1] || !timeMatch[2] || !timeMatch[3]) {
           return new Date().toISOString();
@@ -372,6 +401,7 @@ router.get('/my-bookings', async (req: Request, res: Response) => {
         const minutes = parseInt(timeMatch[2], 10);
         const meridiem = timeMatch[3].toUpperCase();
         
+        // Convert to 24-hour format
         if (meridiem === 'PM' && hours !== 12) hours += 12;
         if (meridiem === 'AM' && hours === 12) hours = 0;
         
@@ -383,79 +413,101 @@ router.get('/my-bookings', async (req: Request, res: Response) => {
       }
     };
 
-    // Format bookings
+    // Transform bookings to match the frontend format
+    const now = new Date();
     const formattedBookings = bookings.map((booking) => {
-      const departureISO = parseDateTimeToISO(booking.ride.departureDate, booking.ride.departureTime);
-      const now = new Date();
+      // Type assertion to handle Prisma include types
+      const bookingWithRide = booking as typeof booking & {
+        rides: {
+          id: number;
+          driverName: string;
+          driverPhone: string;
+          fromAddress: string;
+          toAddress: string;
+          fromCity: string;
+          toCity: string;
+          fromLatitude: number;
+          fromLongitude: number;
+          toLatitude: number;
+          toLongitude: number;
+          departureDate: string;
+          departureTime: string;
+          pricePerSeat: number;
+          distance: number | null;
+          status: string;
+          carMake: string | null;
+          carModel: string | null;
+          carYear: number | null;
+          carColor: string | null;
+          users: {
+            id: number;
+            fullName: string;
+            email: string;
+            phoneNumber: string;
+            photoUrl: string | null;
+          };
+        };
+      };
+
+      const departureISO = parseDateTimeToISO(bookingWithRide.rides.departureDate, bookingWithRide.rides.departureTime);
       const departureDate = new Date(departureISO);
-      
-      // Determine if booking is upcoming or past
-      const isUpcoming = departureDate > now && booking.status === 'confirmed';
-      const isPast = departureDate < now || booking.status === 'completed' || booking.status === 'cancelled';
+      // isPast should only check date, not status - status should be checked separately
+      const isPast = departureDate < now;
 
       return {
         id: booking.id,
         confirmationNumber: booking.confirmationNumber,
-        numberOfSeats: booking.numberOfSeats,
+        numberOfSeats: (booking as any).numberOfSeats || 1,
         pickupAddress: booking.pickupAddress,
         pickupCity: booking.pickupCity,
         pickupState: booking.pickupState,
+        pickupZipCode: booking.pickupZipCode,
+        pickupLatitude: booking.pickupLatitude,
+        pickupLongitude: booking.pickupLongitude,
         status: booking.status,
-        createdAt: booking.createdAt,
+        createdAt: booking.createdAt.toISOString(),
+        isPast: isPast,
         ride: {
-          id: booking.ride.id,
-          fromAddress: booking.ride.fromAddress,
-          toAddress: booking.ride.toAddress,
-          fromCity: booking.ride.fromCity,
-          toCity: booking.ride.toCity,
-          fromLatitude: booking.ride.fromLatitude,
-          fromLongitude: booking.ride.fromLongitude,
-          toLatitude: booking.ride.toLatitude,
-          toLongitude: booking.ride.toLongitude,
+          id: bookingWithRide.rides.id,
+          driverName: bookingWithRide.rides.driverName,
+          driverPhone: bookingWithRide.rides.driverPhone,
+          fromAddress: bookingWithRide.rides.fromAddress,
+          toAddress: bookingWithRide.rides.toAddress,
+          fromCity: bookingWithRide.rides.fromCity,
+          toCity: bookingWithRide.rides.toCity,
+          fromLatitude: bookingWithRide.rides.fromLatitude,
+          fromLongitude: bookingWithRide.rides.fromLongitude,
+          toLatitude: bookingWithRide.rides.toLatitude,
+          toLongitude: bookingWithRide.rides.toLongitude,
           departureTime: departureISO,
-          departureDate: booking.ride.departureDate,
-          departureTimeStr: booking.ride.departureTime,
-          pricePerSeat: booking.ride.pricePerSeat,
-          totalPrice: booking.ride.pricePerSeat * booking.numberOfSeats,
+          pricePerSeat: bookingWithRide.rides.pricePerSeat,
+          distance: bookingWithRide.rides.distance,
+          status: bookingWithRide.rides.status,
+          carMake: bookingWithRide.rides.carMake,
+          carModel: bookingWithRide.rides.carModel,
+          carYear: bookingWithRide.rides.carYear,
+          carColor: bookingWithRide.rides.carColor,
           driver: {
-            id: booking.ride.driver.id,
-            fullName: booking.ride.driver.fullName,
-            email: booking.ride.driver.email,
-            phoneNumber: booking.ride.driver.phoneNumber,
-            photoUrl: booking.ride.driver.photoUrl,
+            id: bookingWithRide.rides.users.id,
+            fullName: bookingWithRide.rides.users.fullName,
+            email: bookingWithRide.rides.users.email,
+            phoneNumber: bookingWithRide.rides.users.phoneNumber,
+            photoUrl: bookingWithRide.rides.users.photoUrl,
           },
-          driverName: booking.ride.driverName,
-          driverPhone: booking.ride.driverPhone,
-          carMake: booking.ride.carMake,
-          carModel: booking.ride.carModel,
-          carYear: booking.ride.carYear,
-          carColor: booking.ride.carColor,
         },
-        isUpcoming,
-        isPast,
       };
     });
 
-    // Separate into upcoming and past
-    const upcomingBookings = formattedBookings.filter((b) => b.isUpcoming);
-    const pastBookings = formattedBookings.filter((b) => b.isPast);
-
     return res.json({
       success: true,
-      bookings: {
-        upcoming: upcomingBookings,
-        past: pastBookings,
-      },
+      bookings: formattedBookings,
     });
   } catch (error) {
     console.error('❌ Error fetching bookings:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch bookings',
-      bookings: {
-        upcoming: [],
-        past: [],
-      },
+      bookings: [],
     });
   }
 });

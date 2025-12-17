@@ -257,6 +257,10 @@ export default function SignupScreen(): React.JSX.Element {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
+                  textContentType={Platform.OS === 'ios' ? 'none' : 'password'}
+                  autoComplete={Platform.OS === 'android' ? 'password-new' : 'off'}
+                  enablesReturnKeyAutomatically={false}
+                  keyboardType="default"
                 />
                 {errors.password && (
                   <Text style={styles.fieldError}>{errors.password}</Text>
@@ -275,6 +279,10 @@ export default function SignupScreen(): React.JSX.Element {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
+                  textContentType={Platform.OS === 'ios' ? 'none' : 'password'}
+                  autoComplete={Platform.OS === 'android' ? 'password-new' : 'off'}
+                  enablesReturnKeyAutomatically={false}
+                  keyboardType="default"
                 />
                 {errors.confirmPassword && (
                   <Text style={styles.fieldError}>{errors.confirmPassword}</Text>

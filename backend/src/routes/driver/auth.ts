@@ -37,7 +37,7 @@ router.get('/check-email', async (req: Request, res: Response) => {
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { email: email.trim().toLowerCase() },
     });
 
@@ -145,7 +145,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { email: email.trim().toLowerCase() },
     });
 
@@ -164,7 +164,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       }
 
       // Password matches - update user to enable driver flag and update driver-specific fields
-      user = await prisma.user.update({
+      user = await prisma.users.update({
         where: { email: email.trim().toLowerCase() },
         data: {
           isDriver: true,
@@ -201,7 +201,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       const hashedPassword = await bcrypt.hash(password, saltRounds);
 
       // Create user
-      user = await prisma.user.create({
+      user = await prisma.users.create({
         data: {
           fullName: fullName.trim(),
           email: email.trim().toLowerCase(),
@@ -269,7 +269,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Find user by email
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { email: email.trim().toLowerCase() },
     });
 

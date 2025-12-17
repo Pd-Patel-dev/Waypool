@@ -59,7 +59,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol 
               size={24} 
-              name={focused ? "car" : "car"}
+              name={focused ? "car.fill" : "car"}
               color={color} 
             />
           ),

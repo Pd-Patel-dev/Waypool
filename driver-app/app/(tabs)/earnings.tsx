@@ -1,117 +1,159 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Animated, PanResponder } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-
-const screenWidth = Dimensions.get('window').width;
+import { getEarnings, type EarningsSummary } from '@/services/api';
+import { useUser } from '@/context/UserContext';
 
 export default function EarningsScreen(): React.JSX.Element {
-  // Mock earnings data
-  const totalEarnings = 1248.50;
-  const weeklyEarnings = 342.00;
-  const monthlyEarnings = totalEarnings;
-  const completedRides = 24;
-  const totalDistance = 156.8;
-  const avgRating = 4.8;
+  const { user } = useUser();
+  const [earnings, setEarnings] = useState<EarningsSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // 3D tilt animation values
-  const rotateX = useRef(new Animated.Value(0)).current;
-  const rotateY = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(1)).current;
+  const fetchEarnings = async () => {
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        Animated.spring(scale, {
-          toValue: 1.02,
-          useNativeDriver: true,
-        }).start();
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        // Calculate rotation based on touch position
-        const { dx, dy } = gestureState;
-        const maxTilt = 15;
-        
-        const newRotateY = (dx / 200) * maxTilt;
-        const newRotateX = (-dy / 200) * maxTilt;
-
-        Animated.parallel([
-          Animated.spring(rotateX, {
-            toValue: newRotateX,
-            useNativeDriver: true,
-          }),
-          Animated.spring(rotateY, {
-            toValue: newRotateY,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      },
-      onPanResponderRelease: () => {
-        Animated.parallel([
-          Animated.spring(rotateX, {
-            toValue: 0,
-            friction: 5,
-            useNativeDriver: true,
-          }),
-          Animated.spring(rotateY, {
-            toValue: 0,
-            friction: 5,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scale, {
-            toValue: 1,
-            friction: 5,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      },
-    })
-  ).current;
-
-  // Weekly earnings data for line chart
-  const weeklyData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    datasets: [{
-      data: [45, 68, 52, 89, 78, 125, 95],
-    }],
+    try {
+      setError(null);
+      console.log('💰 Fetching earnings for driver:', user.id);
+      const earningsData = await getEarnings(user.id);
+      console.log('💰 Earnings data received:', earningsData);
+      setEarnings(earningsData);
+    } catch (error: any) {
+      console.error('❌ Error fetching earnings:', error);
+      setError(error.message || 'Failed to load earnings. Please try again.');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
   };
 
-  // Monthly rides data for bar chart
-  const ridesData = {
-    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-    datasets: [{
-      data: [5, 8, 6, 5],
-    }],
+  useEffect(() => {
+    fetchEarnings();
+  }, [user?.id]);
+
+  const onRefresh = () => {
+    setIsRefreshing(true);
+    fetchEarnings();
   };
 
-  const chartConfig = {
-    backgroundColor: '#000000',
-    backgroundGradientFrom: '#0A0A0A',
-    backgroundGradientTo: '#0A0A0A',
-    decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(66, 133, 244, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity * 0.6})`,
-    style: {
-      borderRadius: 16,
-    },
-    propsForDots: {
-      r: '4',
-      strokeWidth: '2',
-      stroke: '#4285F4',
-    },
-    propsForBackgroundLines: {
-      strokeDasharray: '',
-      stroke: '#1A1A1A',
-      strokeWidth: 1,
-    },
+  // Use real data or fallback to 0
+  const totalEarnings = earnings?.total || 0;
+  const weeklyEarnings = earnings?.weekly || 0;
+  const monthlyEarnings = earnings?.monthly || 0;
+  const completedRides = earnings?.totalRides || 0;
+  const totalDistance = earnings?.totalDistance || 0;
+  const avgEarningsPerRide = earnings?.averagePerRide || 0;
+
+  // Calculate weekly earnings data for the last 7 days
+  const getWeeklyEarningsData = () => {
+    const now = new Date();
+    const labels: string[] = [];
+    const data: number[] = [];
+    
+    // Generate labels and data for the last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0);
+      
+      // Get day abbreviation
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      labels.push(dayNames[date.getDay()]);
+      
+      // Calculate earnings for this specific day
+      const dayStart = new Date(date);
+      const dayEnd = new Date(date);
+      dayEnd.setHours(23, 59, 59, 999);
+      
+      let dayEarnings = 0;
+      if (earnings?.recentEarnings && earnings.recentEarnings.length > 0) {
+        earnings.recentEarnings.forEach((earning) => {
+          const earningDate = new Date(earning.date);
+          if (earningDate >= dayStart && earningDate <= dayEnd) {
+            dayEarnings += earning.amount;
+          }
+        });
+      }
+      
+      data.push(dayEarnings);
+    }
+    
+    return {
+      labels,
+      datasets: [{ data }],
+    };
   };
+
+  const weeklyData = getWeeklyEarningsData();
+  
+  // Find max value for chart scaling
+  const maxWeeklyValue = Math.max(...weeklyData.datasets[0].data, 1); // At least 1 to avoid division by zero
+  
+  // Get mini chart data from weekly earnings (last 8 days for visualization)
+  const miniChartData = weeklyData.datasets[0].data.slice(-8);
+  const maxMiniChartValue = Math.max(...miniChartData, 1);
 
   const formatCurrency = (amount: number): string => {
     return `$${amount.toFixed(2)}`;
   };
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - date.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) {
+        return `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      } else if (diffDays === 1) {
+        return `Yesterday, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      } else {
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      }
+    } catch {
+      return dateString;
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="light" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4285F4" />
+          <Text style={styles.loadingText}>Loading earnings...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="light" />
+        <View style={styles.errorContainer}>
+          <IconSymbol size={48} name="exclamationmark.triangle" color="#FF3B30" />
+          <Text style={styles.errorTitle}>Unable to Load Earnings</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton} 
+            onPress={fetchEarnings}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -119,31 +161,47 @@ export default function EarningsScreen(): React.JSX.Element {
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor="#4285F4"
+          />
+        }>
         
         {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Your Earnings</Text>
-            <Text style={styles.subtitle}>Track your performance</Text>
+            <Text style={styles.subtitle}>
+              {completedRides > 0 
+                ? `${completedRides} completed ride${completedRides !== 1 ? 's' : ''}`
+                : 'No completed rides yet'}
+            </Text>
           </View>
         </View>
 
         {/* Total Earnings Card */}
-        <TouchableOpacity 
-          style={styles.totalEarningsCard}
-          activeOpacity={0.9}
-          onPress={() => console.log('Total earnings tapped')}>
+        <View style={styles.totalEarningsCard}>
           <View style={styles.totalEarningsHeader}>
             <View>
-              <Text style={styles.totalLabel}>Total earnings this month</Text>
+              <Text style={styles.totalLabel}>Weekly earnings</Text>
               <View style={styles.earningsMainSection}>
-                <Text style={styles.totalAmount}>{formatCurrency(totalEarnings)}</Text>
+                <Text style={styles.totalAmount}>{formatCurrency(weeklyEarnings)}</Text>
                 <View style={styles.iconCircle}>
                   <IconSymbol size={24} name="dollarsign.circle.fill" color="#000000" />
                 </View>
               </View>
-              <Text style={styles.growthText}>Upgrade your payout method in settings</Text>
+              <View style={styles.allTimeEarnings}>
+                <Text style={styles.allTimeLabel}>All time</Text>
+                <Text style={styles.allTimeAmount}>{formatCurrency(totalEarnings)}</Text>
+              </View>
+              {totalEarnings === 0 && completedRides === 0 ? (
+                <Text style={styles.growthText}>Complete your first ride to start earning!</Text>
+              ) : (
+                <Text style={styles.growthText}>Upgrade your payout method in settings</Text>
+              )}
             </View>
           </View>
           
@@ -151,20 +209,20 @@ export default function EarningsScreen(): React.JSX.Element {
           <View style={styles.miniChart}>
             {/* Line graph effect */}
             <View style={styles.chartLine} />
-            {/* Bars underneath */}
+            {/* Bars underneath - using real weekly data */}
             <View style={styles.chartBars}>
-              {[45, 68, 52, 89, 78, 125, 95, 110].map((value, index) => (
+              {miniChartData.map((value, index) => (
                 <View 
                   key={index}
                   style={[
                     styles.chartBarItem,
-                    { height: (value / 125) * 40 }
+                    { height: maxMiniChartValue > 0 ? (value / maxMiniChartValue) * 40 : 0 }
                   ]} 
                 />
               ))}
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
 
         {/* Stats Grid */}
         <View style={styles.statsContainer}>
@@ -185,18 +243,18 @@ export default function EarningsScreen(): React.JSX.Element {
                 <IconSymbol size={20} name="mappin" color="#9D4EDD" />
               </View>
               <View style={styles.statContent}>
-                <Text style={styles.statValue}>{totalDistance}km</Text>
+                <Text style={styles.statValue}>{totalDistance.toFixed(1)} mi</Text>
                 <Text style={styles.statLabel}>Distance</Text>
               </View>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.statCardHorizontal} activeOpacity={0.7}>
               <View style={styles.statIconContainer}>
-                <IconSymbol size={20} name="star" color="#FFD60A" />
+                <IconSymbol size={20} name="dollarsign.circle" color="#34C759" />
               </View>
               <View style={styles.statContent}>
-                <Text style={styles.statValue}>{avgRating}</Text>
-                <Text style={styles.statLabel}>Rating</Text>
+                <Text style={styles.statValue}>{formatCurrency(avgEarningsPerRide)}</Text>
+                <Text style={styles.statLabel}>Avg/Ride</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -212,24 +270,35 @@ export default function EarningsScreen(): React.JSX.Element {
             </View>
             <View style={styles.chartMetric}>
               <Text style={styles.chartMetricLabel}>Avg/Ride</Text>
-              <Text style={styles.chartMetricValue}>{formatCurrency(weeklyEarnings / completedRides)}</Text>
+              <Text style={styles.chartMetricValue}>
+                {formatCurrency(completedRides > 0 ? avgEarningsPerRide : 0)}
+              </Text>
             </View>
           </View>
           <View style={styles.simpleChart}>
-            {weeklyData.labels.map((day, index) => (
-              <View key={day} style={styles.chartBar}>
-                <View style={styles.barContainer}>
-                  <View 
-                    style={[
-                      styles.bar, 
-                      { height: (weeklyData.datasets[0].data[index] / 125) * 160 }
-                    ]} 
-                  />
+            {weeklyData.labels.map((day, index) => {
+              const dayEarnings = weeklyData.datasets[0].data[index];
+              const barHeight = maxWeeklyValue > 0 
+                ? Math.max((dayEarnings / maxWeeklyValue) * 160, dayEarnings > 0 ? 20 : 0)
+                : 0;
+              
+              return (
+                <View key={day} style={styles.chartBar}>
+                  <View style={styles.barContainer}>
+                    <View 
+                      style={[
+                        styles.bar, 
+                        { height: barHeight }
+                      ]} 
+                    />
+                  </View>
+                  <Text style={styles.barLabel}>{day}</Text>
+                  <Text style={styles.barValue}>
+                    {dayEarnings > 0 ? formatCurrency(dayEarnings) : '$0'}
+                  </Text>
                 </View>
-                <Text style={styles.barLabel}>{day}</Text>
-                <Text style={styles.barValue}>${weeklyData.datasets[0].data[index]}</Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
         </View>
 
@@ -237,57 +306,26 @@ export default function EarningsScreen(): React.JSX.Element {
         <View style={styles.recentCard}>
           <Text style={styles.chartTitle}>Recent Earnings</Text>
           <View style={styles.earningsList}>
-            <TouchableOpacity style={styles.earningItem} activeOpacity={0.7}>
-              <View style={styles.earningLeft}>
-                <View style={styles.earningIconContainer}>
-                  <IconSymbol size={18} name="checkmark" color="#4285F4" />
-                </View>
-                <View>
-                  <Text style={styles.earningTitle}>Ride to Downtown</Text>
-                  <Text style={styles.earningDate}>Today, 2:30 PM</Text>
-                </View>
+            {earnings?.recentEarnings && earnings.recentEarnings.length > 0 ? (
+              earnings.recentEarnings.map((earning, index) => (
+                <TouchableOpacity key={earning.rideId} style={styles.earningItem} activeOpacity={0.7}>
+                  <View style={styles.earningLeft}>
+                    <View style={styles.earningIconContainer}>
+                      <IconSymbol size={18} name="checkmark" color="#4285F4" />
+                    </View>
+                    <View>
+                      <Text style={styles.earningTitle}>Ride #{earning.rideId}</Text>
+                      <Text style={styles.earningDate}>{formatDate(earning.date)}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.earningAmount}>+{formatCurrency(earning.amount)}</Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyEarnings}>
+                <Text style={styles.emptyEarningsText}>No recent earnings</Text>
               </View>
-              <Text style={styles.earningAmount}>+$45.00</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.earningItem} activeOpacity={0.7}>
-              <View style={styles.earningLeft}>
-                <View style={styles.earningIconContainer}>
-                  <IconSymbol size={18} name="checkmark" color="#4285F4" />
-                </View>
-                <View>
-                  <Text style={styles.earningTitle}>Airport Ride</Text>
-                  <Text style={styles.earningDate}>Today, 10:15 AM</Text>
-                </View>
-              </View>
-              <Text style={styles.earningAmount}>+$78.50</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.earningItem} activeOpacity={0.7}>
-              <View style={styles.earningLeft}>
-                <View style={styles.earningIconContainer}>
-                  <IconSymbol size={18} name="checkmark" color="#4285F4" />
-                </View>
-                <View>
-                  <Text style={styles.earningTitle}>City Center</Text>
-                  <Text style={styles.earningDate}>Yesterday, 5:45 PM</Text>
-                </View>
-              </View>
-              <Text style={styles.earningAmount}>+$32.00</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.earningItem} activeOpacity={0.7}>
-              <View style={styles.earningLeft}>
-                <View style={styles.earningIconContainer}>
-                  <IconSymbol size={18} name="checkmark" color="#4285F4" />
-                </View>
-                <View>
-                  <Text style={styles.earningTitle}>Mall Trip</Text>
-                  <Text style={styles.earningDate}>Yesterday, 2:20 PM</Text>
-                </View>
-              </View>
-              <Text style={styles.earningAmount}>+$25.00</Text>
-            </TouchableOpacity>
+            )}
           </View>
       </View>
 
@@ -370,6 +408,39 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#000000',
     letterSpacing: -2.5,
+  },
+  allTimeEarnings: {
+    marginTop: 12,
+    marginBottom: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.15)',
+  },
+  allTimeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#000000',
+    opacity: 0.7,
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  allTimeAmount: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#000000',
+    opacity: 0.9,
+    letterSpacing: -0.5,
+  },
+  earningsBreakdown: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  breakdownText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#000000',
+    opacity: 0.6,
+    marginBottom: 2,
   },
   growthText: {
     fontSize: 13,
@@ -656,5 +727,58 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#4285F4',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#999999',
+  },
+  emptyEarnings: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  emptyEarningsText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#666666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#999999',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  retryButton: {
+    backgroundColor: '#4285F4',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

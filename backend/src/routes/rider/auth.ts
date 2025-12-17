@@ -37,7 +37,7 @@ router.get('/check-email', async (req: Request, res: Response) => {
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { email: email.trim().toLowerCase() },
     });
 
@@ -113,7 +113,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { email: email.trim().toLowerCase() },
     });
 
@@ -134,7 +134,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       // Password matches - update user to enable rider flag
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
       
-      user = await prisma.user.update({
+      user = await prisma.users.update({
         where: { email: email.trim().toLowerCase() },
         data: {
           isRider: true,
@@ -162,7 +162,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
       // Create user
-      user = await prisma.user.create({
+      user = await prisma.users.create({
         data: {
           fullName,
           email: email.trim().toLowerCase(),
@@ -227,7 +227,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Find user by email
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { email: email.trim().toLowerCase() },
     });
 
