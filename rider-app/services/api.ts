@@ -251,6 +251,34 @@ export interface RiderBookingsResponse {
   message?: string;
 }
 
+/**
+ * Get a single ride by ID
+ */
+export async function getRideById(rideId: number): Promise<{ success: boolean; ride: Ride }> {
+  try {
+    const response = await fetch(`${API_URL}/api/driver/rides/${rideId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to fetch ride details',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Error fetching ride details:', error);
+    throw error as ApiError;
+  }
+}
+
 export async function getRiderBookings(riderId: number): Promise<RiderBookingsResponse> {
   try {
     const response = await fetchWithAuth(`${API_URL}/api/rider/rides/bookings?riderId=${riderId}`, {

@@ -99,7 +99,7 @@ export default function ProfileScreen(): React.JSX.Element {
             setPreferences(prefsResponse.preferences);
           }
         } catch (prefsError) {
-          console.log('Could not load preferences, using defaults');
+          // Use defaults if preferences not found
         }
       } catch (error) {
         console.error('Error fetching profile:', error);

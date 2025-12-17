@@ -5,9 +5,10 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
+  ScrollView,
   ActivityIndicator,
   Modal,
+  Pressable,
 } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
@@ -72,6 +73,7 @@ export default function AddressAutocomplete({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const blurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isSelectingRef = useRef(false);
+  const isTouchingPredictionRef = useRef(false);
   const inputRef = useRef<any>(null);
   
   // Force update TextInput when value changes
@@ -333,8 +335,8 @@ export default function AddressAutocomplete({
   }, [value, disabled, showPredictionsInline, hasSelectedAddress, isFocused]);
 
   const handleSelectPrediction = async (prediction: PlacePrediction) => {
-    // Use only the main text (street address) for the input field
-    const streetAddress = prediction.structured_formatting.main_text;
+    // Use the full description for the input field
+    const fullAddress = prediction.description;
     
     // Cancel any pending timeouts
     if (blurTimeoutRef.current) {
@@ -363,17 +365,16 @@ export default function AddressAutocomplete({
     // Set flag to prevent useEffect from re-fetching predictions
     isSelectingRef.current = true;
     
-    // Update the text input
-    onChangeText(streetAddress);
+    // Immediately update the text input with full address so user sees it right away
+    onChangeText(fullAddress);
     
-    // Fetch place details to get city, state, zip in the background
-    setTimeout(() => {
-      fetchPlaceDetails(prediction.place_id, prediction.description, streetAddress);
-    }, 50);
+    // Fetch place details to get city, state, zip, and coordinates
+    // This will call onSelectAddress with the complete details
+    fetchPlaceDetails(prediction.place_id, fullAddress, fullAddress);
   };
 
   // Fetch detailed place information
-  const fetchPlaceDetails = async (placeId: string, fullAddress: string, streetAddress: string) => {
+  const fetchPlaceDetails = async (placeId: string, fullAddress: string, displayAddress: string) => {
     if (!GOOGLE_PLACES_API_KEY) {
       console.error('Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.');
       return;
@@ -426,11 +427,9 @@ export default function AddressAutocomplete({
           }
         });
 
-        // Construct clean street address
-        const cleanStreetAddress = streetNumber && route ? `${streetNumber} ${route}` : streetAddress;
-
+        // Use the full address that was displayed to the user
         const addressDetails: AddressDetails = {
-          fullAddress: cleanStreetAddress,
+          fullAddress: fullAddress,
           placeId,
           city,
           state,
@@ -438,21 +437,21 @@ export default function AddressAutocomplete({
           latitude: data.result.geometry?.location?.lat,
           longitude: data.result.geometry?.location?.lng,
         };
-
+        
         onSelectAddress(addressDetails);
       } else {
         // Fallback if API fails - parse from description
-        parseAddressFromDescription(fullAddress, streetAddress, placeId);
+        parseAddressFromDescription(fullAddress, displayAddress, placeId);
       }
     } catch (error) {
       console.error('Error fetching place details:', error);
       // Fallback - try to parse from description
-      parseAddressFromDescription(fullAddress, streetAddress, placeId);
+      parseAddressFromDescription(fullAddress, displayAddress, placeId);
     }
   };
 
   // Parse address from description string
-  const parseAddressFromDescription = (fullAddress: string, streetAddress: string, placeId: string) => {
+  const parseAddressFromDescription = (fullAddress: string, displayAddress: string, placeId: string) => {
     const parts = fullAddress.split(', ');
     let city = '';
     let state = '';
@@ -478,7 +477,7 @@ export default function AddressAutocomplete({
     }
 
     const addressDetails: AddressDetails = {
-      fullAddress: streetAddress,
+      fullAddress: displayAddress,
       placeId,
       city,
       state,
@@ -552,8 +551,11 @@ export default function AddressAutocomplete({
           onBlur={() => {
             // Delay blur to allow selection to complete
             blurTimeoutRef.current = setTimeout(() => {
-              // Double check - if a selection is in progress, don't blur
+              // Double check - if a selection is in progress or user is touching a prediction, don't blur
               if (isSelectingRef.current) {
+                return;
+              }
+              if (isTouchingPredictionRef.current) {
                 return;
               }
               setIsFocused(false);
@@ -565,7 +567,7 @@ export default function AddressAutocomplete({
               if (onPredictionsChange) {
                 onPredictionsChange([]);
               }
-            }, 200) as any;
+            }, 500) as any;
           }}
         />
         {isLoading && (
@@ -578,23 +580,32 @@ export default function AddressAutocomplete({
       {/* Predictions Dropdown - Inline Below Input */}
       {showPredictionsInline && showPredictions && predictions.length > 0 && !hasSelectedAddress && (
         <View style={styles.predictionsContainer}>
-          <FlatList
-            data={predictions}
-            keyExtractor={(item) => item.place_id}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <TouchableOpacity
+          <ScrollView
+            keyboardShouldPersistTaps="always"
+            showsVerticalScrollIndicator={false}
+            style={styles.predictionsList}
+            nestedScrollEnabled={true}
+          >
+            {predictions.map((item, index) => (
+              <Pressable
+                key={item.place_id}
                 style={styles.predictionItem}
-                onPressIn={() => {
-                  // Cancel blur timeout immediately when touch starts
+                onTouchStart={() => {
+                  isTouchingPredictionRef.current = true;
+                  // Cancel blur timeout immediately
                   if (blurTimeoutRef.current) {
                     clearTimeout(blurTimeoutRef.current);
                     blurTimeoutRef.current = null;
                   }
                 }}
-                onPress={() => handleSelectPrediction(item)}
-                activeOpacity={0.7}
-                delayPressIn={0}>
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  isTouchingPredictionRef.current = false;
+                  
+                  // Directly handle selection on touch end
+                  handleSelectPrediction(item);
+                }}>
                 <View style={styles.predictionIcon}>
                   <IconSymbol size={18} name="location" color="#4285F4" />
                 </View>
@@ -606,14 +617,9 @@ export default function AddressAutocomplete({
                     {item.structured_formatting.secondary_text}
                   </Text>
                 </View>
-              </TouchableOpacity>
-            )}
-            scrollEnabled={true}
-            showsVerticalScrollIndicator={false}
-            style={styles.predictionsList}
-            nestedScrollEnabled
-            removeClippedSubviews={false}
-          />
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
       )}
     </View>
@@ -655,21 +661,21 @@ const styles = StyleSheet.create({
   predictionsContainer: {
     position: 'absolute',
     top: '100%',
-    left: -16, // Align with parent container padding
-    right: -16,
-    backgroundColor: '#000000',
+    left: 0,
+    right: 0,
+    backgroundColor: '#1A1A1A',
     borderRadius: 12,
     marginTop: 8,
     maxHeight: 250,
-    overflow: 'hidden',
-    zIndex: 1000,
-    elevation: 15,
+    overflow: 'visible',
+    zIndex: 9999,
+    elevation: 20,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    borderWidth: 2,
+    borderColor: '#4285F4',
   },
   predictionsList: {
     maxHeight: 250,
@@ -682,6 +688,9 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1A1A1A',
     gap: 14,
     backgroundColor: '#000000',
+  },
+  predictionItemPressed: {
+    backgroundColor: '#1A1A1A',
   },
   predictionIcon: {
     width: 36,

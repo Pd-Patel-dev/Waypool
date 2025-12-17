@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   Animated,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -118,6 +119,49 @@ export default function HomeScreen(): React.JSX.Element {
     }
   };
 
+  // Show location error alert with actionable "Open Settings" button
+  const showLocationErrorAlert = (errorType: 'services' | 'permission' | 'timeout') => {
+    const messages = {
+      services: {
+        title: 'Location Services Disabled',
+        message: 'Please enable Location Services in your device settings to use location features.',
+      },
+      permission: {
+        title: 'Location Permission Required',
+        message: 'Waypool Driver needs location permission to show your position and match you with riders.',
+      },
+      timeout: {
+        title: 'Location Unavailable',
+        message: 'Unable to get your current location. Please check your GPS signal and try again.',
+      },
+    };
+
+    const { title, message } = messages[errorType];
+
+    if (errorType === 'timeout') {
+      // For timeout, just show message with retry option
+      Alert.alert(title, message, [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Retry', onPress: () => window.location.reload() },
+      ]);
+    } else {
+      // For services/permission, show "Open Settings" button
+      Alert.alert(title, message, [
+        { text: 'Not Now', style: 'cancel' },
+        {
+          text: 'Open Settings',
+          onPress: () => {
+            if (Platform.OS === 'ios') {
+              Linking.openURL('app-settings:');
+            } else {
+              Linking.openSettings();
+            }
+          },
+        },
+      ]);
+    }
+  };
+
   // Request location permissions and get current location (native only)
   useEffect(() => {
     (async () => {
@@ -127,12 +171,14 @@ export default function HomeScreen(): React.JSX.Element {
           const servicesEnabled = await Location.hasServicesEnabledAsync();
           if (!servicesEnabled) {
             setLocationError('Location services are disabled');
+            showLocationErrorAlert('services');
             return;
           }
 
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status !== 'granted') {
             setLocationError('Location permission denied');
+            showLocationErrorAlert('permission');
             return;
           }
 
@@ -168,10 +214,13 @@ export default function HomeScreen(): React.JSX.Element {
         } catch (error: any) {
           console.error('Error getting location:', error);
           let errorMessage = 'Failed to get location';
+          
           if (error?.message?.includes("timeout")) {
             errorMessage = 'Location request timed out';
+            showLocationErrorAlert('timeout');
           } else if (error?.message?.includes("permission")) {
             errorMessage = 'Location permission denied';
+            showLocationErrorAlert('permission');
           }
           setLocationError(errorMessage);
           
@@ -222,16 +271,13 @@ export default function HomeScreen(): React.JSX.Element {
   // Fetch upcoming rides
   const fetchRides = async () => {
     if (!user?.id) {
-      console.log('⚠️ No user ID, skipping ride fetch');
       setIsLoadingRides(false);
       return;
     }
     
     try {
       setIsLoadingRides(true);
-      console.log('🔄 Fetching rides for driver ID:', user.id);
       const data = await getUpcomingRides(user.id);
-      console.log('✅ Received rides:', data.length, 'rides');
       setRides(data);
     } catch (error) {
       console.error('❌ Error fetching rides:', error);
