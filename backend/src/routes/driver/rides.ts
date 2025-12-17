@@ -452,7 +452,6 @@ router.get('/past', async (req: Request, res: Response) => {
 /**
  * GET /api/driver/rides/upcoming
  * Get upcoming rides for the driver
- * Query params: driverId (required)
  */
 router.get('/upcoming', async (req: Request, res: Response) => {
   try {
@@ -495,8 +494,6 @@ router.get('/upcoming', async (req: Request, res: Response) => {
         createdAt: 'desc',
       },
     });
-
-    console.log(`📊 Found ${rides.length} rides for driver ${driverId}`);
 
     // Helper function to parse date and time to ISO string
     const parseDateTimeToISO = (dateStr: string, timeStr: string): string => {
@@ -557,23 +554,14 @@ router.get('/upcoming', async (req: Request, res: Response) => {
         id: ride.id,
         fromAddress: ride.fromAddress,
         toAddress: ride.toAddress,
-        fromCity: ride.fromCity,
-        toCity: ride.toCity,
-        fromState: ride.fromState,
-        toState: ride.toState,
-        fromZipCode: ride.fromZipCode,
-        toZipCode: ride.toZipCode,
         fromLatitude: ride.fromLatitude,
         fromLongitude: ride.fromLongitude,
         toLatitude: ride.toLatitude,
         toLongitude: ride.toLongitude,
         departureTime: departureISO,
-        departureDate: ride.departureDate,
-        departureTimeString: ride.departureTime,
         availableSeats: ride.availableSeats,
         totalSeats: ride.totalSeats,
         price: ride.pricePerSeat,
-        pricePerSeat: ride.pricePerSeat,
         status: ride.status,
         distance: ride.distance,
         carMake: ride.carMake,

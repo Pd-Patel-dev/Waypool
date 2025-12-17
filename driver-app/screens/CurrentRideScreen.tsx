@@ -43,6 +43,19 @@ interface LocationCoords {
   longitude: number;
 }
 
+interface CurrentRide {
+  id: number;
+  fromAddress: string;
+  toAddress: string;
+  fromLatitude: number;
+  fromLongitude: number;
+  toLatitude: number;
+  toLongitude: number;
+  passengerName?: string;
+  estimatedDuration?: string;
+  distance?: number;
+}
+
 export default function CurrentRideScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
   const { user } = useUser();
@@ -745,7 +758,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: '#000000',
   },
   header: {
     flexDirection: "row",
@@ -797,3 +810,4 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 });
+

@@ -17,7 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import MapComponent from '@/components/MapComponent';
-import { getUpcomingRides, deleteRide, type Ride } from '@/services/api';
+import { getUpcomingRides, type Ride } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { calculateTotalDistance } from '@/utils/distance';
 
@@ -58,8 +58,6 @@ export default function HomeScreen(): React.JSX.Element {
   const { user } = useUser();
   const [location, setLocation] = useState<LocationCoords | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [currentCity, setCurrentCity] = useState<string | null>(null);
-  const [currentState, setCurrentState] = useState<string | null>(null);
   const [rides, setRides] = useState<Ride[]>([]);
   const [isLoadingRides, setIsLoadingRides] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -247,14 +245,11 @@ export default function HomeScreen(): React.JSX.Element {
         // Web fallback - try browser geolocation API
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
-            async (position) => {
-              const coords = {
+            (position) => {
+              setLocation({
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
-              };
-              setLocation(coords);
-              // Reverse geocode to get city and state
-              await reverseGeocode(coords.latitude, coords.longitude);
+              });
             },
             (error) => {
               setLocationError('Location permission denied');
@@ -280,9 +275,7 @@ export default function HomeScreen(): React.JSX.Element {
       const data = await getUpcomingRides(user.id);
       setRides(data);
     } catch (error) {
-      console.error('❌ Error fetching rides:', error);
-      // Set empty array on error instead of leaving it undefined
-      setRides([]);
+      console.error('Error fetching rides:', error);
     } finally {
       setIsLoadingRides(false);
     }
@@ -501,16 +494,6 @@ export default function HomeScreen(): React.JSX.Element {
         <View style={styles.greetingContainer}>
           <Text style={styles.greeting}>{getGreeting()}</Text>
           <Text style={styles.name}>{user.fullName}</Text>
-          {(currentCity || currentState) && (
-            <View style={styles.locationContainer}>
-              <IconSymbol size={14} name="location.fill" color="#4285F4" />
-              <Text style={styles.locationText}>
-                {currentCity && currentState 
-                  ? `${currentCity}, ${currentState}`
-                  : currentCity || currentState || ''}
-              </Text>
-            </View>
-          )}
         </View>
 
         {/* Map Section - Hidden for now, can be re-enabled later */}
@@ -819,12 +802,6 @@ export default function HomeScreen(): React.JSX.Element {
               <Text style={styles.emptyTitle}>No upcoming rides</Text>
               <Text style={styles.emptySubtext}>Tap the + button to create your first ride</Text>
             </View>
-          ) : upcomingRides.length === 0 && todaysRides.length > 0 ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol size={48} name="calendar" color="#333333" />
-              <Text style={styles.emptyTitle}>No upcoming rides</Text>
-              <Text style={styles.emptySubtext}>All your rides are scheduled for today</Text>
-            </View>
           ) : (
             upcomingRides.map((ride) => (
               <View key={ride.id} style={styles.rideCard}>
@@ -965,19 +942,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: -1,
-    marginBottom: 4,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  locationText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#4285F4',
-    opacity: 0.9,
   },
   mapWrapper: {
     marginHorizontal: 20,
@@ -1083,7 +1047,6 @@ const styles = StyleSheet.create({
   ridesContainer: {
     paddingHorizontal: 20,
     paddingBottom: 24,
-    marginTop: 8,
   },
   sectionHeader: {
     flexDirection: 'row',
