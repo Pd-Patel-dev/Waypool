@@ -1,5 +1,6 @@
 {
   // Visit https://aka.ms/tsconfig to read more about this file
+  "exclude": ["node_modules", "dist", "prisma.config.ts"],
   "compilerOptions": {
     // File Layout
     "rootDir": "src",
@@ -9,12 +10,11 @@
     // See also https://aka.ms/tsconfig/module
     "module": "CommonJS",
     "target": "ES2020",
-    "types": [],
+    "types": ["node"],
     // For nodejs:
     // "lib": ["esnext"],
     // "types": ["node"],
     // and npm install -D @types/node
-
 
     // Other Outputs
     "sourceMap": true,
@@ -35,12 +35,16 @@
 
     // Recommended Options
     "strict": true,
-    "jsx": "react-jsx",
-    "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   }
 }

@@ -1,112 +1,300 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { router } from 'expo-router';
+import { useUser } from '@/context/UserContext';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+export default function ActivityScreen(): React.JSX.Element {
+  const { user, logout, isLoading } = useUser();
 
-export default function TabTwoScreen() {
+  useEffect(() => {
+    // If no user is logged in, redirect to welcome screen
+    if (!isLoading && !user) {
+      router.replace('/welcome');
+    }
+  }, [user, isLoading]);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace('/welcome');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  if (isLoading || !user) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar style="light" />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Activity</Text>
+        </View>
+
+        {/* Profile Section */}
+        <View style={styles.profileSection}>
+          <View style={styles.profileCard}>
+            <View style={styles.avatarContainer}>
+              <Text style={styles.avatarText}>
+                {user.firstName ? user.firstName.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileName}>
+                {user.firstName && user.lastName
+                  ? `${user.firstName} ${user.lastName}`
+                  : user.email}
+              </Text>
+              <Text style={styles.profileEmail}>{user.email}</Text>
+              {user.phoneNumber && (
+                <Text style={styles.profilePhone}>{user.phoneNumber}</Text>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* Ride Stats */}
+        <View style={styles.statsSection}>
+          <Text style={styles.sectionTitle}>Your stats</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>0</Text>
+              <Text style={styles.statLabel}>Total rides</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>$0</Text>
+              <Text style={styles.statLabel}>Spent</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Settings */}
+        <View style={styles.settingsSection}>
+          <Text style={styles.sectionTitle}>Settings</Text>
+          
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => console.log('Edit profile')}
+          >
+            <Text style={styles.settingIcon}>👤</Text>
+            <Text style={styles.settingText}>Edit profile</Text>
+            <Text style={styles.settingChevron}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => console.log('Payment methods')}
+          >
+            <Text style={styles.settingIcon}>💳</Text>
+            <Text style={styles.settingText}>Payment methods</Text>
+            <Text style={styles.settingChevron}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => console.log('Ride history')}
+          >
+            <Text style={styles.settingIcon}>🕒</Text>
+            <Text style={styles.settingText}>Ride history</Text>
+            <Text style={styles.settingChevron}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => console.log('Help & Support')}
+          >
+            <Text style={styles.settingIcon}>❓</Text>
+            <Text style={styles.settingText}>Help & Support</Text>
+            <Text style={styles.settingChevron}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Logout Button */}
+        <View style={styles.logoutSection}>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleLogout}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.logoutButtonText}>Log out</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
   },
-  titleContainer: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#CCCCCC',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    backgroundColor: '#000000',
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  profileSection: {
+    paddingHorizontal: 20,
+    marginBottom: 32,
+  },
+  profileCard: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    padding: 20,
+  },
+  avatarContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  avatarText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  profileEmail: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#CCCCCC',
+    marginBottom: 2,
+  },
+  profilePhone: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#CCCCCC',
+  },
+  statsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 32,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#CCCCCC',
+  },
+  settingsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 32,
+  },
+  settingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  settingIcon: {
+    fontSize: 24,
+    marginRight: 16,
+  },
+  settingText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  settingChevron: {
+    fontSize: 24,
+    fontWeight: '300',
+    color: '#999999',
+  },
+  logoutSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  logoutButton: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FF3B30',
+    padding: 16,
+    alignItems: 'center',
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FF3B30',
   },
 });
