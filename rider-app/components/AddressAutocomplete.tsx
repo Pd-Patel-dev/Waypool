@@ -51,6 +51,7 @@ export default function AddressAutocomplete({
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<any>(null);
 
@@ -63,9 +64,15 @@ export default function AddressAutocomplete({
     }
 
     if (!GOOGLE_PLACES_API_KEY) {
-      console.error('Google Places API key is not configured.');
+      const errorMsg = 'Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.';
+      console.error(errorMsg);
+      setApiKeyError(errorMsg);
       setPredictions([]);
+      setIsLoading(false);
       return;
+    } else {
+      // Clear any previous API key errors
+      setApiKeyError(null);
     }
 
     setIsLoading(true);
@@ -174,7 +181,18 @@ export default function AddressAutocomplete({
           <ActivityIndicator size="small" color="#4285F4" style={styles.loader} />
         )}
       </View>
-      {error && <Text style={styles.errorText}>{error}</Text>}
+      
+      {/* API Key Error Message */}
+      {apiKeyError && (
+        <View style={styles.apiKeyErrorContainer}>
+          <Text style={styles.apiKeyErrorText}>
+            ⚠️ {apiKeyError}
+          </Text>
+        </View>
+      )}
+      
+      {/* Error message from parent */}
+      {error && !apiKeyError && <Text style={styles.errorText}>{error}</Text>}
       
       {showPredictions && predictions.length > 0 && (
         <View style={styles.predictionsContainer}>
@@ -280,6 +298,19 @@ const styles = StyleSheet.create({
   predictionSecondaryText: {
     fontSize: 13,
     color: '#999999',
+  },
+  apiKeyErrorContainer: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#FF3B3015',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+  },
+  apiKeyErrorText: {
+    fontSize: 13,
+    color: '#FF3B30',
+    lineHeight: 18,
   },
 });
 

@@ -73,7 +73,7 @@ process.on("SIGTERM", async () => {
 });
 
 // Start server - Listen on ALL interfaces (0.0.0.0) not just localhost
-httpServer.listen(PORT, "0.0.0.0", () => {
+httpServer.listen(PORT, "0.0.0.0", async () => {
   const os = require("os");
   const networkInterfaces = os.networkInterfaces();
   let localIP = "localhost";
@@ -101,4 +101,33 @@ httpServer.listen(PORT, "0.0.0.0", () => {
     `\n⚠️  Make sure your Mac firewall allows connections on port ${PORT}`
   );
   console.log(`   Test from iPhone Safari: http://${localIP}:${PORT}/health\n`);
+
+  // Check database migration status
+  try {
+    const { checkMigrationStatus } = await import("./utils/database");
+    const migrationStatus = await checkMigrationStatus();
+
+    if (!migrationStatus.isUpToDate) {
+      console.warn("⚠️  Database Migration Warning:");
+      if (
+        migrationStatus.pendingMigrations &&
+        migrationStatus.pendingMigrations.length > 0
+      ) {
+        console.warn("   Pending migrations detected:");
+        migrationStatus.pendingMigrations.forEach((migration) => {
+          console.warn(`   - ${migration}`);
+        });
+        console.warn("   Run: npm run prisma:migrate");
+      }
+      if (migrationStatus.error) {
+        console.warn(`   Error: ${migrationStatus.error}`);
+      }
+      console.warn("");
+    } else {
+      console.log("✅ Database migrations are up to date\n");
+    }
+  } catch (error) {
+    console.warn("⚠️  Could not check migration status:", error);
+    console.warn("");
+  }
 });

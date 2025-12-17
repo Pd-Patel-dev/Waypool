@@ -17,6 +17,58 @@ export async function testDatabaseConnection(): Promise<boolean> {
 }
 
 /**
+ * Check if database migrations are up to date
+ * @returns Promise<{ isUpToDate: boolean; pendingMigrations?: string[]; error?: string }>
+ */
+export async function checkMigrationStatus(): Promise<{
+  isUpToDate: boolean;
+  pendingMigrations?: string[];
+  error?: string;
+}> {
+  try {
+    // Check if _prisma_migrations table exists (indicates migrations have been run)
+    const migrationTableExists = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = '_prisma_migrations'
+      ) as exists
+    `;
+
+    if (!migrationTableExists[0]?.exists) {
+      return {
+        isUpToDate: false,
+        pendingMigrations: ['Database not initialized - run migrations'],
+      };
+    }
+
+    // Get count of applied migrations
+    const migrationCount = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count FROM _prisma_migrations WHERE finished_at IS NOT NULL
+    `;
+
+    const count = Number(migrationCount[0]?.count || 0);
+
+    if (count === 0) {
+      return {
+        isUpToDate: false,
+        pendingMigrations: ['No migrations have been applied'],
+      };
+    }
+
+    // Basic check: if migrations table exists and has entries, assume up to date
+    // For a more thorough check, users should run `prisma migrate status` manually
+    // This is a lightweight check that doesn't require running external commands
+    return { isUpToDate: true };
+  } catch (error) {
+    return {
+      isUpToDate: false,
+      error: error instanceof Error ? error.message : 'Unknown error checking migrations',
+    };
+  }
+}
+
+/**
  * Get database connection status
  * @returns Promise<{ connected: boolean; error?: string }>
  */

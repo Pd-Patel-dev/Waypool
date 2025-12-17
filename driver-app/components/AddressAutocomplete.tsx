@@ -65,6 +65,7 @@ export default function AddressAutocomplete({
   const [isLoading, setIsLoading] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   // Initialize hasSelectedAddress based on whether value is already set (user came back from step 2)
   const [hasSelectedAddress, setHasSelectedAddress] = useState(() => {
     // If value is already set when component mounts, treat it as a selected address
@@ -158,9 +159,15 @@ export default function AddressAutocomplete({
     }
 
     if (!GOOGLE_PLACES_API_KEY) {
-      console.error('Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.');
+      const errorMsg = 'Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.';
+      console.error(errorMsg);
+      setApiKeyError(errorMsg);
       setPredictions([]);
+      setIsLoading(false);
       return;
+    } else {
+      // Clear any previous API key errors
+      setApiKeyError(null);
     }
 
     setIsLoading(true);
@@ -577,6 +584,22 @@ export default function AddressAutocomplete({
         )}
       </View>
 
+      {/* API Key Error Message */}
+      {apiKeyError && isFocused && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            ⚠️ {apiKeyError}
+          </Text>
+        </View>
+      )}
+
+      {/* Error message from parent */}
+      {error && !apiKeyError && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
       {/* Predictions Dropdown - Inline Below Input */}
       {showPredictionsInline && showPredictions && predictions.length > 0 && !hasSelectedAddress && (
         <View style={styles.predictionsContainer}>
@@ -716,6 +739,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '400',
     color: '#999999',
+    lineHeight: 18,
+  },
+  errorContainer: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#FF3B3015',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#FF3B30',
     lineHeight: 18,
   },
 });

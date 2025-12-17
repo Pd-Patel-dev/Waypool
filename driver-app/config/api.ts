@@ -36,10 +36,16 @@ const getApiUrl = (): string => {
       console.log("  - Is Simulator:", isSimulator);
 
       if (isPhysicalDevice && !isSimulator) {
-        // For physical iOS device: ALWAYS use IP address (hardcoded for now)
-        const apiUrl = "http://192.168.0.103:3000";
+        // For physical iOS device: use environment variable or fallback to localhost
+        // Set EXPO_PUBLIC_API_URL_IOS_PHYSICAL in your .env file with your computer's IP
+        // To find your IP: Mac/Linux: `ipconfig getifaddr en0` or `ifconfig | grep "inet "`
+        const apiUrl =
+          process.env.EXPO_PUBLIC_API_URL_IOS_PHYSICAL ||
+          process.env.EXPO_PUBLIC_API_URL_IOS ||
+          "http://localhost:3000";
         console.log("📱 Physical iOS device detected");
         console.log("🌐 Using API URL:", apiUrl);
+        console.log("💡 Tip: Set EXPO_PUBLIC_API_URL_IOS_PHYSICAL in .env for physical devices");
         return apiUrl;
       } else {
         // For iOS simulator: use localhost
