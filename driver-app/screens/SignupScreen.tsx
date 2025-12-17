@@ -9,10 +9,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+// TEMP DISABLED - Rebuilding app
+// import { IconSymbol } from '@/components/ui/icon-symbol';
 import { signup, checkEmail, type ApiError } from '@/services/api';
 import { US_STATES_CITIES, getCitiesByState, getStateNames } from '@/data/usStatesCities';
 import CustomDropdown from '@/components/CustomDropdown';
@@ -168,9 +172,10 @@ export default function SignupScreen(): React.JSX.Element {
   const validateStep3 = (): boolean => {
     const newErrors: typeof errors = {};
 
-    if (!photoUrl || !photoUrl.trim()) {
-      newErrors.photoUrl = 'Photo URL is required';
-    }
+    // TEMP: Skip photo validation during rebuild
+    // if (!selectedImage) {
+    //   newErrors.photoUrl = 'Profile photo is required';
+    // }
 
     if (!selectedState) {
       newErrors.state = 'State is required';
@@ -183,6 +188,7 @@ export default function SignupScreen(): React.JSX.Element {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
 
   const validateStep4 = (): boolean => {
     const newErrors: typeof errors = {};
@@ -506,26 +512,30 @@ export default function SignupScreen(): React.JSX.Element {
                 <>
                   <View style={styles.inputGroup}>
                     <Text style={styles.label}>
-                      Photo URL <Text style={styles.requiredAsterisk}>*</Text>
+                      Profile Photo URL <Text style={styles.requiredAsterisk}>*</Text>
                     </Text>
-                    <View style={styles.inputContainer}>
-                      <TextInput
-                        style={[styles.input, errors.photoUrl && styles.inputError]}
-                        placeholder="Enter photo URL"
-                        placeholderTextColor="#666"
-                        value={photoUrl}
-                        onChangeText={(text) => {
-                          setPhotoUrl(text);
-                          if (errors.photoUrl) {
-                            setErrors({ ...errors, photoUrl: undefined });
-                          }
-                        }}
-                        editable={!isLoading}
-                        keyboardType="url"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                      />
-                    </View>
+                    
+                    {photoUrl && (
+                      <View style={styles.photoPreviewContainer}>
+                        <Image source={{ uri: photoUrl }} style={styles.photoPreview} />
+                      </View>
+                    )}
+                    
+                    <TextInput
+                      style={styles.input}
+                      value={photoUrl}
+                      onChangeText={(text) => {
+                        setPhotoUrl(text);
+                        if (errors.photoUrl) {
+                          setErrors({ ...errors, photoUrl: undefined });
+                        }
+                      }}
+                      placeholder="https://example.com/your-photo.jpg"
+                      placeholderTextColor="#666666"
+                      autoCapitalize="none"
+                      keyboardType="url"
+                    />
+                    
                     {errors.photoUrl && (
                       <Text style={styles.fieldError}>{errors.photoUrl}</Text>
                     )}
@@ -944,6 +954,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#FFFFFF',
+  },
+  photoPickerContainer: {
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 20,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+  },
+  selectedImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#2C2C2E',
+    borderWidth: 3,
+    borderColor: '#3A3A3C',
+  },
+  photoPreviewContainer: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  photoPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#2C2C2E',
+    borderWidth: 2,
+    borderColor: '#3A3A3C',
   },
 });
 

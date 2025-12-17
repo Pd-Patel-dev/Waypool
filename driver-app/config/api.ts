@@ -94,10 +94,18 @@ export const API_ENDPOINTS = {
     REJECT: (id: number) => `/api/driver/bookings/${id}/reject`,
     PICKUP_COMPLETE: (id: number) => `/api/driver/bookings/${id}/pickup-complete`,
   },
+  RATINGS: {
+    SUBMIT: "/api/driver/ratings",
+    GET_BY_RIDE: (rideId: number) => `/api/driver/ratings/ride/${rideId}`,
+  },
   PROFILE: {
     GET: "/api/driver/profile",
     UPDATE: "/api/driver/profile",
     UPDATE_PASSWORD: "/api/driver/profile/password",
+    UPDATE_PHOTO: "/api/driver/profile/photo",
+    DELETE: "/api/driver/profile",
+    GET_PREFERENCES: "/api/driver/profile/preferences",
+    UPDATE_PREFERENCES: "/api/driver/profile/preferences",
   },
   VEHICLE: {
     GET: "/api/driver/vehicle",

@@ -158,10 +158,10 @@ export default function HomeScreen(): React.JSX.Element {
           
           // Validate coordinates
           if (isFinite(coords.latitude) && isFinite(coords.longitude)) {
-            setLocation(coords);
+          setLocation(coords);
             setLocationError(null); // Clear any previous errors
-            // Reverse geocode to get city and state
-            await reverseGeocode(coords.latitude, coords.longitude);
+          // Reverse geocode to get city and state
+          await reverseGeocode(coords.latitude, coords.longitude);
           } else {
             throw new Error("Invalid location coordinates received");
           }
@@ -498,10 +498,10 @@ export default function HomeScreen(): React.JSX.Element {
             </View>
 
             <View style={styles.currentRideInfo}>
-              <View style={styles.statusRow}>
+                  <View style={styles.statusRow}>
                 <IconSymbol size={16} name="car.fill" color="#4285F4" />
                 <Text style={styles.statusLabel}>Active Ride</Text>
-              </View>
+                  </View>
               <Text style={styles.currentRouteLabel}>Route</Text>
               <View style={styles.currentRouteContainer}>
                 <View style={styles.currentRouteItem}>
@@ -509,15 +509,15 @@ export default function HomeScreen(): React.JSX.Element {
                   <Text style={styles.currentRouteText} numberOfLines={1}>
                     {currentRide.fromAddress}
                   </Text>
-                </View>
+                  </View>
                 <View style={styles.currentRouteConnector} />
                 <View style={styles.currentRouteItem}>
                   <View style={[styles.currentRouteIndicator, styles.currentRouteIndicatorDest]} />
                   <Text style={styles.currentRouteText} numberOfLines={1}>
                     {currentRide.toAddress}
                   </Text>
-                </View>
-              </View>
+                  </View>
+                  </View>
               
               {currentRide.passengers && currentRide.passengers.length > 0 && (
                 <View style={styles.currentPassengersInfo}>
@@ -527,7 +527,7 @@ export default function HomeScreen(): React.JSX.Element {
                   </Text>
                 </View>
               )}
-            </View>
+        </View>
 
             {/* Progress Bar - Shows distance covered */}
             <View style={styles.progressBar}>
@@ -637,7 +637,7 @@ export default function HomeScreen(): React.JSX.Element {
                   <View style={styles.rideHeader}>
                     <View style={styles.rideTimeContainer}>
                       <View style={styles.rideTimeRow}>
-                        <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
+                      <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
                         {(() => {
                           const statusBadge = getStatusBadge(ride);
                           return (
@@ -729,13 +729,13 @@ export default function HomeScreen(): React.JSX.Element {
                 {/* Action Buttons - Only for today's rides */}
                 {/* Only show Start Ride for scheduled rides that are today */}
                 {(ride.status === 'scheduled' || !ride.status) && isToday(ride.departureTime) ? (
-                  <TouchableOpacity
-                    style={styles.startRideButton}
-                    onPress={() => handleStartRide(ride)}
-                    activeOpacity={0.8}>
-                    <IconSymbol size={18} name="play.fill" color="#000000" />
-                    <Text style={styles.startRideButtonText}>Start Ride</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.startRideButton}
+                  onPress={() => handleStartRide(ride)}
+                  activeOpacity={0.8}>
+                  <IconSymbol size={18} name="play.fill" color="#000000" />
+                  <Text style={styles.startRideButtonText}>Start Ride</Text>
+                </TouchableOpacity>
                 ) : ride.status === 'in-progress' ? (
                   <TouchableOpacity
                     style={[styles.startRideButton, styles.viewRideButtonStyle]}
@@ -790,7 +790,7 @@ export default function HomeScreen(): React.JSX.Element {
                 <View style={styles.rideHeader}>
                   <View style={styles.rideTimeContainer}>
                     <View style={styles.rideTimeRow}>
-                      <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
+                    <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
                       {(() => {
                         const statusBadge = getStatusBadge(ride);
                         return (

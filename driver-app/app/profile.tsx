@@ -10,19 +10,34 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Switch,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { getProfile, updateProfile, updatePassword, type Profile, type ApiError } from '@/services/api';
+import { 
+  getProfile, 
+  updateProfile, 
+  updatePassword, 
+  updateProfilePhoto,
+  getPreferences,
+  updatePreferences,
+  deleteAccount,
+  type Profile, 
+  type ApiError,
+  type NotificationPreferences 
+} from '@/services/api';
 import { useUser } from '@/context/UserContext';
 
 export default function ProfileScreen(): React.JSX.Element {
-  const { user, setUser } = useUser();
+  const { user, setUser, logout } = useUser();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Form fields
   const [fullName, setFullName] = useState<string>('');
@@ -35,6 +50,15 @@ export default function ProfileScreen(): React.JSX.Element {
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
+
+  // Preferences
+  const [preferences, setPreferences] = useState<NotificationPreferences>({
+    notifyBookings: true,
+    notifyMessages: true,
+    notifyRideUpdates: true,
+    notifyPromotions: true,
+    shareLocationEnabled: true,
+  });
 
   // Errors
   const [errors, setErrors] = useState<{
@@ -49,9 +73,9 @@ export default function ProfileScreen(): React.JSX.Element {
     general?: string;
   }>({});
 
-  // Fetch profile data
+  // Fetch profile data and preferences
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchProfileData = async () => {
       if (!user?.id) {
         setIsLoading(false);
         return;
@@ -59,13 +83,24 @@ export default function ProfileScreen(): React.JSX.Element {
 
       try {
         setIsLoading(true);
-        const profile = await getProfile(user.id);
         
+        // Fetch profile
+        const profile = await getProfile(user.id);
         setFullName(profile.fullName || '');
         setEmail(profile.email || '');
         setPhoneNumber(profile.phoneNumber || '');
         setCity(profile.city || '');
         setPhotoUrl(profile.photoUrl || '');
+
+        // Fetch preferences
+        try {
+          const prefsResponse = await getPreferences(user.id);
+          if (prefsResponse.success) {
+            setPreferences(prefsResponse.preferences);
+          }
+        } catch (prefsError) {
+          console.log('Could not load preferences, using defaults');
+        }
       } catch (error) {
         console.error('Error fetching profile:', error);
         const apiError = error as ApiError;
@@ -75,7 +110,7 @@ export default function ProfileScreen(): React.JSX.Element {
       }
     };
 
-    fetchProfile();
+    fetchProfileData();
   }, [user?.id]);
 
   const validateForm = (): boolean => {
@@ -126,7 +161,6 @@ export default function ProfileScreen(): React.JSX.Element {
         email: email.trim(),
         phoneNumber: phoneNumber.trim(),
         city: city.trim() || null,
-        photoUrl: photoUrl.trim() || null,
       };
 
       const response = await updateProfile(user.id, updateData);
@@ -213,7 +247,6 @@ export default function ProfileScreen(): React.JSX.Element {
               setCurrentPassword('');
               setNewPassword('');
               setConfirmPassword('');
-              setIsChangingPassword(false);
             },
           },
         ]);
@@ -224,6 +257,114 @@ export default function ProfileScreen(): React.JSX.Element {
       Alert.alert('Error', apiError.message || 'Failed to update password. Please try again.');
     } finally {
       setIsChangingPassword(false);
+    }
+  };
+
+
+  const handlePreferenceChange = async (key: keyof NotificationPreferences, value: boolean) => {
+    if (!user?.id) return;
+
+    try {
+      // Optimistically update UI
+      setPreferences(prev => ({ ...prev, [key]: value }));
+
+      // Update on server
+      await updatePreferences(user.id, { [key]: value });
+    } catch (error) {
+      // Revert on error
+      setPreferences(prev => ({ ...prev, [key]: !value }));
+      console.error('Error updating preference:', error);
+      const apiError = error as ApiError;
+      Alert.alert('Error', apiError.message || 'Failed to update preference. Please try again.');
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you absolutely sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => showPasswordConfirmation(),
+        },
+      ]
+    );
+  };
+
+  const showPasswordConfirmation = () => {
+    Alert.prompt(
+      'Confirm Password',
+      'Please enter your password to confirm account deletion:',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: (password) => {
+            if (password) {
+              confirmAccountDeletion(password);
+            } else {
+              Alert.alert('Error', 'Password is required to delete account');
+            }
+          },
+        },
+      ],
+      'secure-text'
+    );
+  };
+
+  const confirmAccountDeletion = async (password: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'User not found');
+      return;
+    }
+
+    try {
+      setIsDeletingAccount(true);
+
+      const response = await deleteAccount(user.id, password);
+
+      if (response.success) {
+        Alert.alert(
+          'Account Deleted',
+          'Your account has been successfully deleted. We\'re sorry to see you go.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await logout();
+                router.replace('/(auth)/login');
+              },
+            },
+          ]
+        );
+      }
+    } catch (error: any) {
+      console.error('Error deleting account:', error);
+      const apiError = error as ApiError;
+      
+      if (apiError.message?.includes('active ride') || apiError.message?.includes('pending booking')) {
+        Alert.alert(
+          'Cannot Delete Account',
+          apiError.message,
+          [{ text: 'OK' }]
+        );
+      } else if (apiError.message?.includes('Password is incorrect')) {
+        Alert.alert('Incorrect Password', 'The password you entered is incorrect. Please try again.');
+      } else {
+        Alert.alert('Error', apiError.message || 'Failed to delete account. Please try again.');
+      }
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -275,6 +416,40 @@ export default function ProfileScreen(): React.JSX.Element {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Profile Photo Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Profile Photo</Text>
+            
+            <View style={styles.photoContainer}>
+              {photoUrl ? (
+                <Image source={{ uri: photoUrl }} style={styles.profileImage} />
+              ) : (
+                <View style={styles.profileImagePlaceholder}>
+                  <IconSymbol size={48} name="person.circle.fill" color="#666666" />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Photo URL</Text>
+              <TextInput
+                style={styles.input}
+                value={photoUrl}
+                onChangeText={(text) => {
+                  setPhotoUrl(text);
+                  if (errors.photoUrl) {
+                    setErrors({ ...errors, photoUrl: undefined });
+                  }
+                }}
+                placeholder="https://example.com/photo.jpg"
+                placeholderTextColor="#666666"
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+              {errors.photoUrl && <Text style={styles.errorText}>{errors.photoUrl}</Text>}
+            </View>
+          </View>
+
           {/* Profile Information Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Personal Information</Text>
@@ -358,27 +533,6 @@ export default function ProfileScreen(): React.JSX.Element {
               />
               {errors.city && (
                 <Text style={styles.errorText}>{errors.city}</Text>
-              )}
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Photo URL (Optional)</Text>
-              <TextInput
-                style={[styles.input, errors.photoUrl && styles.inputError]}
-                value={photoUrl}
-                onChangeText={(text) => {
-                  setPhotoUrl(text);
-                  if (errors.photoUrl) {
-                    setErrors({ ...errors, photoUrl: undefined });
-                  }
-                }}
-                placeholder="Enter photo URL"
-                placeholderTextColor="#666666"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              {errors.photoUrl && (
-                <Text style={styles.errorText}>{errors.photoUrl}</Text>
               )}
             </View>
 
@@ -481,6 +635,111 @@ export default function ProfileScreen(): React.JSX.Element {
                 <Text style={styles.changePasswordButtonText}>Change Password</Text>
               )}
             </TouchableOpacity>
+          </View>
+
+          {/* Notification & Privacy Preferences Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notifications & Privacy</Text>
+            
+            <View style={styles.preferenceRow}>
+              <View style={styles.preferenceInfo}>
+                <Text style={styles.preferenceLabel}>Booking Notifications</Text>
+                <Text style={styles.preferenceDescription}>
+                  Get notified about new bookings and updates
+                </Text>
+              </View>
+              <Switch
+                value={preferences.notifyBookings}
+                onValueChange={(value) => handlePreferenceChange('notifyBookings', value)}
+                trackColor={{ false: '#2A2A2A', true: '#4285F4' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={styles.preferenceRow}>
+              <View style={styles.preferenceInfo}>
+                <Text style={styles.preferenceLabel}>Message Notifications</Text>
+                <Text style={styles.preferenceDescription}>
+                  Receive alerts for new messages
+                </Text>
+              </View>
+              <Switch
+                value={preferences.notifyMessages}
+                onValueChange={(value) => handlePreferenceChange('notifyMessages', value)}
+                trackColor={{ false: '#2A2A2A', true: '#4285F4' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={styles.preferenceRow}>
+              <View style={styles.preferenceInfo}>
+                <Text style={styles.preferenceLabel}>Ride Update Notifications</Text>
+                <Text style={styles.preferenceDescription}>
+                  Stay informed about ride status changes
+                </Text>
+              </View>
+              <Switch
+                value={preferences.notifyRideUpdates}
+                onValueChange={(value) => handlePreferenceChange('notifyRideUpdates', value)}
+                trackColor={{ false: '#2A2A2A', true: '#4285F4' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={styles.preferenceRow}>
+              <View style={styles.preferenceInfo}>
+                <Text style={styles.preferenceLabel}>Promotional Notifications</Text>
+                <Text style={styles.preferenceDescription}>
+                  Receive updates about offers and features
+                </Text>
+              </View>
+              <Switch
+                value={preferences.notifyPromotions}
+                onValueChange={(value) => handlePreferenceChange('notifyPromotions', value)}
+                trackColor={{ false: '#2A2A2A', true: '#4285F4' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={[styles.preferenceRow, styles.lastPreferenceRow]}>
+              <View style={styles.preferenceInfo}>
+                <Text style={styles.preferenceLabel}>Share Location</Text>
+                <Text style={styles.preferenceDescription}>
+                  Allow riders to see your real-time location during rides
+                </Text>
+              </View>
+              <Switch
+                value={preferences.shareLocationEnabled}
+                onValueChange={(value) => handlePreferenceChange('shareLocationEnabled', value)}
+                trackColor={{ false: '#2A2A2A', true: '#4285F4' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+
+          {/* Account Actions Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Account Actions</Text>
+            
+            <TouchableOpacity
+              style={[styles.deleteAccountButton, isDeletingAccount && styles.deleteAccountButtonDisabled]}
+              onPress={handleDeleteAccount}
+              disabled={isDeletingAccount}
+              activeOpacity={0.8}
+            >
+              {isDeletingAccount ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <IconSymbol size={18} name="trash.fill" color="#FFFFFF" />
+                  <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            
+            <Text style={styles.deleteWarning}>
+              Warning: This action is permanent and cannot be undone. All your data will be permanently deleted.
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -607,6 +866,101 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
+  },
+  photoContainer: {
+    alignItems: 'center',
+    gap: 16,
+  },
+  profileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 3,
+    borderColor: '#2A2A2A',
+  },
+  profileImagePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 3,
+    borderColor: '#2A2A2A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadPhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#4285F4',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 8,
+  },
+  uploadPhotoButtonDisabled: {
+    opacity: 0.6,
+  },
+  uploadPhotoButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  preferenceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A1A1A',
+  },
+  lastPreferenceRow: {
+    borderBottomWidth: 0,
+  },
+  preferenceInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  preferenceLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 4,
+    letterSpacing: -0.2,
+  },
+  preferenceDescription: {
+    fontSize: 13,
+    color: '#999999',
+    lineHeight: 18,
+    letterSpacing: -0.1,
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginBottom: 12,
+  },
+  deleteAccountButtonDisabled: {
+    opacity: 0.6,
+  },
+  deleteAccountButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  deleteWarning: {
+    fontSize: 12,
+    color: '#FF6B6B',
+    textAlign: 'center',
+    lineHeight: 16,
+    letterSpacing: -0.1,
   },
 });
 

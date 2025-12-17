@@ -6,15 +6,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useUser } from '@/context/UserContext';
+import { useNotifications } from '@/context/NotificationContext';
 import { getNotifications } from '@/services/api';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 8);
   const { user } = useUser();
+  const { badgeCount: systemBadgeCount } = useNotifications();
   const [notificationBadgeCount, setNotificationBadgeCount] = React.useState(0);
 
-  // Fetch notification count
+  // Fetch notification count from API
   React.useEffect(() => {
     const fetchBadgeCount = async () => {
       if (!user?.id) return;
@@ -36,6 +38,9 @@ export default function TabLayout() {
 
     return () => clearInterval(interval);
   }, [user?.id]);
+
+  // Use the higher of system badge or unread notifications
+  const displayBadgeCount = Math.max(systemBadgeCount, notificationBadgeCount);
   
   return (
     <Tabs
@@ -100,14 +105,14 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconContainer}>
               <IconSymbol 
-                size={24} 
+              size={24} 
                 name={focused ? "envelope.fill" : "envelope"}
-                color={color} 
+              color={color} 
               />
-              {notificationBadgeCount > 0 && (
+              {displayBadgeCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>
-                    {notificationBadgeCount > 99 ? '99+' : notificationBadgeCount}
+                    {displayBadgeCount > 99 ? '99+' : displayBadgeCount}
                   </Text>
                 </View>
               )}

@@ -8,6 +8,13 @@
     "scheme": "driverapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "notification": {
+      "icon": "./assets/images/notification-icon.png",
+      "color": "#4285F4",
+      "iosDisplayInForeground": true,
+      "androidMode": "default",
+      "androidCollapsedTitle": "#{unread_notifications} new notifications"
+    },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -25,7 +32,8 @@
               "NSIncludesSubdomains": true
             }
           }
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.waypool.driverapp"
     },
@@ -42,8 +50,10 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
       ],
+      "googleServicesFile": "./google-services.json",
       "package": "com.anonymous.driverapp"
     },
     "web": {
@@ -70,11 +80,28 @@
           "locationAlwaysAndWhenInUsePermission": "Allow Waypool Driver to use your location to show your position on the map and match you with riders."
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#4285F4",
+          "sounds": [
+            "./assets/sounds/notification.wav"
+          ]
+        }
+      ],
       "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9ea10f07-128d-4621-aae0-a8aa05a83577"
+      }
+    },
+    "owner": "pdpatel6135"
   }
 }

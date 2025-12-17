@@ -2235,11 +2235,10 @@ export default function CurrentRideScreen(): React.JSX.Element {
                           activeOpacity={0.7}
                         >
                           <IconSymbol
-                            size={18}
+                            size={20}
                             name="exclamationmark.triangle.fill"
                             color="#FFFFFF"
                           />
-                          <Text style={styles.emergencyButtonText}>Emergency</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -3305,14 +3304,14 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   cancelButton: {
-    marginTop: 8,
+    flex: 1,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
     backgroundColor: "rgba(255, 59, 48, 0.1)",
     borderRadius: 10,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: "rgba(255, 59, 48, 0.3)",
   },
@@ -3323,17 +3322,15 @@ const styles = StyleSheet.create({
   },
   bottomActionButtons: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     marginTop: 12,
   },
   emergencyButton: {
-    flex: 1,
-    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: "#FF3B30",
   },

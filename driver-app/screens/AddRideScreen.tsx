@@ -522,9 +522,9 @@ export default function AddRideScreen(): React.JSX.Element {
           ]
         );
       } else {
-        setErrors({
-          general: apiError.message || 'Failed to create ride. Please try again.',
-        });
+      setErrors({
+        general: apiError.message || 'Failed to create ride. Please try again.',
+      });
       }
     } finally {
       setIsLoading(false);
@@ -1011,7 +1011,7 @@ export default function AddRideScreen(): React.JSX.Element {
                 ) : (
                   <>
                     <IconSymbol size={18} name="checkmark.circle.fill" color="#000000" />
-                    <Text style={styles.submitButtonText}>Create Ride</Text>
+                  <Text style={styles.submitButtonText}>Create Ride</Text>
                   </>
                 )}
               </TouchableOpacity>
