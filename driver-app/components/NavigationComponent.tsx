@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -115,7 +115,7 @@ export default function NavigationComponent({
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
 
   // Fetch route and directions from Google Directions API
-  const fetchDirections = async () => {
+  const fetchDirections = useCallback(async () => {
     setIsLoading(true);
     try {
       const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || "";
@@ -204,11 +204,10 @@ export default function NavigationComponent({
         throw new Error("Failed to get directions");
       }
     } catch (error) {
-      console.error("Error fetching directions:", error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [origin, destination, waypoints]);
 
   // Start navigation
   const startNavigation = async () => {
@@ -299,7 +298,7 @@ export default function NavigationComponent({
   };
 
   // Get maneuver icon
-  const getManeuverIcon = (maneuver?: string): string => {
+  const getManeuverIcon = (maneuver?: string): any => {
     if (!maneuver) return "arrow.up";
     const maneuverLower = maneuver.toLowerCase();
     if (maneuverLower.includes("turn-left")) return "arrow.turn.up.left";
@@ -328,7 +327,7 @@ export default function NavigationComponent({
     return () => {
       stopNavigation();
     };
-  }, []);
+  }, [fetchDirections]);
 
   const currentStep = steps[currentStepIndex];
   const mapRegion: Region = currentLocation

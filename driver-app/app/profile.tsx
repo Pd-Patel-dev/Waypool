@@ -21,11 +21,9 @@ import {
   getProfile, 
   updateProfile, 
   updatePassword, 
-  updateProfilePhoto,
   getPreferences,
   updatePreferences,
   deleteAccount,
-  type Profile, 
   type ApiError,
   type NotificationPreferences 
 } from '@/services/api';
@@ -36,7 +34,6 @@ export default function ProfileScreen(): React.JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Form fields
@@ -98,11 +95,10 @@ export default function ProfileScreen(): React.JSX.Element {
           if (prefsResponse.success) {
             setPreferences(prefsResponse.preferences);
           }
-        } catch (prefsError) {
+        } catch {
           // Use defaults if preferences not found
         }
       } catch (error) {
-        console.error('Error fetching profile:', error);
         const apiError = error as ApiError;
         Alert.alert('Error', apiError.message || 'Failed to load profile. Please try again.');
       } finally {
@@ -160,7 +156,7 @@ export default function ProfileScreen(): React.JSX.Element {
         fullName: fullName.trim(),
         email: email.trim(),
         phoneNumber: phoneNumber.trim(),
-        city: city.trim() || null,
+        city: city.trim() || undefined,
       };
 
       const response = await updateProfile(user.id, updateData);
@@ -185,7 +181,6 @@ export default function ProfileScreen(): React.JSX.Element {
         ]);
       }
     } catch (error) {
-      console.error('Error updating profile:', error);
       const apiError = error as ApiError;
       if (apiError.errors && apiError.errors.length > 0) {
         Alert.alert('Validation Error', apiError.errors.join('\n'));
@@ -252,7 +247,6 @@ export default function ProfileScreen(): React.JSX.Element {
         ]);
       }
     } catch (error) {
-      console.error('Error updating password:', error);
       const apiError = error as ApiError;
       Alert.alert('Error', apiError.message || 'Failed to update password. Please try again.');
     } finally {
@@ -273,7 +267,6 @@ export default function ProfileScreen(): React.JSX.Element {
     } catch (error) {
       // Revert on error
       setPreferences(prev => ({ ...prev, [key]: !value }));
-      console.error('Error updating preference:', error);
       const apiError = error as ApiError;
       Alert.alert('Error', apiError.message || 'Failed to update preference. Please try again.');
     }
@@ -309,7 +302,7 @@ export default function ProfileScreen(): React.JSX.Element {
         {
           text: 'Delete Account',
           style: 'destructive',
-          onPress: (password) => {
+          onPress: (password?: string) => {
             if (password) {
               confirmAccountDeletion(password);
             } else {
@@ -342,14 +335,13 @@ export default function ProfileScreen(): React.JSX.Element {
               text: 'OK',
               onPress: async () => {
                 await logout();
-                router.replace('/(auth)/login');
+                router.replace('/login');
               },
             },
           ]
         );
       }
     } catch (error: any) {
-      console.error('Error deleting account:', error);
       const apiError = error as ApiError;
       
       if (apiError.message?.includes('active ride') || apiError.message?.includes('pending booking')) {

@@ -7,7 +7,6 @@ import {
   RefreshControl,
   Alert,
   Linking,
-  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -50,7 +49,6 @@ export default function InboxScreen(): React.JSX.Element {
         setNotifications(response.notifications);
       }
     } catch (error) {
-      console.error("Error fetching notifications:", error);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -105,7 +103,6 @@ export default function InboxScreen(): React.JSX.Element {
           prev.map((n) => (n.id === item.id ? { ...n, unread: false } : n))
         );
       } catch (error) {
-        console.error("Error marking notification as read:", error);
       }
     }
 

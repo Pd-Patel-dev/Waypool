@@ -24,25 +24,23 @@ class WebSocketService {
     });
 
     this.socket.on('connect', () => {
-      console.log('✅ WebSocket connected');
       this.reconnectAttempts = 0;
     });
 
-    this.socket.on('disconnect', (reason) => {
-      console.log('❌ WebSocket disconnected:', reason);
+    this.socket.on('disconnect', () => {
+      // WebSocket disconnected
     });
 
-    this.socket.on('error', (error) => {
-      console.error('WebSocket error:', error);
+    this.socket.on('error', () => {
+      // WebSocket error occurred
     });
 
     this.socket.on('reconnect_attempt', () => {
       this.reconnectAttempts++;
-      console.log(`Reconnecting... Attempt ${this.reconnectAttempts}`);
     });
 
     this.socket.on('reconnect_failed', () => {
-      console.error('Failed to reconnect after', this.maxReconnectAttempts, 'attempts');
+      // Failed to reconnect
     });
   }
 

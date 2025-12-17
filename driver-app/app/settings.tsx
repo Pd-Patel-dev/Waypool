@@ -34,7 +34,6 @@ export default function SettingsScreen(): React.JSX.Element {
     vibrationEnabled: true,
     locationSharingEnabled: true,
   });
-  const [loading, setLoading] = useState(false);
 
   // Load settings on mount
   React.useEffect(() => {
@@ -48,7 +47,6 @@ export default function SettingsScreen(): React.JSX.Element {
         setSettings(JSON.parse(stored));
       }
     } catch (error) {
-      console.error('Error loading settings:', error);
     }
   };
 
@@ -57,7 +55,6 @@ export default function SettingsScreen(): React.JSX.Element {
       await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
       setSettings(newSettings);
     } catch (error) {
-      console.error('Error saving settings:', error);
       Alert.alert('Error', 'Failed to save settings. Please try again.');
     }
   };
@@ -139,7 +136,6 @@ export default function SettingsScreen(): React.JSX.Element {
                         }
                       })
                       .catch((err) => {
-                        console.error('Error opening phone:', err);
                         Alert.alert('Error', 'Unable to make phone call.');
                       });
                   }}
@@ -424,6 +420,10 @@ const styles = StyleSheet.create({
   appInfoCopyright: {
     fontSize: 11,
     color: '#666666',
+  },
+  phoneLink: {
+    color: '#4285F4',
+    textDecorationLine: 'underline',
   },
 });
 

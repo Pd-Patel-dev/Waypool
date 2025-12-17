@@ -5,7 +5,6 @@ import {
   setupPushNotifications,
   getBadgeCount,
   setBadgeCount,
-  clearAllNotifications,
   handleNotificationTap,
 } from '@/services/notificationService';
 import { useUser } from './UserContext';
@@ -39,7 +38,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       const count = await getBadgeCount();
       setBadgeCountState(count);
     } catch (error) {
-      console.error('Error refreshing badge count:', error);
     }
   }, []);
 
@@ -49,20 +47,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       await setBadgeCount(0);
       setBadgeCountState(0);
     } catch (error) {
-      console.error('Error clearing badge:', error);
     }
   }, []);
 
   // Handle notification received while app is open
   const handleNotificationReceived = useCallback((notification: Notifications.Notification) => {
-    console.log('📩 Notification received in app:', notification);
     // Increment badge count
     refreshBadgeCount();
   }, [refreshBadgeCount]);
 
   // Handle notification tap
   const handleNotificationResponse = useCallback((response: Notifications.NotificationResponse) => {
-    console.log('👆 Notification tapped:', response);
     handleNotificationTap(response, router);
     // Clear badge when notification is tapped
     clearBadge();
@@ -74,12 +69,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const initNotifications = async () => {
       if (!user?.id) {
-        console.log('⏳ No user logged in, skipping notification setup');
         setIsNotificationsEnabled(false);
         return;
       }
 
-      console.log('🔔 Initializing push notifications for user:', user.id);
 
       // Setup push notifications
       cleanup = await setupPushNotifications(
@@ -90,10 +83,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
       if (cleanup) {
         setIsNotificationsEnabled(true);
-        console.log('✅ Push notifications enabled');
       } else {
         setIsNotificationsEnabled(false);
-        console.log('⚠️ Push notifications not enabled');
       }
 
       // Get initial badge count
@@ -121,12 +112,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     // Listen for real-time notification events
     const handleNewNotification = () => {
-      console.log('📨 Real-time notification received via WebSocket');
       refreshBadgeCount();
     };
 
     const handleNotificationRead = () => {
-      console.log('✅ Notification marked as read via WebSocket');
       refreshBadgeCount();
     };
 
@@ -137,7 +126,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Fallback: Refresh badge count every 60 seconds (reduced from 30s since we have WebSocket)
     const interval = setInterval(() => {
       if (!websocketService.isConnected()) {
-        console.log('⚠️ WebSocket disconnected, falling back to polling');
         refreshBadgeCount();
       }
     }, 60000); // 60 seconds

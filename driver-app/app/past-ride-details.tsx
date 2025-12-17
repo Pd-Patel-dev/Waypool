@@ -39,7 +39,6 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
         const ride = await getRideById(rideId, user.id);
         setRideData(ride);
       } catch (error) {
-        console.error("Error fetching ride details:", error);
       } finally {
         setIsLoading(false);
       }
@@ -137,7 +136,6 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
             }
           }
         } catch (e) {
-          console.error("Error parsing fallback date:", e);
         }
       }
       
@@ -473,6 +471,7 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                     <TouchableOpacity
                       style={styles.callButton}
                       onPress={() => {
+                        if (!passenger.riderPhone) return;
                         const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
                         const phoneUrl = Platform.OS === 'ios' ? `telprompt:${cleanPhone}` : `tel:${cleanPhone}`;
                         Linking.canOpenURL(phoneUrl)
@@ -484,7 +483,6 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                             }
                           })
                           .catch((err) => {
-                            console.error('Error opening phone:', err);
                             Alert.alert('Error', 'Unable to make phone call.');
                           });
                       }}
@@ -495,6 +493,7 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                     <TouchableOpacity
                       style={styles.messageButton}
                       onPress={() => {
+                        if (!passenger.riderPhone) return;
                         const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
                         const smsUrl = `sms:${cleanPhone}`;
                         Linking.canOpenURL(smsUrl)
@@ -506,7 +505,6 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                             }
                           })
                           .catch((err) => {
-                            console.error('Error opening SMS:', err);
                             Alert.alert('Error', 'Unable to open messaging app');
                           });
                       }}

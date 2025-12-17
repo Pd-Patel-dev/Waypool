@@ -20,11 +20,15 @@ const translations: { [key: string]: typeof en } = {
 
 // Get device language
 const getDeviceLanguage = (): string => {
-  const locale = Localization.getLocales()[0];
-  const languageCode = locale?.languageCode || 'en';
-  
-  // Check if we support this language, otherwise fall back to English
-  return translations[languageCode] ? languageCode : 'en';
+  try {
+    const locale = Localization.getLocales()[0];
+    const languageCode = locale?.languageCode || 'en';
+    
+    // Check if we support this language, otherwise fall back to English
+    return translations[languageCode] ? languageCode : 'en';
+  } catch (error) {
+    return 'en';
+  }
 };
 
 // Current language state
@@ -40,7 +44,6 @@ export const t = (key: TranslationKey, params?: { [key: string]: string | number
     if (translation && typeof translation === 'object' && k in translation) {
       translation = translation[k];
     } else {
-      console.warn(`Translation missing for key: ${key}`);
       return key;
     }
   }
@@ -56,7 +59,6 @@ export const t = (key: TranslationKey, params?: { [key: string]: string | number
     return translation;
   }
 
-  console.warn(`Translation for key ${key} is not a string`);
   return key;
 };
 
@@ -65,7 +67,6 @@ export const setLanguage = (lang: string) => {
   if (translations[lang]) {
     currentLanguage = lang;
   } else {
-    console.warn(`Language ${lang} not supported`);
   }
 };
 

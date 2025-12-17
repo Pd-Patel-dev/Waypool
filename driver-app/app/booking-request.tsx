@@ -39,11 +39,9 @@ export default function BookingRequestScreen(): React.JSX.Element {
         if (notificationData.unread && user?.id) {
           const driverId = typeof user.id === "string" ? parseInt(user.id) : user.id;
           markNotificationRead(notificationData.id, driverId).catch((error) => {
-            console.error("Error marking notification as read:", error);
           });
         }
       } catch (error) {
-        console.error("Error parsing notification data:", error);
         Alert.alert("Error", "Invalid notification data");
         router.back();
       } finally {
@@ -115,7 +113,6 @@ export default function BookingRequestScreen(): React.JSX.Element {
         year: "numeric",
       });
     } catch (error) {
-      console.error("Error formatting date:", error, dateStr, timeStr);
       return dateStr;
     }
   };
@@ -138,7 +135,6 @@ export default function BookingRequestScreen(): React.JSX.Element {
     }
     const url = Platform.OS === "ios" ? `telprompt:${phoneNumber}` : `tel:${phoneNumber}`;
     Linking.openURL(url).catch((err) => {
-      console.error("Error opening phone:", err);
       Alert.alert("Error", "Unable to make phone call");
     });
   };
@@ -152,7 +148,6 @@ export default function BookingRequestScreen(): React.JSX.Element {
     }
     const url = `sms:${phoneNumber}`;
     Linking.openURL(url).catch((err) => {
-      console.error("Error opening messages:", err);
       Alert.alert("Error", "Unable to open messages");
     });
   };
@@ -199,7 +194,6 @@ export default function BookingRequestScreen(): React.JSX.Element {
                 ]
               );
             } catch (error: any) {
-              console.error("Error accepting booking:", error);
               Alert.alert("Error", error.message || "Failed to accept booking request");
             } finally {
               setIsProcessing(false);
@@ -253,7 +247,6 @@ export default function BookingRequestScreen(): React.JSX.Element {
                 ]
               );
             } catch (error: any) {
-              console.error("Error rejecting booking:", error);
               Alert.alert("Error", error.message || "Failed to reject booking request");
             } finally {
               setIsProcessing(false);
@@ -455,19 +448,19 @@ export default function BookingRequestScreen(): React.JSX.Element {
           <Text style={styles.cardTitle}>Pricing</Text>
           <View style={styles.pricingRow}>
             <Text style={styles.pricingLabel}>
-              ${booking.ride.pricePerSeat.toFixed(2)} × {booking.numberOfSeats}{" "}
+              ${booking.ride.pricePerSeat ? booking.ride.pricePerSeat.toFixed(2) : '0.00'} × {booking.numberOfSeats}{" "}
               seat
               {booking.numberOfSeats !== 1 ? "s" : ""}
             </Text>
             <Text style={styles.pricingValue}>
-              ${(booking.ride.pricePerSeat * booking.numberOfSeats).toFixed(2)}
+              ${((booking.ride.pricePerSeat || 0) * booking.numberOfSeats).toFixed(2)}
             </Text>
           </View>
           <View style={styles.pricingDivider} />
           <View style={styles.pricingRow}>
             <Text style={styles.pricingTotalLabel}>Total</Text>
             <Text style={styles.pricingTotalValue}>
-              ${(booking.ride.pricePerSeat * booking.numberOfSeats).toFixed(2)}
+              ${((booking.ride.pricePerSeat || 0) * booking.numberOfSeats).toFixed(2)}
             </Text>
           </View>
         </View>

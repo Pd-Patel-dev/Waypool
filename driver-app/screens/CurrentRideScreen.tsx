@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -123,10 +123,8 @@ export default function CurrentRideScreen(): React.JSX.Element {
   };
 
   // Fetch actual route from Google Directions API
-  useEffect(() => {
+  const fetchRoute = useCallback(async () => {
     if (!rideData) return;
-
-    const fetchRoute = async () => {
       // Build waypoints (pickups in order)
       const waypoints: { latitude: number; longitude: number }[] = [];
 
@@ -156,9 +154,6 @@ export default function CurrentRideScreen(): React.JSX.Element {
           process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || "";
 
         if (!GOOGLE_API_KEY) {
-          console.warn(
-            "Google Maps API key not configured, using straight line"
-          );
           // Fallback to straight lines
           const points: { latitude: number; longitude: number }[] = [];
           points.push({
@@ -231,7 +226,6 @@ export default function CurrentRideScreen(): React.JSX.Element {
                 ]
           );
         } else {
-          console.warn("Directions API error:", data.status);
           // Fallback to straight lines
           const points: { latitude: number; longitude: number }[] = [];
           points.push({
@@ -246,7 +240,6 @@ export default function CurrentRideScreen(): React.JSX.Element {
           setRouteCoordinates(points);
         }
       } catch (error) {
-        console.error("❌ Error fetching route:", error);
         // Fallback to straight lines
         const points: { latitude: number; longitude: number }[] = [];
         points.push({
@@ -260,10 +253,11 @@ export default function CurrentRideScreen(): React.JSX.Element {
         });
         setRouteCoordinates(points);
       }
-    };
-
-    fetchRoute();
   }, [rideData]);
+
+  useEffect(() => {
+    fetchRoute();
+  }, [fetchRoute]);
 
   // Fit map to show all markers
   useEffect(() => {
@@ -293,7 +287,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
     }
 
     // Add pickup locations
-    rideData.passengers.forEach((p) => {
+    rideData.passengers?.forEach((p) => {
       if (p.pickupLatitude && p.pickupLongitude) {
         coordinates.push({
           latitude: p.pickupLatitude,
@@ -332,7 +326,6 @@ export default function CurrentRideScreen(): React.JSX.Element {
             await refreshRide();
             Alert.alert("Success", "Ride started successfully!");
           } catch (error: any) {
-            console.error("Start ride error:", error);
             Alert.alert("Error", error.message || "Failed to start ride");
           }
         },
@@ -379,7 +372,6 @@ export default function CurrentRideScreen(): React.JSX.Element {
                 { text: "OK", onPress: () => router.back() },
               ]);
             } catch (error: any) {
-              console.error("Complete ride error:", error);
               Alert.alert(
                 "Cannot Complete Ride",
                 error.message || "Failed to complete ride"
@@ -417,7 +409,6 @@ export default function CurrentRideScreen(): React.JSX.Element {
                 { text: "OK", onPress: () => router.back() },
               ]);
             } catch (error: any) {
-              console.error("Cancel ride error:", error);
               Alert.alert("Error", error.message || "Failed to cancel ride");
             }
           },
@@ -461,7 +452,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
     };
 
     // Find all pending pickups
-    const pendingPickups = rideData.passengers.filter(
+    const pendingPickups = (rideData.passengers || []).filter(
       (p) =>
         p.pickupStatus !== "picked_up" && p.pickupLatitude && p.pickupLongitude
     );
@@ -520,7 +511,6 @@ export default function CurrentRideScreen(): React.JSX.Element {
 
     // Launch Google Maps navigation NOW
     Linking.openURL(navigationUrl).catch((error) => {
-      console.error("❌ Google Maps not installed:", error);
 
       // Fallback to Apple Maps navigation on iOS, web on Android
       if (Platform.OS === "ios") {
@@ -570,7 +560,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
     }
 
     // Add all passenger pickup locations
-    rideData.passengers.forEach((p) => {
+    rideData.passengers?.forEach((p) => {
       if (p.pickupLatitude && p.pickupLongitude) {
         coords.push({
           latitude: p.pickupLatitude,
@@ -641,7 +631,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
             onPress={() => router.back()}
             activeOpacity={0.7}
           >
-            <Text style={styles.backButtonText}>Go Back</Text>
+            <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -672,7 +662,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
           region={calculateRegion()}
           driverLocation={location}
           routeCoordinates={routeCoordinates}
-          pickupMarkers={rideData.passengers}
+          pickupMarkers={rideData.passengers || []}
           originLocation={
             rideData.fromLatitude && rideData.fromLongitude
               ? {
@@ -699,20 +689,20 @@ export default function CurrentRideScreen(): React.JSX.Element {
         contentContainerStyle={styles.content}
       >
         <RideInfoCard
-          fromAddress={rideData.fromAddress}
-          fromCity={rideData.fromCity}
-          toAddress={rideData.toAddress}
-          toCity={rideData.toCity}
-          departureDate={rideData.departureDate}
-          departureTime={rideData.departureTime}
-          totalSeats={rideData.totalSeats}
-          availableSeats={rideData.availableSeats}
-          distance={rideData.distance}
-          pricePerSeat={rideData.pricePerSeat}
-          status={rideData.status}
+          fromAddress={rideData.fromAddress || ''}
+          fromCity={rideData.fromCity || null}
+          toAddress={rideData.toAddress || ''}
+          toCity={rideData.toCity || null}
+          departureDate={rideData.departureDate || ''}
+          departureTime={rideData.departureTime || ''}
+          totalSeats={rideData.totalSeats || 0}
+          availableSeats={rideData.availableSeats || 0}
+          distance={rideData.distance || null}
+          pricePerSeat={rideData.pricePerSeat || null}
+          status={rideData.status || 'scheduled'}
         />
 
-        {rideData.passengers.length > 0 && (
+        {rideData.passengers && rideData.passengers.length > 0 && (
           <PassengerList
             passengers={rideData.passengers}
             driverLocation={location}
@@ -722,7 +712,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
         )}
 
         <RideActions
-          rideStatus={rideData.status}
+          rideStatus={rideData.status || 'scheduled'}
           allPassengersPickedUp={areAllPassengersPickedUp()}
           onStartRide={handleStartRide}
           onCompleteRide={handleCompleteRide}

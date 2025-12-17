@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -38,15 +38,7 @@ export default function RideCompletionScreen(): React.JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [ratings, setRatings] = useState<RatingState>({});
 
-  useEffect(() => {
-    if (rideId && user?.id) {
-      fetchRideDetails();
-    } else {
-      setIsLoading(false);
-    }
-  }, [rideId, user?.id]);
-
-  const fetchRideDetails = async () => {
+  const fetchRideDetails = useCallback(async () => {
     if (!rideId || !user?.id) return;
     
     try {
@@ -70,12 +62,11 @@ export default function RideCompletionScreen(): React.JSX.Element {
         setRatings(initialRatings);
       }
     } catch (error) {
-      console.error("Error fetching ride details:", error);
       Alert.alert("Error", "Failed to load ride details");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [rideId, user?.id]);
 
   const handleRatingChange = (passengerId: number, rating: number) => {
     setRatings((prev) => ({
@@ -225,7 +216,7 @@ export default function RideCompletionScreen(): React.JSX.Element {
                 <IconSymbol size={20} name="clock.fill" color="#4285F4" />
                 <Text style={styles.summaryLabel}>Duration</Text>
                 <Text style={styles.summaryValue}>
-                  {formatDuration(rideData.estimatedTimeMinutes)}
+                  {rideData.estimatedTimeMinutes ? formatDuration(rideData.estimatedTimeMinutes) : "N/A"}
                 </Text>
               </View>
               <View style={styles.summaryItem}>

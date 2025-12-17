@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -29,7 +29,7 @@ export default function EarningsScreen(): React.JSX.Element {
   const [selectedRide, setSelectedRide] = useState<RideEarning | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
-  const fetchEarnings = async () => {
+  const fetchEarnings = useCallback(async () => {
     if (!user?.id) {
       setIsLoading(false);
       return;
@@ -42,17 +42,16 @@ export default function EarningsScreen(): React.JSX.Element {
       const response = await getEarnings(driverId);
       setEarnings(response.earnings); // Extract earnings from response
     } catch (error: any) {
-      console.error("❌ Error fetching earnings:", error);
       setError(error.message || "Failed to load earnings. Please try again.");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [user?.id]);
 
   useEffect(() => {
     fetchEarnings();
-  }, [user?.id]);
+  }, [fetchEarnings]);
 
   const onRefresh = () => {
     setIsRefreshing(true);
@@ -62,9 +61,7 @@ export default function EarningsScreen(): React.JSX.Element {
   // Use real data or fallback to 0
   const totalEarnings = earnings?.total || 0;
   const weeklyEarnings = earnings?.thisWeek || 0;
-  const monthlyEarnings = earnings?.thisMonth || 0;
   const completedRides = earnings?.totalRides || 0;
-  const totalSeatsBooked = earnings?.totalSeatsBooked || 0;
   const totalDistance = earnings?.totalDistance || 0;
   const avgEarningsPerRide = earnings?.averagePerRide || 0;
 
@@ -132,36 +129,6 @@ export default function EarningsScreen(): React.JSX.Element {
   const closeModal = () => {
     setIsModalVisible(false);
     setTimeout(() => setSelectedRide(null), 300); // Clear after animation
-  };
-
-  const formatDate = (dateString: string): string => {
-    try {
-      const date = new Date(dateString);
-      const now = new Date();
-      const diffTime = Math.abs(now.getTime() - date.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays === 0) {
-        return `Today, ${date.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-        })}`;
-      } else if (diffDays === 1) {
-        return `Yesterday, ${date.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-        })}`;
-      } else {
-        return date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        });
-      }
-    } catch {
-      return dateString;
-    }
   };
 
   if (isLoading) {

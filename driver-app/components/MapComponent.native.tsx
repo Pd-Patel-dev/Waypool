@@ -71,10 +71,7 @@ export default function MapComponent({
         loadingIndicatorColor="#FFFFFF"
         userLocationPriority="high"
         userLocationUpdateInterval={5000}
-        onMapReady={() => setMapReady(true)}
-        onError={(error) => {
-          console.error('Map error:', error);
-        }}>
+        onMapReady={() => setMapReady(true)}>
       </MapView>
       {!mapReady && (
         <View style={styles.loadingOverlay}>

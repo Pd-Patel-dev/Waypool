@@ -28,7 +28,6 @@ if (Platform.OS !== 'web') {
   try {
     Location = require('expo-location');
   } catch (e) {
-    console.warn('expo-location not available:', e);
   }
 }
 
@@ -83,7 +82,6 @@ export default function AddRideScreen(): React.JSX.Element {
             });
           }
         } catch (error) {
-          console.warn('Could not get location:', error);
         }
       }
     })();
@@ -136,7 +134,6 @@ export default function AddRideScreen(): React.JSX.Element {
     try {
       const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
       if (!GOOGLE_API_KEY) {
-        console.warn('Google Maps API key not configured, using straight line');
         return [origin, destination];
       }
 
@@ -170,11 +167,9 @@ export default function AddRideScreen(): React.JSX.Element {
 
         return allPoints.length > 0 ? allPoints : [origin, destination];
       } else {
-        console.warn('Directions API error:', data.status);
         return [origin, destination];
       }
     } catch (error) {
-      console.error('Error fetching route:', error);
       return [origin, destination];
     }
   };

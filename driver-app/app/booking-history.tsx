@@ -16,12 +16,11 @@ import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useUser } from '@/context/UserContext';
-import { getUpcomingRides, getPastRides, type Ride } from '@/services/api';
+import { getUpcomingRides, getPastRides } from '@/services/api';
 
 type FilterStatus = 'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled';
 
 export default function BookingHistoryScreen(): React.JSX.Element {
-  const params = useLocalSearchParams();
   const { user } = useUser();
   const [bookings, setBookings] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,7 +72,6 @@ export default function BookingHistoryScreen(): React.JSX.Element {
 
       setBookings(allBookings);
     } catch (error) {
-      console.error("Error fetching bookings:", error);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -239,7 +237,6 @@ export default function BookingHistoryScreen(): React.JSX.Element {
                           }
                         })
                         .catch((err) => {
-                          console.error('Error opening phone:', err);
                           Alert.alert('Error', 'Unable to make phone call.');
                         });
                     }}
@@ -261,7 +258,6 @@ export default function BookingHistoryScreen(): React.JSX.Element {
                           }
                         })
                         .catch((err) => {
-                          console.error('Error opening SMS:', err);
                           Alert.alert('Error', 'Unable to open messaging app');
                         });
                     }}

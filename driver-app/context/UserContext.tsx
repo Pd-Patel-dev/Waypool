@@ -44,7 +44,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setUserState(JSON.parse(userData));
       }
     } catch (error) {
-      console.error('Error loading user:', error);
     } finally {
       setIsLoading(false);
     }
@@ -60,7 +59,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setUserState(null);
       }
     } catch (error) {
-      console.error('Error saving user:', error);
     }
   };
 
@@ -70,7 +68,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
       await apiLogout();
     } catch (error) {
       // Even if backend call fails, clear local storage
-      console.error('Logout error:', error);
     } finally {
       // Always clear local user data
       await setUser(null);

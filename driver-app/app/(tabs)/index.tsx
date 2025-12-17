@@ -8,7 +8,6 @@ import {
   RefreshControl,
   Platform,
   TouchableOpacity,
-  Animated,
   Alert,
   Linking,
 } from 'react-native';
@@ -16,20 +15,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
-import MapComponent from '@/components/MapComponent';
 import { getUpcomingRides, deleteRide, type Ride } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { calculateTotalDistance } from '@/utils/distance';
 
-// Conditionally import Location only on native platforms
-let Location: any = null;
-if (Platform.OS !== 'web') {
-  try {
-    Location = require('expo-location');
-  } catch (e) {
-    console.warn('expo-location not available:', e);
-  }
-}
+// Import Location - it will be null on web but that's handled in the code
+import * as ExpoLocation from 'expo-location';
+const Location = Platform.OS !== 'web' ? ExpoLocation : null;
 
 interface LocationCoords {
   latitude: number;
@@ -47,11 +39,6 @@ const calculateEarnings = (ride: Ride): number => {
     return bookedSeats * ride.price;
   }
   return 0;
-};
-
-// Format currency for display
-const formatCurrency = (amount: number): string => {
-  return `$${amount.toFixed(2)}`;
 };
 
 export default function HomeScreen(): React.JSX.Element {
@@ -88,7 +75,6 @@ export default function HomeScreen(): React.JSX.Element {
     try {
       const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
       if (!GOOGLE_API_KEY) {
-        console.warn('Google Places API key not configured');
         return;
       }
 
@@ -115,7 +101,6 @@ export default function HomeScreen(): React.JSX.Element {
         setCurrentState(state);
       }
     } catch (error) {
-      console.error('Error reverse geocoding:', error);
     }
   };
 
@@ -185,8 +170,7 @@ export default function HomeScreen(): React.JSX.Element {
           // Get location with timeout
           const locationPromise = Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.High,
-            maximumAge: 10000,
-          });
+          } as any);
           
           const timeoutPromise = new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error("Location request timeout")), 15000)
@@ -212,7 +196,6 @@ export default function HomeScreen(): React.JSX.Element {
             throw new Error("Invalid location coordinates received");
           }
         } catch (error: any) {
-          console.error('Error getting location:', error);
           let errorMessage = 'Failed to get location';
           
           if (error?.message?.includes("timeout")) {
@@ -226,9 +209,7 @@ export default function HomeScreen(): React.JSX.Element {
           
           // Try to use last known location as fallback
           try {
-            const lastKnownLocation = await Location.getLastKnownPositionAsync({
-              maximumAge: 60000,
-            });
+            const lastKnownLocation = await Location.getLastKnownPositionAsync({} as any);
             if (lastKnownLocation) {
               const fallbackCoords = {
                 latitude: lastKnownLocation.coords.latitude,
@@ -240,7 +221,6 @@ export default function HomeScreen(): React.JSX.Element {
               }
             }
           } catch (fallbackError) {
-            console.error("Error getting last known location:", fallbackError);
           }
         }
       } else if (Platform.OS === 'web') {
@@ -258,7 +238,6 @@ export default function HomeScreen(): React.JSX.Element {
             },
             (error) => {
               setLocationError('Location permission denied');
-              console.error('Geolocation error:', error);
             }
           );
         } else {
@@ -269,7 +248,7 @@ export default function HomeScreen(): React.JSX.Element {
   }, [user]);
 
   // Fetch upcoming rides
-  const fetchRides = async () => {
+  const fetchRides = useCallback(async () => {
     if (!user?.id) {
       setIsLoadingRides(false);
       return;
@@ -280,13 +259,12 @@ export default function HomeScreen(): React.JSX.Element {
       const data = await getUpcomingRides(user.id);
       setRides(data);
     } catch (error) {
-      console.error('❌ Error fetching rides:', error);
       // Set empty array on error instead of leaving it undefined
       setRides([]);
     } finally {
       setIsLoadingRides(false);
     }
-  };
+  }, [user?.id]);
 
   // Refetch rides when screen comes into focus (e.g., after adding a ride)
   useFocusEffect(
@@ -295,7 +273,7 @@ export default function HomeScreen(): React.JSX.Element {
         fetchRides();
       }
       return () => {};
-    }, [user])
+    }, [user, fetchRides])
   );
 
   const onRefresh = async () => {
@@ -397,19 +375,6 @@ export default function HomeScreen(): React.JSX.Element {
     );
   }
 
-  const initialRegion = location
-    ? {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      }
-    : {
-        latitude: 37.78825,
-        longitude: -122.4324,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      };
 
   const handleAddRide = () => {
     router.push('/add-ride');
@@ -419,7 +384,6 @@ export default function HomeScreen(): React.JSX.Element {
     // Find the ride from the rides array
     const ride = rides.find((r) => r.id === rideId);
     if (!ride) {
-      console.error('Ride not found with ID:', rideId);
       return;
     }
 
@@ -671,7 +635,7 @@ export default function HomeScreen(): React.JSX.Element {
         {todaysRides.length > 0 && (
           <View style={styles.ridesContainer}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Today's rides</Text>
+              <Text style={styles.sectionTitle}>Today&apos;s rides</Text>
             </View>
             {todaysRides.map((ride) => (
               <View key={ride.id} style={styles.rideCard}>

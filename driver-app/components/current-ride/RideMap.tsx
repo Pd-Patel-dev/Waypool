@@ -4,26 +4,17 @@ import MapView, {
   Marker,
   Polyline,
   PROVIDER_GOOGLE,
-  PROVIDER_DEFAULT,
   Region,
 } from 'react-native-maps';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Passenger } from '@/services/api';
 
 interface LocationCoords {
   latitude: number;
   longitude: number;
 }
 
-interface Passenger {
-  id: number;
-  riderName: string | null;
-  pickupLatitude: number | null;
-  pickupLongitude: number | null;
-  pickupStatus: string;
-}
-
 interface RideMapProps {
-  mapRef: React.RefObject<MapView>;
+  mapRef: React.RefObject<MapView | null>;
   region: Region | null;
   driverLocation: LocationCoords | null;
   routeCoordinates: { latitude: number; longitude: number }[];

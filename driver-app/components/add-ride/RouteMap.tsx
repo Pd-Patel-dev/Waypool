@@ -4,11 +4,10 @@ import MapView, {
   Marker,
   Polyline,
   PROVIDER_GOOGLE,
-  PROVIDER_DEFAULT,
 } from 'react-native-maps';
 
 interface RouteMapProps {
-  mapRef: React.RefObject<MapView>;
+  mapRef: React.RefObject<MapView | null>;
   fromCoords: { latitude: number; longitude: number } | null;
   toCoords: { latitude: number; longitude: number } | null;
   routeCoordinates: { latitude: number; longitude: number }[];

@@ -89,6 +89,7 @@ export interface Passenger {
   status?: string;
   pickupStatus?: "pending" | "picked_up";
   pickedUpAt?: string | null;
+  numberOfSeats?: number; // Number of seats booked by this passenger
 }
 
 export interface Ride {
@@ -119,10 +120,11 @@ export interface Ride {
   availableSeats: number;
   totalSeats: number;
   price?: number;
-  pricePerSeat?: number;
+  pricePerSeat?: number | null;
   totalEarnings?: number; // Total earnings from completed ride
   status?: "scheduled" | "in-progress" | "completed" | "cancelled";
   distance?: number; // Distance in kilometers
+  estimatedTimeMinutes?: number; // Estimated time in minutes
   isRecurring?: boolean;
   recurringPattern?: 'daily' | 'weekly' | 'monthly' | null;
   recurringEndDate?: string | null;
@@ -225,7 +227,6 @@ export const signup = async (data: SignupRequest): Promise<SignupResponse> => {
  */
 export const login = async (data: LoginRequest): Promise<LoginResponse> => {
   const url = `${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGIN}`;
-  console.log("🔌 Login request to:", url);
 
   try {
     const response = await fetch(url, {
@@ -247,10 +248,6 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
 
     return result as LoginResponse;
   } catch (error) {
-    console.error("❌ Login network error:", error);
-    console.error("📡 Attempted URL:", url);
-    console.error("🌐 API Base URL:", API_BASE_URL);
-
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -268,7 +265,6 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
  */
 export const logout = async (): Promise<LogoutResponse> => {
   const url = `${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGOUT}`;
-  console.log("🔌 Logout request to:", url);
 
   try {
     const response = await fetch(url, {
@@ -289,9 +285,6 @@ export const logout = async (): Promise<LogoutResponse> => {
 
     return result as LogoutResponse;
   } catch (error) {
-    console.error("❌ Logout network error:", error);
-    console.error("📡 Attempted URL:", url);
-    console.error("🌐 API Base URL:", API_BASE_URL);
 
     if (error && typeof error === "object" && "message" in error) {
       throw error;
@@ -347,7 +340,6 @@ export interface EarningsResponse {
 
 export const getEarnings = async (driverId: number): Promise<EarningsResponse> => {
   const url = `${API_BASE_URL}${API_ENDPOINTS.EARNINGS.GET}?driverId=${driverId}`;
-  console.log("🔌 Get earnings request to:", url);
 
   try {
     const response = await fetch(url, {
@@ -368,7 +360,6 @@ export const getEarnings = async (driverId: number): Promise<EarningsResponse> =
 
     return result as EarningsResponse;
   } catch (error) {
-    console.error("❌ Get earnings error:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -439,7 +430,6 @@ export const getRideById = async (
         )}?driverId=${driverId}`
       : `${API_BASE_URL}${API_ENDPOINTS.RIDES.GET_BY_ID(rideId)}`;
 
-    console.log("🌐 Fetching ride from:", url);
 
     const response = await fetch(url, {
       method: "GET",
@@ -450,7 +440,6 @@ export const getRideById = async (
 
     if (!response.ok) {
       const result = await response.json();
-      console.error("❌ API error response:", result);
       throw {
         success: false,
         message: result.message || "Failed to fetch ride",
@@ -458,7 +447,6 @@ export const getRideById = async (
     }
 
     const result = await response.json();
-    console.log("✅ API response received:", result);
 
     if (!result.ride) {
       throw {
@@ -469,7 +457,6 @@ export const getRideById = async (
 
     return result.ride;
   } catch (error) {
-    console.error("❌ Error in getRideById:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -575,7 +562,6 @@ export const getPastRides = async (driverId?: number): Promise<Ride[]> => {
       ? `${API_BASE_URL}${API_ENDPOINTS.RIDES.PAST}?driverId=${driverId}`
       : `${API_BASE_URL}${API_ENDPOINTS.RIDES.PAST}`;
 
-    console.log("🌐 Fetching past rides from:", url);
 
     const response = await fetch(url, {
       method: "GET",
@@ -593,10 +579,8 @@ export const getPastRides = async (driverId?: number): Promise<Ride[]> => {
     }
 
     const result = await response.json();
-    console.log("✅ Fetched past rides from API:", result);
     return result.rides || [];
   } catch (error: any) {
-    console.error("❌ Error fetching past rides from API:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -617,7 +601,6 @@ export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
       ? `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}?driverId=${driverId}`
       : `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}`;
 
-    console.log("🌐 Fetching upcoming rides from:", url);
 
     const response = await fetch(url, {
       method: "GET",
@@ -635,10 +618,8 @@ export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
     }
 
     const result = await response.json();
-    console.log("✅ Fetched upcoming rides from API:", result);
     return result.rides || [];
   } catch (error: any) {
-    console.error("❌ Error fetching upcoming rides from API:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -674,7 +655,82 @@ export const createRide = async (data: CreateRideRequest): Promise<CreateRideRes
 
     return result as CreateRideResponse;
   } catch (error: any) {
-    console.error("❌ Error creating ride:", error);
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Delete a ride
+ */
+export const deleteRide = async (rideId: number, driverId: number): Promise<{ success: boolean; message: string }> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.DELETE(rideId)}?driverId=${driverId}`;
+    
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to delete ride",
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Update a ride
+ */
+export const updateRide = async (
+  rideId: number,
+  driverId: number,
+  data: Partial<CreateRideRequest>
+): Promise<{ success: boolean; message: string; ride?: Ride }> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPDATE(rideId)}?driverId=${driverId}`;
+    
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to update ride",
+        errors: result.errors || [],
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -711,7 +767,6 @@ export const cancelRide = async (rideId: number, driverId: number): Promise<{ su
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error canceling ride:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -748,7 +803,6 @@ export const startRide = async (rideId: number, driverId: number): Promise<{ suc
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error starting ride:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -794,7 +848,6 @@ export const completeRide = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error completing ride:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -833,7 +886,6 @@ export const markPassengerPickedUp = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error marking passenger as picked up:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -876,7 +928,6 @@ export const updateDriverLocation = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error updating driver location:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -906,6 +957,7 @@ export interface Notification {
     pickupAddress: string;
     pickupCity: string | null;
     pickupState: string | null;
+    pickupZipCode?: string | null;
     rider: {
       id: number;
       fullName: string;
@@ -954,7 +1006,6 @@ export const getNotifications = async (driverId: number): Promise<{ success: boo
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error fetching notifications:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -993,7 +1044,6 @@ export const markNotificationRead = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error marking notification as read:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1031,7 +1081,6 @@ export const markAllNotificationsRead = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error marking all notifications as read:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1070,7 +1119,6 @@ export const acceptBooking = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error accepting booking:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1109,7 +1157,6 @@ export const rejectBooking = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error rejecting booking:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1144,6 +1191,69 @@ export interface NotificationPreferences {
 }
 
 /**
+ * Profile type for driver
+ */
+export interface Profile {
+  id: number;
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  photoUrl: string | null;
+  city: string | null;
+  carMake: string | null;
+  carModel: string | null;
+  carYear: number | null;
+  carColor: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Vehicle type for driver
+ */
+export interface Vehicle {
+  carMake: string | null;
+  carModel: string | null;
+  carYear: number | null;
+  carColor: string | null;
+}
+
+/**
+ * Get driver profile
+ */
+export const getProfile = async (driverId: number): Promise<Profile> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.PROFILE.GET}?driverId=${driverId}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to fetch profile",
+      } as ApiError;
+    }
+
+    return result.user || result.profile;
+  } catch (error: any) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
  * Update driver profile information
  */
 export const updateProfile = async (
@@ -1173,7 +1283,6 @@ export const updateProfile = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error updating profile:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1213,7 +1322,6 @@ export const updatePassword = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error updating password:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1253,7 +1361,6 @@ export const updateProfilePhoto = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error updating profile photo:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1291,7 +1398,6 @@ export const getPreferences = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error fetching preferences:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1331,7 +1437,6 @@ export const updatePreferences = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error updating preferences:", error);
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
@@ -1374,7 +1479,88 @@ export const deleteAccount = async (
 
     return result;
   } catch (error: any) {
-    console.error("❌ Error deleting account:", error);
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Get vehicle information
+ */
+export const getVehicle = async (driverId: number): Promise<Vehicle> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.VEHICLE.GET}?driverId=${driverId}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to fetch vehicle information",
+      } as ApiError;
+    }
+
+    return result.vehicle || result;
+  } catch (error: any) {
+    if (error && typeof error === "object" && "message" in error) {
+      throw error;
+    }
+    throw {
+      success: false,
+      message: "Network error. Please check your connection.",
+    } as ApiError;
+  }
+};
+
+/**
+ * Update vehicle information
+ */
+export interface UpdateVehicleRequest {
+  carMake?: string;
+  carModel?: string;
+  carYear?: number;
+  carColor?: string;
+}
+
+export const updateVehicle = async (
+  driverId: number,
+  data: UpdateVehicleRequest
+): Promise<{ success: boolean; message: string; vehicle?: Vehicle }> => {
+  try {
+    const url = `${API_BASE_URL}${API_ENDPOINTS.VEHICLE.UPDATE}?driverId=${driverId}`;
+
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || "Failed to update vehicle information",
+        errors: result.errors,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }

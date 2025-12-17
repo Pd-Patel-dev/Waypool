@@ -1,6 +1,8 @@
 import React from 'react';
 import { Platform } from 'react-native';
 
+// Platform-specific map component wrapper
+
 interface Location {
   latitude: number;
   longitude: number;
@@ -18,15 +20,12 @@ interface MapComponentProps {
 }
 
 // Conditionally load platform-specific implementation
-let MapComponentImpl: React.ComponentType<MapComponentProps>;
-
-if (Platform.OS === 'web') {
-  // Web version - no native dependencies
-  MapComponentImpl = require('./MapComponent.web').default;
-} else {
-  // Native version - uses react-native-maps
-  MapComponentImpl = require('./MapComponent.native').default;
-}
+// Using .native and .web extensions allows React Native to automatically resolve the correct file
+const MapComponentImpl = Platform.OS === 'web'
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  ? require('./MapComponent.web').default
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  : require('./MapComponent.native').default;
 
 export default MapComponentImpl;
 

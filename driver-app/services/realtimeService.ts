@@ -272,7 +272,6 @@ class RealtimeService {
           try {
             cb(data);
           } catch (error) {
-            console.error(`Error in ${event} callback:`, error);
           }
         });
       });
@@ -293,15 +292,12 @@ class RealtimeService {
   private setupEventListeners() {
     // Handle connection events
     websocketService.on('connect', () => {
-      console.log('✅ Real-time service connected');
     });
 
     websocketService.on('disconnect', (reason) => {
-      console.log('❌ Real-time service disconnected:', reason);
     });
 
     websocketService.on('error', (error) => {
-      console.error('❌ Real-time service error:', error);
     });
   }
 }

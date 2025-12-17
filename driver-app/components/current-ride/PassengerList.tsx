@@ -6,24 +6,9 @@ import {
   TouchableOpacity,
   Platform,
   Linking,
-  Alert,
 } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-
-interface Passenger {
-  id: number;
-  riderId: number;
-  riderName: string | null;
-  riderPhone: string | null;
-  pickupAddress: string;
-  pickupCity: string | null;
-  pickupState: string | null;
-  pickupLatitude: number | null;
-  pickupLongitude: number | null;
-  numberOfSeats: number;
-  pickupStatus: string;
-  pickedUpAt: string | null;
-}
+import { Passenger } from '@/services/api';
 
 interface PassengerListProps {
   passengers: Passenger[];
@@ -39,15 +24,21 @@ export const PassengerList: React.FC<PassengerListProps> = ({
   calculateDistance,
 }) => {
   const handleCallPassenger = (phoneNumber: string) => {
+    if (!phoneNumber) return;
     const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (!cleanPhone) return;
     const phoneUrl = Platform.OS === 'ios' ? `telprompt:${cleanPhone}` : `tel:${cleanPhone}`;
-    Linking.openURL(phoneUrl);
+    Linking.openURL(phoneUrl).catch((err) => {
+    });
   };
 
   const handleMessagePassenger = (phoneNumber: string) => {
+    if (!phoneNumber) return;
     const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (!cleanPhone) return;
     const smsUrl = Platform.OS === 'ios' ? `sms:${cleanPhone}` : `sms:${cleanPhone}`;
-    Linking.openURL(smsUrl);
+    Linking.openURL(smsUrl).catch((err) => {
+    });
   };
 
   const getProximityStatus = (passenger: Passenger) => {
@@ -80,7 +71,6 @@ export const PassengerList: React.FC<PassengerListProps> = ({
       {passengers.map((passenger) => {
         const proximity = getProximityStatus(passenger);
         const isPickedUp = passenger.pickupStatus === 'picked_up';
-        const isPending = passenger.pickupStatus === 'pending';
 
         return (
           <View
@@ -96,7 +86,7 @@ export const PassengerList: React.FC<PassengerListProps> = ({
                   {passenger.riderName || 'Passenger'}
                 </Text>
                 <Text style={styles.passengerSeats}>
-                  {passenger.numberOfSeats} seat{passenger.numberOfSeats !== 1 ? 's' : ''}
+                  {passenger.numberOfSeats || 1} seat{(passenger.numberOfSeats || 1) !== 1 ? 's' : ''}
                 </Text>
               </View>
 
@@ -131,7 +121,11 @@ export const PassengerList: React.FC<PassengerListProps> = ({
               <View style={styles.contactButtons}>
                 <TouchableOpacity
                   style={styles.callButton}
-                  onPress={() => handleCallPassenger(passenger.riderPhone!)}
+                  onPress={() => {
+                    if (passenger.riderPhone) {
+                      handleCallPassenger(passenger.riderPhone);
+                    }
+                  }}
                   activeOpacity={0.7}
                 >
                   <IconSymbol size={18} name="phone.fill" color="#4285F4" />
@@ -140,7 +134,11 @@ export const PassengerList: React.FC<PassengerListProps> = ({
 
                 <TouchableOpacity
                   style={styles.messageButton}
-                  onPress={() => handleMessagePassenger(passenger.riderPhone!)}
+                  onPress={() => {
+                    if (passenger.riderPhone) {
+                      handleMessagePassenger(passenger.riderPhone);
+                    }
+                  }}
                   activeOpacity={0.7}
                 >
                   <IconSymbol size={18} name="message.fill" color="#34C759" />

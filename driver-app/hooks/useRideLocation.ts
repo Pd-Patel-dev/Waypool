@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, AppState } from 'react-native';
 import { updateDriverLocation } from '@/services/api';
 
@@ -8,7 +8,6 @@ if (Platform.OS !== 'web') {
   try {
     Location = require('expo-location');
   } catch (e) {
-    console.warn('expo-location not available:', e);
   }
 }
 
@@ -43,7 +42,7 @@ export function useRideLocation({
   const lastUpdateRef = useRef<number>(0);
 
   // Function to update driver location in backend
-  const updateBackendLocation = async (coords: LocationCoords) => {
+  const updateBackendLocation = useCallback(async (coords: LocationCoords) => {
     if (!driverId || !rideId) return;
 
     const now = Date.now();
@@ -55,14 +54,12 @@ export function useRideLocation({
     try {
       await updateDriverLocation(driverId, coords.latitude, coords.longitude);
       lastUpdateRef.current = now;
-      console.log('✅ Driver location updated in backend');
     } catch (error) {
-      console.error('❌ Failed to update driver location:', error);
     }
-  };
+  }, [driverId, rideId]);
 
   // Start watching location
-  const startLocationWatch = async () => {
+  const startLocationWatch = useCallback(async () => {
     if (!Location || Platform.OS === 'web') return;
     if (locationWatchSubscriptionRef.current) return; // Already watching
 
@@ -83,7 +80,7 @@ export function useRideLocation({
           timeInterval: 5000, // Update every 5 seconds
           distanceInterval: 10, // Or every 10 meters
         },
-        (newLocation) => {
+        (newLocation: any) => {
           const coords = {
             latitude: newLocation.coords.latitude,
             longitude: newLocation.coords.longitude,
@@ -99,13 +96,11 @@ export function useRideLocation({
         }
       );
 
-      console.log('✅ Location watch started');
     } catch (error) {
-      console.error('❌ Error starting location watch:', error);
       setLocationError('Failed to start location tracking');
       setIsWatching(false);
     }
-  };
+  }, [isActive, driverId]);
 
   // Stop watching location
   const stopLocationWatch = () => {
@@ -113,12 +108,11 @@ export function useRideLocation({
       locationWatchSubscriptionRef.current.remove();
       locationWatchSubscriptionRef.current = null;
       setIsWatching(false);
-      console.log('🛑 Location watch stopped');
     }
   };
 
   // Refresh location once
-  const refreshLocation = async () => {
+  const refreshLocation = useCallback(async () => {
     if (!Location || Platform.OS === 'web') return;
 
     try {
@@ -145,10 +139,9 @@ export function useRideLocation({
         updateBackendLocation(coords);
       }
     } catch (error) {
-      console.error('❌ Error refreshing location:', error);
       setLocationError('Failed to get location');
     }
-  };
+  }, [isActive, driverId, updateBackendLocation]);
 
   // Handle app state changes (pause/resume location tracking)
   useEffect(() => {
@@ -159,7 +152,6 @@ export function useRideLocation({
       ) {
         // App came to foreground - resume location tracking
         if (isActive) {
-          console.log('📱 App resumed - restarting location watch');
           refreshLocation();
         }
       } else if (
@@ -167,7 +159,6 @@ export function useRideLocation({
         nextAppState.match(/inactive|background/)
       ) {
         // App went to background - keep location tracking if ride is active
-        console.log('📱 App backgrounded - keeping location watch for active ride');
       }
 
       appStateRef.current = nextAppState;
@@ -176,7 +167,7 @@ export function useRideLocation({
     return () => {
       subscription.remove();
     };
-  }, [isActive]);
+  }, [isActive, refreshLocation]);
 
   // Start/stop location tracking based on ride status
   useEffect(() => {
@@ -189,7 +180,7 @@ export function useRideLocation({
     return () => {
       stopLocationWatch();
     };
-  }, [isActive, driverId, rideId]);
+  }, [isActive, driverId, rideId, startLocationWatch]);
 
   return {
     location,

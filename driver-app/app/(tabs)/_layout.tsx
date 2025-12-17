@@ -29,7 +29,6 @@ export default function TabLayout() {
           setNotificationBadgeCount(unreadNotifications);
         }
       } catch (error) {
-        console.error("Error fetching badge count:", error);
       }
     };
 

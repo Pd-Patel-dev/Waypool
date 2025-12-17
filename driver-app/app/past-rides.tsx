@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -22,23 +22,22 @@ export default function PastRidesScreen(): React.JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchPastRides = async () => {
+  const fetchPastRides = useCallback(async () => {
     if (!user?.id) return;
 
     try {
       const pastRides = await getPastRides(user.id);
       setRides(pastRides);
     } catch (error: any) {
-      console.error("Error fetching past rides:", error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [user?.id]);
 
   useEffect(() => {
     fetchPastRides();
-  }, [user?.id]);
+  }, [fetchPastRides]);
 
   const onRefresh = () => {
     setIsRefreshing(true);
@@ -86,7 +85,6 @@ export default function PastRidesScreen(): React.JSX.Element {
             }
           }
         } catch (e) {
-          console.error("Error parsing fallback date:", e);
         }
       }
       
@@ -136,7 +134,6 @@ export default function PastRidesScreen(): React.JSX.Element {
             }
           }
         } catch (e) {
-          console.error("Error parsing fallback time:", e);
         }
       }
       

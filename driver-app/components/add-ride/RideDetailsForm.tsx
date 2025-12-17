@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 
 interface RideDetailsFormProps {
   availableSeats: string;

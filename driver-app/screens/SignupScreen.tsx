@@ -100,7 +100,6 @@ export default function SignupScreen(): React.JSX.Element {
             });
           }
         } catch (error) {
-          console.error('Email check error:', error);
         } finally {
           setIsCheckingEmail(false);
         }
@@ -195,7 +194,7 @@ export default function SignupScreen(): React.JSX.Element {
         state: selectedState,
         carMake: carMake.trim(),
         carModel: carModel.trim(),
-        carYear: carYear.trim(),
+        carYear: parseInt(carYear.trim(), 10),
         carColor: carColor.trim(),
       };
 
@@ -315,9 +314,9 @@ export default function SignupScreen(): React.JSX.Element {
                   State <Text style={styles.required}>*</Text>
                 </Text>
                 <CustomDropdown
-                  data={getStateNames()}
-                  value={selectedState}
-                  onSelect={setSelectedState}
+                  items={getStateNames().map(state => ({ label: state, value: state }))}
+                  selectedValue={selectedState}
+                  onValueChange={setSelectedState}
                   placeholder="Select state"
                 />
                 {errors.state && <Text style={styles.errorText}>{errors.state}</Text>}
@@ -328,11 +327,11 @@ export default function SignupScreen(): React.JSX.Element {
                   City <Text style={styles.required}>*</Text>
                 </Text>
                 <CustomDropdown
-                  data={availableCities}
-                  value={selectedCity}
-                  onSelect={setSelectedCity}
+                  items={availableCities.map(city => ({ label: city, value: city }))}
+                  selectedValue={selectedCity}
+                  onValueChange={setSelectedCity}
                   placeholder="Select city"
-                  disabled={!selectedState}
+                  enabled={!!selectedState}
                 />
                 {errors.city && <Text style={styles.errorText}>{errors.city}</Text>}
               </View>

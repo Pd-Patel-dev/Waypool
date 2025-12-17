@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { getVehicle, updateVehicle, type Vehicle, type ApiError } from '@/services/api';
+import { getVehicle, updateVehicle, type ApiError } from '@/services/api';
 import { useUser } from '@/context/UserContext';
 
 export default function VehicleScreen(): React.JSX.Element {
@@ -55,7 +55,6 @@ export default function VehicleScreen(): React.JSX.Element {
         setCarYear(vehicle.carYear ? vehicle.carYear.toString() : '');
         setCarColor(vehicle.carColor || '');
       } catch (error) {
-        console.error('Error fetching vehicle:', error);
         const apiError = error as ApiError;
         Alert.alert('Error', apiError.message || 'Failed to load vehicle information. Please try again.');
       } finally {
@@ -136,7 +135,6 @@ export default function VehicleScreen(): React.JSX.Element {
         ]);
       }
     } catch (error) {
-      console.error('Error updating vehicle:', error);
       const apiError = error as ApiError;
       if (apiError.errors && apiError.errors.length > 0) {
         Alert.alert('Validation Error', apiError.errors.join('\n'));

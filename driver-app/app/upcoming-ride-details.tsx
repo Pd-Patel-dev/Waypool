@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -16,7 +17,6 @@ import { IconSymbol } from "@/components/ui/icon-symbol";
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { type Ride, getRideById, cancelRide } from "@/services/api";
 import { useUser } from "@/context/UserContext";
-import { Platform } from "react-native";
 import { calculateTotalDistance } from "@/utils/distance";
 
 export default function UpcomingRideDetailsScreen(): React.JSX.Element {
@@ -40,7 +40,6 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
         const ride = await getRideById(rideId, user.id);
         setRideData(ride);
       } catch (error) {
-        console.error("Error fetching ride details:", error);
       } finally {
         setIsLoading(false);
       }
@@ -135,7 +134,6 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
             }
           }
         } catch (e) {
-          console.error("Error parsing fallback date:", e);
         }
       }
       
@@ -228,7 +226,6 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
                 },
               ]);
             } catch (error: any) {
-              console.error("Error cancelling ride:", error);
               Alert.alert(
                 "Error",
                 error.message || "Failed to cancel ride. Please try again."
@@ -560,6 +557,7 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
                       <TouchableOpacity
                         style={styles.callButton}
                         onPress={() => {
+                          if (!passenger.riderPhone) return;
                           const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
                           const phoneUrl = Platform.OS === 'ios' ? `telprompt:${cleanPhone}` : `tel:${cleanPhone}`;
                           Linking.canOpenURL(phoneUrl)
@@ -571,7 +569,6 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
                               }
                             })
                             .catch((err) => {
-                              console.error('Error opening phone:', err);
                               Alert.alert('Error', 'Unable to make phone call.');
                             });
                         }}
@@ -583,6 +580,7 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
                       <TouchableOpacity
                         style={styles.messageButton}
                         onPress={() => {
+                          if (!passenger.riderPhone) return;
                           const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
                           const smsUrl = `sms:${cleanPhone}`;
                           Linking.canOpenURL(smsUrl)
@@ -594,7 +592,6 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
                               }
                             })
                             .catch((err) => {
-                              console.error('Error opening SMS:', err);
                               Alert.alert('Error', 'Unable to open messaging app');
                             });
                         }}
@@ -1030,6 +1027,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#4285F4",
+  },
+  recurringCard: {
+    backgroundColor: "#0F0F0F",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#1A1A1A",
+  },
+  recurringHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  recurringTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  recurringContent: {
+    gap: 8,
+  },
+  recurringRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  recurringLabel: {
+    fontSize: 14,
+    color: "#999999",
+  },
+  recurringValue: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#FFFFFF",
   },
 });
 

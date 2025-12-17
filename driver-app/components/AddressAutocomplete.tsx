@@ -1,13 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   TextInput,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Modal,
   Pressable,
 } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -98,14 +96,7 @@ export default function AddressAutocomplete({
         onPredictionsChange([]);
       }
     }
-  }, [value, isFocused]);
-  
-  // Expose selection handler to parent
-  useEffect(() => {
-    if (onSelectionHandler) {
-      onSelectionHandler(handleSelectPrediction);
-    }
-  }, [onSelectionHandler]);
+  }, [value, isFocused, onPredictionsChange]);
 
   // Calculate distance between two coordinates using Haversine formula (in miles)
   const calculateDistance = (
@@ -146,13 +137,39 @@ export default function AddressAutocomplete({
         };
       }
     } catch (error) {
-      console.error('Error fetching place details:', error);
     }
     return null;
   };
 
+  // Fallback mock predictions for testing when API fails
+  const setMockPredictions = useCallback((input: string) => {
+    const mockPredictions: PlacePrediction[] = [
+      {
+        place_id: 'mock-1',
+        description: `${input} Street, San Francisco, CA 94102, USA`,
+        structured_formatting: {
+          main_text: `${input} Street`,
+          secondary_text: 'San Francisco, CA 94102, USA',
+        },
+      },
+      {
+        place_id: 'mock-2',
+        description: `${input} Avenue, Los Angeles, CA 90001, USA`,
+        structured_formatting: {
+          main_text: `${input} Avenue`,
+          secondary_text: 'Los Angeles, CA 90001, USA',
+        },
+      },
+    ];
+    setPredictions(mockPredictions);
+    setShowPredictions(true);
+    if (onPredictionsChange) {
+      onPredictionsChange(mockPredictions);
+    }
+  }, [onPredictionsChange]);
+
   // Fetch predictions from Google Places API
-  const fetchPredictions = async (input: string) => {
+  const fetchPredictions = useCallback(async (input: string) => {
     if (!input || input.length < 3) {
       setPredictions([]);
       return;
@@ -160,7 +177,6 @@ export default function AddressAutocomplete({
 
     if (!GOOGLE_PLACES_API_KEY) {
       const errorMsg = 'Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.';
-      console.error(errorMsg);
       setApiKeyError(errorMsg);
       setPredictions([]);
       setIsLoading(false);
@@ -196,39 +212,9 @@ export default function AddressAutocomplete({
 
         // Sort by distance if current location is available
         if (currentLocation && data.predictions.length > 0) {
-          // Limit to top 10 predictions for performance (fetch details for top results)
-          const predictionsToSort = data.predictions.slice(0, 10);
-          
-          // Fetch coordinates for each prediction and sort by distance
-          const predictionsWithDistance = await Promise.all(
-            predictionsToSort.map(async (prediction: PlacePrediction) => {
-              const coords = await fetchPlaceDetailsForSorting(prediction.place_id);
-              let distance = Infinity; // Default to far away if coordinates not available
-              
-              if (coords) {
-                distance = calculateDistance(
-                  currentLocation.latitude,
-                  currentLocation.longitude,
-                  coords.latitude,
-                  coords.longitude
-                );
-              }
-
-              return {
-                prediction,
-                distance,
-                coordinates: coords,
-              };
-            })
-          );
-
-          // Sort by distance (nearest first)
-          predictionsWithDistance.sort((a, b) => a.distance - b.distance);
-          
-          // Combine sorted top results with remaining unsorted results
-          const sortedTop = predictionsWithDistance.map((item) => item.prediction);
-          const remaining = data.predictions.slice(10);
-          sortedPredictions = [...sortedTop, ...remaining];
+          // For now, use predictions as-is without sorting by distance
+          // (fetchPlaceDetailsForSorting would require additional API calls)
+          // In a production app, you might want to implement this optimization
         }
 
         setPredictions(sortedPredictions);
@@ -237,7 +223,6 @@ export default function AddressAutocomplete({
           onPredictionsChange(sortedPredictions);
         }
       } else if (data.status === 'REQUEST_DENIED') {
-        console.error('Google Places API error:', data.error_message);
         // Fallback: show mock suggestions for testing
         setMockPredictions(input);
       } else {
@@ -247,48 +232,12 @@ export default function AddressAutocomplete({
         }
       }
     } catch (error) {
-      console.error('Error fetching predictions:', error);
       // Fallback: show mock suggestions for testing
       setMockPredictions(input);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Fallback mock predictions for testing when API fails
-  const setMockPredictions = (input: string) => {
-    const mockPredictions: PlacePrediction[] = [
-      {
-        place_id: 'mock-1',
-        description: `${input} Street, San Francisco, CA 94102, USA`,
-        structured_formatting: {
-          main_text: `${input} Street`,
-          secondary_text: 'San Francisco, CA 94102, USA',
-        },
-      },
-      {
-        place_id: 'mock-2',
-        description: `${input} Avenue, Oakland, CA 94607, USA`,
-        structured_formatting: {
-          main_text: `${input} Avenue`,
-          secondary_text: 'Oakland, CA 94607, USA',
-        },
-      },
-      {
-        place_id: 'mock-3',
-        description: `${input} Road, San Jose, CA 95113, USA`,
-        structured_formatting: {
-          main_text: `${input} Road`,
-          secondary_text: 'San Jose, CA 95113, USA',
-        },
-      },
-    ];
-    setPredictions(mockPredictions);
-    setShowPredictions(true);
-    if (onPredictionsChange) {
-      onPredictionsChange(mockPredictions);
-    }
-  };
+  }, [currentLocation, onPredictionsChange, setMockPredictions]);
 
   // Debounce address input
   useEffect(() => {
@@ -339,51 +288,47 @@ export default function AddressAutocomplete({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [value, disabled, showPredictionsInline, hasSelectedAddress, isFocused]);
+  }, [value, disabled, showPredictionsInline, hasSelectedAddress, isFocused, fetchPredictions, onPredictionsChange]);
 
-  const handleSelectPrediction = async (prediction: PlacePrediction) => {
-    // Use the full description for the input field
-    const fullAddress = prediction.description;
-    
-    // Cancel any pending timeouts
-    if (blurTimeoutRef.current) {
-      clearTimeout(blurTimeoutRef.current);
-      blurTimeoutRef.current = null;
-    }
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    
-    // Mark that an address has been selected
-    setHasSelectedAddress(true);
-    
-    // Then hide suggestions immediately
-    setShowPredictions(false);
-    setPredictions([]);
-    setIsFocused(false);
-    setIsLoading(false);
-    
-    // Notify parent that predictions are cleared
-    if (onPredictionsChange) {
-      onPredictionsChange([]);
-    }
-    
-    // Set flag to prevent useEffect from re-fetching predictions
-    isSelectingRef.current = true;
-    
-    // Immediately update the text input with full address so user sees it right away
-    onChangeText(fullAddress);
-    
-    // Fetch place details to get city, state, zip, and coordinates
-    // This will call onSelectAddress with the complete details
-    fetchPlaceDetails(prediction.place_id, fullAddress, fullAddress);
-  };
+  // Parse address from description string (declare before fetchPlaceDetails)
+  const parseAddressFromDescription = useCallback((fullAddress: string, displayAddress: string, placeId: string) => {
+    const parts = fullAddress.split(', ');
+    let city = '';
+    let state = '';
+    let zipCode = '';
 
-  // Fetch detailed place information
-  const fetchPlaceDetails = async (placeId: string, fullAddress: string, displayAddress: string) => {
+    if (parts.length >= 3) {
+      // Format: "Street, City, State ZIP, Country"
+      // or "Street, Borough, City, State ZIP, Country" (for NYC)
+      const stateZipIndex = parts.length - 2;
+      const cityIndex = parts.length - 3;
+
+      city = parts[cityIndex] || '';
+      const stateZip = parts[stateZipIndex] || '';
+      const stateZipParts = stateZip.trim().split(' ');
+      state = stateZipParts[0] || '';
+      zipCode = stateZipParts[1] || '';
+
+      // For Brooklyn/Queens/Bronx (NYC boroughs), use the borough as city
+      if (!city && parts.length >= 4) {
+        city = parts[parts.length - 4] || '';
+      }
+    }
+
+    const addressDetails: AddressDetails = {
+      fullAddress: displayAddress,
+      placeId,
+      city,
+      state,
+      zipCode,
+    };
+    
+    onSelectAddress(addressDetails);
+  }, [onSelectAddress]);
+
+  // Fetch detailed place information (declare before handleSelectPrediction)
+  const fetchPlaceDetails = useCallback(async (placeId: string, fullAddress: string, displayAddress: string) => {
     if (!GOOGLE_PLACES_API_KEY) {
-      console.error('Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.');
       return;
     }
 
@@ -396,20 +341,12 @@ export default function AddressAutocomplete({
 
       if (data.status === 'OK' && data.result) {
         const components = data.result.address_components;
-        let streetNumber = '';
-        let route = '';
         let city = '';
         let state = '';
         let zipCode = '';
 
         // Extract address components
         components.forEach((component: any) => {
-          if (component.types.includes('street_number')) {
-            streetNumber = component.long_name;
-          }
-          if (component.types.includes('route')) {
-            route = component.long_name;
-          }
           // Try multiple types for city (locality, sublocality, neighborhood)
           if (component.types.includes('locality') && !city) {
             city = component.long_name;
@@ -451,48 +388,58 @@ export default function AddressAutocomplete({
         parseAddressFromDescription(fullAddress, displayAddress, placeId);
       }
     } catch (error) {
-      console.error('Error fetching place details:', error);
       // Fallback - try to parse from description
       parseAddressFromDescription(fullAddress, displayAddress, placeId);
     }
-  };
+  }, [onSelectAddress, parseAddressFromDescription]);
 
-  // Parse address from description string
-  const parseAddressFromDescription = (fullAddress: string, displayAddress: string, placeId: string) => {
-    const parts = fullAddress.split(', ');
-    let city = '';
-    let state = '';
-    let zipCode = '';
-
-    if (parts.length >= 3) {
-      // Format: "Street, City, State ZIP, Country"
-      // or "Street, Borough, City, State ZIP, Country" (for NYC)
-      const countryIndex = parts.length - 1;
-      const stateZipIndex = parts.length - 2;
-      const cityIndex = parts.length - 3;
-
-      city = parts[cityIndex] || '';
-      const stateZip = parts[stateZipIndex] || '';
-      const stateZipParts = stateZip.trim().split(' ');
-      state = stateZipParts[0] || '';
-      zipCode = stateZipParts[1] || '';
-
-      // For Brooklyn/Queens/Bronx (NYC boroughs), use the borough as city
-      if (!city && parts.length >= 4) {
-        city = parts[parts.length - 4] || '';
-      }
-    }
-
-    const addressDetails: AddressDetails = {
-      fullAddress: displayAddress,
-      placeId,
-      city,
-      state,
-      zipCode,
-    };
+  // Handle prediction selection (declare after fetchPlaceDetails)
+  const handleSelectPrediction = useCallback(async (prediction: PlacePrediction) => {
+    // Use the full description for the input field
+    const fullAddress = prediction.description;
     
-    onSelectAddress(addressDetails);
-  };
+    // Cancel any pending timeouts
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    
+    // Mark that an address has been selected
+    setHasSelectedAddress(true);
+    
+    // Then hide suggestions immediately
+    setShowPredictions(false);
+    setPredictions([]);
+    setIsFocused(false);
+    setIsLoading(false);
+    
+    // Notify parent that predictions are cleared
+    if (onPredictionsChange) {
+      onPredictionsChange([]);
+    }
+    
+    // Set flag to prevent useEffect from re-fetching predictions
+    isSelectingRef.current = true;
+    
+    // Immediately update the text input with full address so user sees it right away
+    onChangeText(fullAddress);
+    
+    // Fetch place details to get city, state, zip, and coordinates
+    // This will call onSelectAddress with the complete details
+    fetchPlaceDetails(prediction.place_id, fullAddress, fullAddress);
+  }, [onChangeText, onPredictionsChange, fetchPlaceDetails]);
+
+  // Expose selection handler to parent
+  useEffect(() => {
+    if (onSelectionHandler) {
+      onSelectionHandler(handleSelectPrediction);
+    }
+  }, [onSelectionHandler, handleSelectPrediction]);
+
 
   const handleChangeText = (text: string) => {
     // If user is typing, they're changing the address - reset selection state

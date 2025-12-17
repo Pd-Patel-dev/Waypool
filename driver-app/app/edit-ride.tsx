@@ -63,6 +63,11 @@ export default function EditRideScreen(): React.JSX.Element {
 
       try {
         setIsLoading(true);
+        if (!user?.id) {
+          Alert.alert('Error', 'User session expired. Please login again.');
+          setIsLoading(false);
+          return;
+        }
         const ride = await getRideById(rideId, user.id);
         setRideData(ride);
 
@@ -96,11 +101,10 @@ export default function EditRideScreen(): React.JSX.Element {
           setAvailableSeats(ride.availableSeats.toString());
         }
 
-        if (ride.pricePerSeat !== undefined) {
+        if (ride.pricePerSeat !== undefined && ride.pricePerSeat !== null) {
           setPricePerSeat(ride.pricePerSeat.toString());
         }
       } catch (error) {
-        console.error('Error fetching ride:', error);
         Alert.alert('Error', 'Failed to load ride details. Please try again.');
         router.back();
       } finally {
@@ -178,9 +182,9 @@ export default function EditRideScreen(): React.JSX.Element {
         newErrors.availableSeats = 'Seats must be between 1 and 8';
       }
       // Check if trying to reduce seats below booked seats
-      if (hasBookings && rideData) {
+      if (hasBookings && rideData && rideData.passengers) {
         const bookedSeats = rideData.passengers.reduce((sum, p) => {
-          return sum + ((p as any).numberOfSeats || 1);
+          return sum + (p.numberOfSeats || 1);
         }, 0);
         if (seats < bookedSeats) {
           newErrors.availableSeats = `Cannot reduce seats below ${bookedSeats} (already booked)`;
@@ -263,7 +267,14 @@ export default function EditRideScreen(): React.JSX.Element {
         return;
       }
 
-      const response = await updateRide(rideId!, user.id, updateData);
+      if (!user?.id) {
+        Alert.alert('Error', 'User session expired. Please login again.');
+        setIsSaving(false);
+        return;
+      }
+
+      const driverId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+      const response = await updateRide(rideId!, driverId, updateData);
 
       if (response.success) {
         Alert.alert(

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useUser } from '@/context/UserContext';
@@ -7,7 +7,6 @@ import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { API_BASE_URL } from '@/config/api';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
 
 export default function MenuScreen(): React.JSX.Element {
   const { user, logout } = useUser();
@@ -55,7 +54,6 @@ export default function MenuScreen(): React.JSX.Element {
       await logout();
       router.replace('/login');
     } catch (error) {
-      console.error('Sign out error:', error);
               Alert.alert('Error', 'Failed to sign out. Please try again.');
     }
           },

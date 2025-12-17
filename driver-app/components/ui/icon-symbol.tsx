@@ -1,11 +1,11 @@
 // Fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
+import { SymbolWeight } from 'expo-symbols';
 import { ComponentProps } from 'react';
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
-type IconMapping = Record<SymbolViewProps['name'], ComponentProps<typeof MaterialIcons>['name']>;
+type IconMapping = Record<string, ComponentProps<typeof MaterialIcons>['name']>;
 type IconSymbolName = keyof typeof MAPPING;
 
 /**
@@ -13,7 +13,7 @@ type IconSymbolName = keyof typeof MAPPING;
  * - see Material Icons in the [Icons Directory](https://icons.expo.fyi).
  * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
  */
-const MAPPING = {
+const MAPPING: IconMapping = {
   'house.fill': 'home',
   'house': 'home',
   'paperplane.fill': 'send',
@@ -35,7 +35,7 @@ const MAPPING = {
   'flag': 'flag',
   'car': 'directions-car',
   'car.fill': 'directions-car',
-  'arrow.right.circle.fill': 'arrow-forward-circle',
+  'arrow.right.circle.fill': 'arrow-forward-ios',
   'star': 'star',
   'money': 'attach-money',
   'checkmark': 'check-circle',
@@ -57,7 +57,13 @@ const MAPPING = {
   'chevron.down': 'keyboard-arrow-down',
   'exclamationmark.triangle.fill': 'error',
   'repeat': 'repeat',
-} as IconMapping;
+  // Add maneuver icons
+  'arrow.up': 'arrow-upward',
+  'arrow.turn.up.left': 'turn-left',
+  'arrow.turn.up.right': 'turn-right',
+  'arrow.uturn.down': 'u-turn-left',
+  'arrow.up.right': 'trending-up',
+};
 
 /**
  * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.

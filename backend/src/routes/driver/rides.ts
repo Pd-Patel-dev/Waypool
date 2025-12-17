@@ -1455,6 +1455,14 @@ router.put('/:id/start', async (req: Request, res: Response) => {
       });
     }
 
+    // Require at least one confirmed booking to start a ride
+    if (!ride.bookings || ride.bookings.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot start ride. At least one confirmed booking is required.',
+      });
+    }
+
     // Update ride status to in-progress
     await prisma.rides.update({
       where: { id: rideId },

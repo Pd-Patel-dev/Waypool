@@ -35,10 +35,8 @@ export function useRideData({
       setError(null);
       const data = await getRideById(rideId, driverId);
       setRideData(data);
-      console.log('✅ Ride data refreshed:', data.id);
     } catch (err) {
       const apiError = err as ApiError;
-      console.error('❌ Error fetching ride:', apiError);
       setError(apiError.message || 'Failed to load ride');
     } finally {
       setIsLoading(false);
