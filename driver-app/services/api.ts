@@ -76,13 +76,7 @@ export interface CheckEmailResponse {
 
 export interface Passenger {
   id: number;
-  riderId?: number;
-  riderName?: string;
-  riderPhone?: string;
   pickupAddress: string;
-  pickupCity?: string;
-  pickupState?: string;
-  pickupZipCode?: string;
   pickupLatitude?: number;
   pickupLongitude?: number;
   confirmationNumber?: string;
@@ -93,29 +87,13 @@ export interface Passenger {
 
 export interface Ride {
   id: number;
-  driverId?: number;
-  driverName?: string;
-  driverPhone?: string;
-  carMake?: string;
-  carModel?: string;
-  carYear?: number;
-  carColor?: string;
   fromAddress: string;
-  fromCity?: string;
-  fromState?: string;
-  fromZipCode?: string;
   toAddress: string;
-  toCity?: string;
-  toState?: string;
-  toZipCode?: string;
   fromLatitude?: number;
   fromLongitude?: number;
   toLatitude?: number;
   toLongitude?: number;
   departureTime: string;
-  departureDate?: string;
-  departureTimeString?: string;
-  departureTimeISO?: string;
   availableSeats: number;
   totalSeats: number;
   price?: number;
@@ -128,17 +106,6 @@ export interface Ride {
   recurringEndDate?: string | null;
   parentRideId?: number | null;
   passengers?: Passenger[]; // List of enrolled passengers
-  driver?: {
-    id: number;
-    fullName: string;
-    email: string;
-    phoneNumber: string;
-    photoUrl?: string | null;
-    carMake?: string | null;
-    carModel?: string | null;
-    carYear?: number | null;
-    carColor?: string | null;
-  };
 }
 
 export interface CreateRideRequest {

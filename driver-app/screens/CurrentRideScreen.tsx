@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -31,11 +31,11 @@ import NetInfo from '@react-native-community/netinfo';
 
 // Conditionally import Location only on native platforms
 let Location: any = null;
-if (Platform.OS !== "web") {
+if (Platform.OS !== 'web') {
   try {
-    Location = require("expo-location");
+    Location = require('expo-location');
   } catch (e) {
-    console.warn("expo-location not available:", e);
+    console.warn('expo-location not available:', e);
   }
 }
 
@@ -44,9 +44,20 @@ interface LocationCoords {
   longitude: number;
 }
 
+interface CurrentRide {
+  id: number;
+  fromAddress: string;
+  toAddress: string;
+  fromLatitude: number;
+  fromLongitude: number;
+  toLatitude: number;
+  toLongitude: number;
+  passengerName?: string;
+  estimatedDuration?: string;
+  distance?: number;
+}
+
 export default function CurrentRideScreen(): React.JSX.Element {
-  const params = useLocalSearchParams();
-  const { user } = useUser();
   const [location, setLocation] = useState<LocationCoords | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const mapRef = React.useRef<MapView>(null);
@@ -168,11 +179,18 @@ export default function CurrentRideScreen(): React.JSX.Element {
     }
   }, [params.ride]);
 
-  console.log("📍 CurrentRideScreen params:", {
-    rideIdFromParams,
-    hasRideFromParams: !!rideFromParams,
-    rideFromParamsId: rideFromParams?.id,
-    hasFetched: hasFetchedRef.current,
+  // Mock current ride data
+  const [currentRide] = useState<CurrentRide>({
+    id: 1,
+    fromAddress: '123 Main Street, San Francisco, CA',
+    toAddress: '456 Market Street, San Francisco, CA',
+    fromLatitude: 37.7749,
+    fromLongitude: -122.4194,
+    toLatitude: 37.7896,
+    toLongitude: -122.4019,
+    passengerName: 'John Doe',
+    estimatedDuration: '15 min',
+    distance: 2.5,
   });
 
   // Fetch ride details from API - only once
@@ -578,7 +596,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
   // Get current location and watch for updates during active ride
   useEffect(() => {
     (async () => {
-      if (Location && Platform.OS !== "web") {
+      if (Location && Platform.OS !== 'web') {
         try {
           // Check if location services are enabled
           const servicesEnabled = await Location.hasServicesEnabledAsync();
@@ -1081,36 +1099,12 @@ export default function CurrentRideScreen(): React.JSX.Element {
 
   // Fit map to show route when ready
   useEffect(() => {
-    if (
-      mapRef.current &&
-      rideData &&
-      rideData.fromLatitude &&
-      rideData.fromLongitude &&
-      rideData.toLatitude &&
-      rideData.toLongitude
-    ) {
+    if (mapRef.current && currentRide) {
       const coordinates = [
-        { latitude: rideData.fromLatitude, longitude: rideData.fromLongitude },
+        { latitude: currentRide.fromLatitude, longitude: currentRide.fromLongitude },
+        { latitude: currentRide.toLatitude, longitude: currentRide.toLongitude },
       ];
-
-      // Add passenger pickup locations
-      if (rideData.passengers) {
-        rideData.passengers.forEach((passenger) => {
-          if (passenger.pickupLatitude && passenger.pickupLongitude) {
-            coordinates.push({
-              latitude: passenger.pickupLatitude,
-              longitude: passenger.pickupLongitude,
-            });
-          }
-        });
-      }
-
-      // Add destination
-      coordinates.push({
-        latitude: rideData.toLatitude,
-        longitude: rideData.toLongitude,
-      });
-
+      
       if (location) {
         coordinates.push(location);
       }
@@ -1122,7 +1116,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
         });
       }, 500);
     }
-  }, [rideData, location, routeCoordinates]);
+  }, [currentRide, location]);
 
   const mapRegion: Region = location
     ? {
@@ -1131,16 +1125,9 @@ export default function CurrentRideScreen(): React.JSX.Element {
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
       }
-    : rideData && rideData.fromLatitude && rideData.fromLongitude
-    ? {
-        latitude: rideData.fromLatitude,
-        longitude: rideData.fromLongitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      }
     : {
-        latitude: 37.7749,
-        longitude: -122.4194,
+        latitude: currentRide.fromLatitude,
+        longitude: currentRide.fromLongitude,
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
       };
@@ -1673,246 +1660,55 @@ export default function CurrentRideScreen(): React.JSX.Element {
       return;
     }
 
-    Alert.alert(
-      "Cancel Ride",
-      "Are you sure you want to cancel this ride? All confirmed bookings will be cancelled and passengers will be notified.",
-      [
-        {
-          text: "No",
-          style: "cancel",
-        },
-        {
-          text: "Yes, Cancel",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await cancelRide(rideData.id, user.id);
-              Alert.alert(
-                "Ride Cancelled",
-                "The ride has been cancelled successfully.",
-                [
-                  {
-                    text: "OK",
-                    onPress: () => router.back(),
-                  },
-                ]
-              );
-            } catch (error: any) {
-              Alert.alert(
-                "Error",
-                error.message || "Failed to cancel ride. Please try again."
-              );
-            }
-          },
-        },
-      ]
-    );
+  const formatDistance = (km: number): string => {
+    if (km < 1) return `${Math.round(km * 1000)}m`;
+    return `${km.toFixed(1)}km`;
   };
 
-  // Pan responder for swipe gestures
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only respond to vertical swipes
-        return (
-          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) &&
-          Math.abs(gestureState.dy) > 10
-        );
-      },
-      onPanResponderGrant: () => {
-        sheetHeight.setOffset(currentHeightRef.current);
-        sheetHeight.setValue(0);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        const newHeight = currentHeightRef.current - gestureState.dy; // Negative because we're dragging up
-        // Constrain the height between collapsed and expanded
-        const constrainedHeight = Math.max(
-          collapsedHeight,
-          Math.min(expandedHeight, newHeight)
-        );
-        sheetHeight.setValue(constrainedHeight - currentHeightRef.current);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        sheetHeight.flattenOffset();
-        const newHeight = currentHeightRef.current - gestureState.dy;
-        const constrainedHeight = Math.max(
-          collapsedHeight,
-          Math.min(expandedHeight, newHeight)
-        );
-        currentHeightRef.current = constrainedHeight;
-        const velocity = gestureState.vy;
-
-        // Determine if we should expand or collapse based on position and velocity
-        const shouldExpand =
-          constrainedHeight > (collapsedHeight + expandedHeight) / 2 ||
-          (velocity < -0.5 && !isExpanded);
-
-        if (shouldExpand) {
-          Animated.spring(sheetHeight, {
-            toValue: expandedHeight,
-            useNativeDriver: false,
-            tension: 50,
-            friction: 7,
-          }).start(() => {
-            currentHeightRef.current = expandedHeight;
-          });
-          setIsExpanded(true);
-        } else {
-          Animated.spring(sheetHeight, {
-            toValue: collapsedHeight,
-            useNativeDriver: false,
-            tension: 50,
-            friction: 7,
-          }).start(() => {
-            currentHeightRef.current = collapsedHeight;
-          });
-          setIsExpanded(false);
-        }
-      },
-    })
-  ).current;
-
-  // Show loading state while fetching ride data
-  if (isLoadingRide || !rideData) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <StatusBar style="light" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.loadingText}>Loading ride details...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
-
+      
       {/* Map */}
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
-          provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
           style={styles.map}
           initialRegion={mapRegion}
           showsUserLocation={true}
           showsMyLocationButton={true}
           followsUserLocation={true}
-          loadingEnabled={true}
-        >
+          loadingEnabled={true}>
+          
           {/* Route line */}
-          {routeCoordinates.length > 0 ? (
-            <>
-              {/* Shadow/outline */}
-              <Polyline
-                coordinates={routeCoordinates}
-                strokeColor="rgba(66, 133, 244, 0.3)"
-                strokeWidth={8}
-                lineCap="round"
-                lineJoin="round"
-              />
-              {/* Main route */}
-              <Polyline
-                coordinates={routeCoordinates}
-                strokeColor="#4285F4"
-                strokeWidth={5}
-                lineCap="round"
-                lineJoin="round"
-              />
-            </>
-          ) : rideData &&
-            rideData.fromLatitude &&
-            rideData.fromLongitude &&
-            rideData.toLatitude &&
-            rideData.toLongitude ? (
-            <Polyline
-              coordinates={[
-                {
-                  latitude: rideData.fromLatitude,
-                  longitude: rideData.fromLongitude,
-                },
-                {
-                  latitude: rideData.toLatitude,
-                  longitude: rideData.toLongitude,
-                },
-              ]}
-              strokeColor="#4285F4"
-              strokeWidth={5}
-              lineCap="round"
-              lineJoin="round"
-              lineDashPattern={[10, 5]}
-            />
-          ) : null}
+          <Polyline
+            coordinates={routeCoordinates}
+            strokeColor="#4285F4"
+            strokeWidth={4}
+          />
 
-          {/* Pickup marker - Small Car Icon */}
-          {rideData && rideData.fromLatitude && rideData.fromLongitude && (
-            <Marker
-              coordinate={{
-                latitude: rideData.fromLatitude,
-                longitude: rideData.fromLongitude,
-              }}
-              title="Pickup"
-              description={rideData.fromAddress}
-            >
-              <View style={styles.markerContainer}>
-                <View style={styles.carMarker}>
-                  <IconSymbol size={16} name="car" color="#FFFFFF" />
-                </View>
-              </View>
-            </Marker>
-          )}
+          {/* Pickup marker */}
+          <Marker
+            coordinate={{
+              latitude: currentRide.fromLatitude,
+              longitude: currentRide.fromLongitude,
+            }}
+            title="Pickup"
+            description={currentRide.fromAddress}
+            pinColor="#4285F4"
+          />
 
-          {/* Passenger pickup markers */}
-          {rideData &&
-            rideData.passengers &&
-            rideData.passengers.map((passenger, index) => {
-              if (!passenger.pickupLatitude || !passenger.pickupLongitude)
-                return null;
-              return (
-                <Marker
-                  key={`passenger-${passenger.id || index}`}
-                  coordinate={{
-                    latitude: passenger.pickupLatitude,
-                    longitude: passenger.pickupLongitude,
-                  }}
-                  title={`Passenger ${index + 1} Pickup${
-                    passenger.riderName ? ` - ${passenger.riderName}` : ""
-                  }`}
-                  description={passenger.pickupAddress}
-                >
-                  <View style={styles.markerContainer}>
-                    <View style={styles.passengerMarker}>
-                      <IconSymbol
-                        size={14}
-                        name="person.fill"
-                        color="#FFFFFF"
-                      />
-                    </View>
-                  </View>
-                </Marker>
-              );
-            })}
-
-          {/* Destination marker - Small Flag Icon */}
-          {rideData && rideData.toLatitude && rideData.toLongitude && (
-            <Marker
-              coordinate={{
-                latitude: rideData.toLatitude,
-                longitude: rideData.toLongitude,
-              }}
-              title="Destination"
-              description={rideData.toAddress}
-            >
-              <View style={styles.markerContainer}>
-                <View style={styles.destinationMarker}>
-                  <IconSymbol size={14} name="flag" color="#FFFFFF" />
-                </View>
-                <View style={styles.markerPin} />
-              </View>
-            </Marker>
-          )}
+          {/* Destination marker */}
+          <Marker
+            coordinate={{
+              latitude: currentRide.toLatitude,
+              longitude: currentRide.toLongitude,
+            }}
+            title="Destination"
+            description={currentRide.toAddress}
+            pinColor="#FF3B30"
+          />
         </MapView>
 
         {/* Location Error Banner */}
@@ -1988,28 +1784,23 @@ export default function CurrentRideScreen(): React.JSX.Element {
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
+            activeOpacity={0.7}>
             <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Current Ride</Text>
           <View style={styles.backButton} />
         </View>
 
-        {/* Bottom ride info card - Swipeable */}
-        <Animated.View
-          style={[
-            styles.rideInfoCard,
-            {
-              height: sheetHeight,
-              maxHeight: expandedHeight,
-            },
-          ]}
-          {...panResponder.panHandlers}
-        >
-          {/* Drag Handle */}
-          <View style={styles.dragHandle}>
-            <View style={styles.dragHandleBar} />
+        {/* Bottom ride info card */}
+        <View style={styles.rideInfoCard}>
+          <View style={styles.rideInfoHeader}>
+            <View style={styles.statusBadge}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusText}>In Progress</Text>
+            </View>
+            {currentRide.estimatedDuration && (
+              <Text style={styles.etaText}>ETA: {currentRide.estimatedDuration}</Text>
+            )}
           </View>
 
           {/* Scrollable Content */}
@@ -2590,8 +2381,22 @@ export default function CurrentRideScreen(): React.JSX.Element {
                   )}
               </>
             )}
-          </Animated.ScrollView>
-        </Animated.View>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity style={styles.actionButton} activeOpacity={0.7}>
+              <IconSymbol size={20} name="paperplane.fill" color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Contact</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.actionButtonPrimary]} 
+              activeOpacity={0.7}>
+              <Text style={styles.actionButtonTextPrimary}>Complete Ride</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       {/* PIN Modal */}
@@ -2675,7 +2480,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: '#000000',
   },
   mapContainer: {
     flex: 1,
@@ -2733,40 +2538,42 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   headerOverlay: {
-    position: "absolute",
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   backButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#1A1A1A",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: '#1A1A1A',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: "700",
-    color: "#FFFFFF",
+    fontWeight: '700',
+    color: '#FFFFFF',
     letterSpacing: -0.3,
   },
   rideInfoCard: {
-    position: "absolute",
+    position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "#0A0A0A",
+    backgroundColor: '#0A0A0A',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    shadowColor: "#000000",
+    padding: 20,
+    paddingBottom: 32,
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.5,
     shadowRadius: 16,
@@ -2799,15 +2606,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   rideInfoHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#1A1A1A",
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1A1A1A',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -2817,79 +2624,73 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#4285F4",
+    backgroundColor: '#4285F4',
   },
   statusText: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#FFFFFF",
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   etaText: {
     fontSize: 14,
-    fontWeight: "700",
-    color: "#4285F4",
+    fontWeight: '700',
+    color: '#4285F4',
   },
   routeInfo: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   routePoint: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   routeMarker: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#4285F4",
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#4285F4',
     marginTop: 6,
-    marginRight: 10,
+    marginRight: 12,
   },
   routeMarkerDest: {
-    backgroundColor: "#FF3B30",
+    backgroundColor: '#FF3B30',
   },
   routeLine: {
     width: 2,
-    height: 16,
-    backgroundColor: "#2A2A2A",
-    marginLeft: 3,
-    marginVertical: 2,
+    height: 24,
+    backgroundColor: '#2A2A2A',
+    marginLeft: 4,
+    marginVertical: 4,
   },
   routeContent: {
     flex: 1,
   },
   routeLabel: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
     opacity: 0.5,
-    marginBottom: 3,
-    letterSpacing: 0.5,
+    marginBottom: 4,
+    letterSpacing: 1,
   },
   routeAddress: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#FFFFFF",
-    lineHeight: 18,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    lineHeight: 20,
   },
   statsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginTop: 16,
-    paddingTop: 16,
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 16,
+    paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: "#1A1A1A",
+    borderBottomWidth: 1,
+    borderColor: '#1A1A1A',
   },
   statItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#1A1A1A",
-    borderRadius: 8,
-    minWidth: "45%",
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   statValue: {
     fontSize: 18,
@@ -2972,28 +2773,28 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#1A1A1A",
-    borderRadius: 10,
-    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: "#2A2A2A",
+    borderColor: '#2A2A2A',
   },
   actionButtonFull: {
     flex: 1,
     minWidth: "100%",
   },
   actionButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   actionButtonPrimary: {
-    backgroundColor: "#4285F4",
-    borderColor: "#4285F4",
+    backgroundColor: '#4285F4',
+    borderColor: '#4285F4',
   },
   actionButtonSuccess: {
     backgroundColor: "#34C759",
@@ -3398,3 +3199,4 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 });
+
