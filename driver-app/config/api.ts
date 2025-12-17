@@ -6,12 +6,6 @@ import Constants from "expo-constants";
 // For Android emulator: use 10.0.2.2 instead of localhost
 // For iOS simulator: use localhost
 // For physical device: use your computer's IP address (e.g., 192.168.1.100)
-//
-// To find your computer's IP address:
-// Mac/Linux: Run `ifconfig | grep "inet " | grep -v 127.0.0.1` or `ipconfig getifaddr en0`
-// Windows: Run `ipconfig` and look for IPv4 Address
-//
-// Set EXPO_PUBLIC_API_URL_IOS_PHYSICAL in your .env file with your IP (e.g., http://192.168.1.100:3000)
 
 const getApiUrl = (): string => {
   // Use environment variables with fallback defaults

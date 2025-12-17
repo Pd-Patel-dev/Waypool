@@ -28,7 +28,6 @@ const MAPPING = {
   'line.3.horizontal': 'menu',
   'line.3.horizontal.decrease': 'tune',
   'location': 'location-on',
-  'location.fill': 'location-on',
   'target': 'place',
   'clock': 'schedule',
   'mappin': 'room',

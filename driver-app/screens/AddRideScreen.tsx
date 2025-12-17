@@ -59,7 +59,10 @@ export default function AddRideScreen(): React.JSX.Element {
   // UI state
   const [isFromInputActive, setIsFromInputActive] = useState(false);
   const [isToInputActive, setIsToInputActive] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Map should only show when both addresses selected and no input is active
+  const shouldShowMap = fromCoords && toCoords && !isFromInputActive && !isToInputActive;
+  
   const [errors, setErrors] = useState<{
     fromAddress?: string;
     toAddress?: string;
@@ -71,23 +74,46 @@ export default function AddRideScreen(): React.JSX.Element {
     pricePerSeat?: string;
   }>({});
 
-  // Get current location
-  useEffect(() => {
-    (async () => {
-      if (Location && Platform.OS !== 'web') {
-        try {
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status === 'granted') {
-            await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
-            });
-          }
-        } catch (error) {
-          console.warn('Could not get location:', error);
-        }
-      }
-    })();
-  }, []);
+  const handleSelectFromAddress = (addressDetails: any) => {
+    setFromAddress(addressDetails.fullAddress);
+    setFromCity(addressDetails.city);
+    setFromState(addressDetails.state);
+    setFromZipCode(addressDetails.zipCode);
+    
+    // Set coordinates
+    if (addressDetails.latitude && addressDetails.longitude) {
+      setFromCoords({
+        latitude: addressDetails.latitude,
+        longitude: addressDetails.longitude,
+      });
+    }
+    
+    // Clear errors when address is selected
+    if (errors.fromAddress) {
+      setErrors({ ...errors, fromAddress: undefined, fromCity: undefined });
+    }
+  };
+
+
+  const handleSelectToAddress = (addressDetails: any) => {
+    setToAddress(addressDetails.fullAddress);
+    setToCity(addressDetails.city);
+    setToState(addressDetails.state);
+    setToZipCode(addressDetails.zipCode);
+    
+    // Set coordinates
+    if (addressDetails.latitude && addressDetails.longitude) {
+      setToCoords({
+        latitude: addressDetails.latitude,
+        longitude: addressDetails.longitude,
+      });
+    }
+    
+    // Clear errors when address is selected
+    if (errors.toAddress) {
+      setErrors({ ...errors, toAddress: undefined, toCity: undefined });
+    }
+  };
 
   // Decode Google polyline to coordinates
   const decodePolyline = (encoded: string): { latitude: number; longitude: number }[] => {
@@ -336,16 +362,196 @@ export default function AddRideScreen(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => {
+            if (currentStep === 2) {
+              setCurrentStep(1);
+            } else {
+              router.back();
+            }
+          }}
+          activeOpacity={0.7}>
+          <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {currentStep === 1 ? 'Plan your ride' : 'Ride details'}
+        </Text>
+        <View style={styles.headerSpacer} />
+      </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoid}
-      >
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-              <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
+      {/* Step 1: Address Selection */}
+      {currentStep === 1 && (
+        <View style={styles.step1Container}>
+          {/* Address Input Section */}
+          <View style={styles.addressContainer}>
+            {/* From Address */}
+            <View style={styles.addressInputWrapper}>
+              <Text style={styles.addressLabel}>From</Text>
+              <View style={styles.addressInputContainer}>
+                <AddressAutocomplete
+                  value={fromAddress}
+                  onChangeText={setFromAddress}
+                  onSelectAddress={handleSelectFromAddress}
+                  placeholder="Pickup location"
+                  error={errors.fromAddress}
+                  showPredictionsInline={true}
+                  currentLocation={currentLocation}
+                  onFocusChange={(focused) => {
+                    // Mark as inactive when not focused (unless predictions are showing)
+                    if (!focused) {
+                      setIsFromInputActive(false);
+                    }
+                  }}
+                  onPredictionsChange={(predictions) => {
+                    // Update active state based on predictions
+                    setIsFromInputActive(predictions && predictions.length > 0);
+                  }}
+                />
+              </View>
+            </View>
+
+            {/* To Address */}
+            <View style={[styles.addressInputWrapper, styles.addressInputWrapperLast]}>
+              <Text style={styles.addressLabel}>To</Text>
+              <View style={styles.addressInputContainer}>
+                <AddressAutocomplete
+                  value={toAddress}
+                  onChangeText={setToAddress}
+                  onSelectAddress={handleSelectToAddress}
+                  placeholder="Where to?"
+                  error={errors.toAddress}
+                  showPredictionsInline={true}
+                  currentLocation={currentLocation}
+                  onFocusChange={(focused) => {
+                    // Mark as inactive when not focused (unless predictions are showing)
+                    if (!focused) {
+                      setIsToInputActive(false);
+                    }
+                  }}
+                  onPredictionsChange={(predictions) => {
+                    // Update active state based on predictions
+                    setIsToInputActive(predictions && predictions.length > 0);
+                  }}
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Map Section - Only show when both addresses selected and no input active */}
+          {shouldShowMap && (
+          <View style={styles.mapSection}>
+            <View style={styles.mapFullContainer}>
+              <MapView
+                ref={mapRef}
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                style={styles.mapPreview}
+                region={{
+                  latitude: (fromCoords.latitude + toCoords.latitude) / 2,
+                  longitude: (fromCoords.longitude + toCoords.longitude) / 2,
+                  latitudeDelta: Math.abs(fromCoords.latitude - toCoords.latitude) * 1.8,
+                  longitudeDelta: Math.abs(fromCoords.longitude - toCoords.longitude) * 1.8,
+                }}
+                showsUserLocation={false}
+                showsMyLocationButton={false}
+                showsCompass={false}
+                showsTraffic={false}
+                toolbarEnabled={false}
+                loadingEnabled={true}
+                loadingBackgroundColor="#2A2A2A"
+                loadingIndicatorColor="#4285F4"
+                onMapReady={() => {
+                  // Fit to coordinates after map loads
+                  setTimeout(() => {
+                    if (mapRef.current) {
+                      mapRef.current.fitToCoordinates([fromCoords, toCoords], {
+                        edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
+                        animated: true,
+                      });
+                    }
+                  }, 300);
+                }}>
+                {/* Route line - actual road route with gradient effect */}
+                {routeCoordinates.length > 0 ? (
+                  <>
+                    {/* Shadow/outline */}
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor="rgba(66, 133, 244, 0.3)"
+                      strokeWidth={8}
+                      lineCap="round"
+                      lineJoin="round"
+                    />
+                    {/* Main route */}
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor="#4285F4"
+                      strokeWidth={5}
+                      lineCap="round"
+                      lineJoin="round"
+                    />
+                  </>
+                ) : (
+                  <Polyline
+                    coordinates={[fromCoords, toCoords]}
+                    strokeColor="#4285F4"
+                    strokeWidth={5}
+                    lineCap="round"
+                    lineJoin="round"
+                    lineDashPattern={[10, 5]}
+                  />
+                )}
+                {/* Start marker - Small Car Icon */}
+                <Marker 
+                  coordinate={fromCoords}
+                  title="Pickup"
+                  description="Start location">
+                  <View style={styles.markerContainer}>
+                    <View style={styles.carMarker}>
+                      <IconSymbol size={16} name="car" color="#FFFFFF" />
+                    </View>
+                  </View>
+                </Marker>
+                
+                {/* Destination marker - Small Flag Icon */}
+                <Marker 
+                  coordinate={toCoords}
+                  title="Destination"
+                  description="Drop-off location">
+                  <View style={styles.markerContainer}>
+                    <View style={styles.destinationMarker}>
+                      <IconSymbol size={14} name="flag" color="#FFFFFF" />
+                    </View>
+                    <View style={styles.markerPin} />
+                  </View>
+                </Marker>
+              </MapView>
+              
+              {/* Distance Badge */}
+              <View style={styles.distanceOverlay}>
+                <Text style={styles.distanceText}>
+                  {distance ? `${distance.toFixed(1)} mi` : 'Calculating...'}
+                </Text>
+              </View>
+            </View>
+          </View>
+          )}
+              
+          {/* Next Button - Fixed at bottom */}
+          <View style={styles.stepButtonContainer}>
+            <TouchableOpacity
+              style={[
+                styles.nextButton,
+                (!fromAddress || !toAddress || !fromCoords || !toCoords) &&
+                  styles.nextButtonDisabled,
+              ]}
+              onPress={() => setCurrentStep(2)}
+              disabled={!fromAddress || !toAddress || !fromCoords || !toCoords}
+              activeOpacity={0.8}>
+                <Text style={styles.nextButtonText}>Next</Text>
             </TouchableOpacity>
             <Text style={styles.title}>Create New Ride</Text>
             <View style={{ width: 24 }} />
@@ -456,8 +662,259 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 16,
+    backgroundColor: '#000000',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A1A1A',
+    zIndex: 10,
+  },
+    backButton: {
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#FFFFFF',
+      letterSpacing: -0.3,
+      flex: 1,
+    },
+    headerSpacer: {
+      width: 36,
+    },
+    addressContainer: {
+      backgroundColor: '#1E1E1E',
+      marginHorizontal: 16,
+      marginTop: 12,
+      marginBottom: 12,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      overflow: 'visible',
+      zIndex: 100,
+      elevation: 5,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+    },
+    mapSection: {
+      flex: 1,
+      marginHorizontal: 16,
+      marginBottom: 90, // Space for Next button
+      borderRadius: 12,
+      overflow: 'hidden',
+    },
+    addressInputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: '#333333',
+      overflow: 'visible',
+    },
+    addressInputWrapperLast: {
+      borderBottomWidth: 0,
+    },
+    addressLabel: {
+      fontSize: 13,
+      fontWeight: '500',
+      color: '#999999',
+      width: 50,
+      marginRight: 8,
+    },
+    addressInputContainer: {
+      flex: 1,
+      overflow: 'visible',
+    },
+    mapFullContainer: {
+      width: '100%',
+      height: '100%',
+      position: 'relative',
+      backgroundColor: '#2A2A2A',
+      borderRadius: 12,
+      overflow: 'hidden',
+    },
+    mapPreview: {
+      ...StyleSheet.absoluteFillObject,
+      borderRadius: 12,
+    },
+    distanceOverlay: {
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#4285F4',
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 5,
+    },
+    distanceText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#FFFFFF',
+      letterSpacing: 0.3,
+    },
+    markerContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    carMarker: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: '#4285F4',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: '#FFFFFF',
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.4,
+      shadowRadius: 4,
+      elevation: 5,
+    },
+    destinationMarker: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: '#EA4335',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: '#FFFFFF',
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.4,
+      shadowRadius: 4,
+      elevation: 5,
+    },
+    markerPin: {
+      width: 0,
+      height: 0,
+      backgroundColor: 'transparent',
+      borderStyle: 'solid',
+      borderLeftWidth: 6,
+      borderRightWidth: 6,
+      borderTopWidth: 10,
+      borderLeftColor: 'transparent',
+      borderRightColor: 'transparent',
+      borderTopColor: '#EA4335',
+      marginTop: -2,
+    },
+  form: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#CCCCCC',
+    marginBottom: 12,
+    letterSpacing: -0.2,
+  },
+  rideDetailsSection: {
+    backgroundColor: '#0F0F0F',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+    stepButtonContainer: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      paddingBottom: 20,
+      backgroundColor: '#000000',
+      borderTopWidth: 1,
+      borderTopColor: '#1A1A1A',
+      zIndex: 200,
+      elevation: 10,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+    },
+    nextButton: {
+      backgroundColor: '#4285F4',
+      borderRadius: 12,
+      paddingVertical: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      shadowColor: '#4285F4',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    nextButtonDisabled: {
+      backgroundColor: '#2A2A2A',
+      shadowOpacity: 0,
+    },
+    nextButtonText: {
+      color: '#FFFFFF',
+      fontSize: 17,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+    },
+  routeSummaryContainer: {
+    backgroundColor: '#0F0F0F',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+    position: 'relative',
+  },
+  routeSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  routeIconCircle: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4285F4',
+    marginTop: 4,
+  },
+  routeIconSquare: {
+    width: 12,
+    height: 12,
+    backgroundColor: '#FF3B30',
+    marginTop: 4,
+  },
+  routeSummaryTextContainer: {
+    flex: 1,
+  },
+  routeSummaryLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666666',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   title: {
     fontSize: 20,

@@ -129,10 +129,50 @@ router.post('/book', async (req: Request, res: Response) => {
     const { rideId, riderId, pickupAddress, pickupCity, pickupState, pickupZipCode, pickupLatitude, pickupLongitude, numberOfSeats } = req.body;
 
     // Validate required fields
-    if (!rideId || !riderId || !pickupAddress || pickupLatitude === undefined || pickupLongitude === undefined) {
+    if (!rideId || !riderId || !numberOfSeats || !pickupAddress || pickupLatitude === undefined || pickupLongitude === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: rideId, riderId, pickupAddress, pickupLatitude, pickupLongitude',
+        message: 'Missing required fields: rideId, riderId, numberOfSeats, pickupAddress, pickupLatitude, pickupLongitude',
+      });
+    }
+
+    // Validate numberOfSeats
+    const seats = parseInt(numberOfSeats);
+    if (isNaN(seats) || seats < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Number of seats must be at least 1',
+      });
+    }
+
+    const parsedRideId = parseInt(rideId);
+    const parsedRiderId = parseInt(riderId);
+
+    // Validate that IDs are valid numbers
+    if (isNaN(parsedRideId) || isNaN(parsedRiderId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid rideId or riderId',
+      });
+    }
+
+    // Verify rider exists
+    const rider = await prisma.user.findUnique({
+      where: { id: parsedRiderId },
+    });
+
+    if (!rider) {
+      return res.status(404).json({
+        success: false,
+        message: 'Rider not found. Please ensure you are logged in with a valid account.',
+      });
+    }
+
+    // Verify rider is actually a rider
+    if (!rider.isRider) {
+      return res.status(400).json({
+        success: false,
+        message: 'User account is not set up as a rider',
       });
     }
 
@@ -150,11 +190,11 @@ router.post('/book', async (req: Request, res: Response) => {
       });
     }
 
-    // Check if ride has available seats
-    if (ride.availableSeats <= 0) {
+    // Check if ride has enough available seats
+    if (ride.availableSeats < seats) {
       return res.status(400).json({
         success: false,
-        message: 'No available seats on this ride',
+        message: `Only ${ride.availableSeats} seat${ride.availableSeats !== 1 ? 's' : ''} available. You requested ${seats} seat${seats !== 1 ? 's' : ''}.`,
       });
     }
 
@@ -265,6 +305,7 @@ router.post('/book', async (req: Request, res: Response) => {
       booking: {
         id: booking.id,
         confirmationNumber: booking.confirmationNumber,
+        numberOfSeats: booking.numberOfSeats,
         pickupAddress: booking.pickupAddress,
         pickupCity: booking.pickupCity,
         pickupState: booking.pickupState,
@@ -284,10 +325,14 @@ router.post('/book', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('❌ Error creating booking:', error);
+    console.error('❌ Error fetching bookings:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to create booking',
+      message: 'Failed to fetch bookings',
+      bookings: {
+        upcoming: [],
+        past: [],
+      },
     });
   }
 });
