@@ -129,6 +129,14 @@ model users {
   pushTokenPlatform                           String?
   pushTokenDeviceId                           String?
   pushTokenUpdatedAt                          DateTime?
+  // Stripe Connect fields for driver payouts
+  stripeAccountId                             String?         @unique
+  stripeAccountStatus                         String?         // 'pending', 'restricted', 'enabled', 'disabled'
+  bankAccountId                               String?         // Stripe bank account ID
+  bankAccountLast4                            String?         // Last 4 digits of bank account
+  bankAccountType                             String?         // 'checking' or 'savings'
+  bankAccountStatus                            String?         // 'new', 'validated', 'verified', 'errored'
+  payoutsEnabled                              Boolean         @default(false)
   bookings                                    bookings[]
   notifications_notifications_driverIdTousers notifications[] @relation("notifications_driverIdTousers")
   notifications_notifications_riderIdTousers  notifications[] @relation("notifications_riderIdTousers")
@@ -137,6 +145,7 @@ model users {
   messages_received                           messages[]      @relation("messages_receiver")
   ratings_given                               ratings[]       @relation("ratings_rater")
   ratings_received                            ratings[]       @relation("ratings_rated")
+  payouts                                     payouts[]
 }
 
 model messages {
@@ -178,4 +187,26 @@ model ratings {
   @@index([rideId])
   @@index([rideId, bookingId, raterId])
   @@map("ratings")
+}
+
+model payouts {
+  id                    Int       @id @default(autoincrement())
+  driverId              Int
+  stripePayoutId        String?   @unique
+  amount                Float     // Amount in dollars (net earnings)
+  currency              String    @default("usd")
+  status                String    // 'pending', 'processing', 'paid', 'failed', 'canceled'
+  payoutMethod          String    @default("bank_account") // 'bank_account'
+  description           String?
+  failureCode           String?
+  failureMessage        String?
+  arrivalDate           DateTime? // When funds will arrive
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  users                 users     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payouts")
 }

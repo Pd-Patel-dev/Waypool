@@ -224,9 +224,14 @@ export default function EarningsScreen(): React.JSX.Element {
                   Complete your first ride to start earning!
                 </Text>
               ) : (
-                <Text style={styles.growthText}>
-                  Upgrade your payout method in settings
-                </Text>
+                <TouchableOpacity
+                  onPress={() => router.push('/payouts')}
+                  style={styles.payoutLink}
+                >
+                  <Text style={styles.payoutLinkText}>
+                    Set up bank account to receive payouts →
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -290,19 +295,18 @@ export default function EarningsScreen(): React.JSX.Element {
             <TouchableOpacity
               style={styles.statCardHorizontal}
               activeOpacity={0.7}
+              onPress={() => router.push('/payouts')}
             >
               <View style={styles.statIconContainer}>
                 <IconSymbol
                   size={20}
-                  name="dollarsign.circle"
-                  color="#34C759"
+                  name="creditcard.fill"
+                  color="#4285F4"
                 />
               </View>
               <View style={styles.statContent}>
-                <Text style={styles.statValue}>
-                  {formatCurrency(avgEarningsPerRide)}
-                </Text>
-                <Text style={styles.statLabel}>Avg/Ride</Text>
+                <Text style={styles.statValue}>Payouts</Text>
+                <Text style={styles.statLabel}>Bank Account</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -639,6 +643,15 @@ const styles = StyleSheet.create({
     color: "#000000",
     opacity: 0.7,
     marginBottom: 20,
+  },
+  payoutLink: {
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  payoutLinkText: {
+    fontSize: 14,
+    color: "#4285F4",
+    fontWeight: "600",
   },
   miniChart: {
     position: "absolute",

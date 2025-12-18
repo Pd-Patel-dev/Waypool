@@ -111,4 +111,12 @@ export const API_ENDPOINTS = {
     GET: "/api/driver/earnings",
     SUMMARY: "/api/driver/earnings/summary",
   },
+  PAYOUTS: {
+    CONNECT_ACCOUNT: "/api/driver/payouts/connect-account",
+    ACCOUNT_STATUS: "/api/driver/payouts/account-status",
+    CREATE_ACCOUNT_LINK: "/api/driver/payouts/create-account-link",
+    INITIATE: "/api/driver/payouts/initiate",
+    HISTORY: "/api/driver/payouts/history",
+    BALANCE: "/api/driver/payouts/balance",
+  },
 } as const;

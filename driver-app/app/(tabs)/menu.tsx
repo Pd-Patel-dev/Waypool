@@ -191,6 +191,18 @@ export default function MenuScreen(): React.JSX.Element {
           <TouchableOpacity 
             style={styles.menuItem} 
             activeOpacity={0.7}
+            onPress={() => router.push('/payouts')}
+          >
+            <View style={styles.menuItemIcon}>
+              <IconSymbol size={20} name="creditcard.fill" color="#4285F4" />
+            </View>
+            <Text style={styles.menuItemText}>Payouts</Text>
+            <IconSymbol size={18} name="chevron.right" color="#666666" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            activeOpacity={0.7}
             onPress={() => router.push('/help-support')}
           >
             <View style={styles.menuItemIcon}>

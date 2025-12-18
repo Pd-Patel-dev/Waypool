@@ -10,6 +10,8 @@ import messagesRoutes from './messages';
 import ratingsRoutes from './ratings';
 import pushTokenRoutes from './pushToken';
 import earningsRoutes from './earnings';
+import payoutsRoutes from './payouts';
+import payoutsWebhookRoutes from './payouts-webhook';
 
 const router = express.Router();
 
@@ -25,6 +27,8 @@ router.use('/messages', messagesRoutes);
 router.use('/ratings', ratingsRoutes);
 router.use('/push-token', pushTokenRoutes);
 router.use('/earnings', earningsRoutes);
+router.use('/payouts', payoutsRoutes);
+router.use('/payouts', payoutsWebhookRoutes);
 
 export default router;
 
