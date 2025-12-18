@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcrypt';
+import { getValidatedUserId, shouldBypassAuth, logTestModeUsage } from '../../utils/testMode';
+import { getUserIdFromRequest } from '../../middleware/testModeAuth';
 
 const router = express.Router();
 
@@ -11,14 +13,18 @@ const router = express.Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
+    // Use test mode helper to get validated user ID (bypasses in test mode)
+    let driverId: number;
+    try {
+      driverId = getUserIdFromRequest(req, 'driver');
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        message: 'Driver ID is required',
+        message: error instanceof Error ? error.message : 'Driver ID is required',
       });
     }
+    
+    logTestModeUsage('Get profile', { driverId });
 
     const user = await prisma.users.findUnique({
       where: { id: driverId },

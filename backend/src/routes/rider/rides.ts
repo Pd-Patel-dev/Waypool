@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { stripe } from '../../lib/stripe';
 
 const router = express.Router();
 
@@ -126,7 +127,7 @@ router.get('/upcoming', async (req: Request, res: Response) => {
  */
 router.post('/book', async (req: Request, res: Response) => {
   try {
-    const { rideId, riderId, pickupAddress, pickupCity, pickupState, pickupZipCode, pickupLatitude, pickupLongitude, numberOfSeats } = req.body;
+    const { rideId, riderId, pickupAddress, pickupCity, pickupState, pickupZipCode, pickupLatitude, pickupLongitude, numberOfSeats, paymentMethodId } = req.body;
 
     // Validate required fields
     if (!rideId || !riderId || !pickupAddress || pickupLatitude === undefined || pickupLongitude === undefined) {
@@ -199,6 +200,68 @@ router.post('/book', async (req: Request, res: Response) => {
     const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
     const confirmationNumber = `WP-${dateStr}-${randomStr}`;
 
+    // Calculate total amount
+    const totalAmount = Math.round((seatsToBook * ride.pricePerSeat) * 100); // Convert to cents
+
+    // Authorize payment if paymentMethodId is provided
+    let paymentIntentId: string | null = null;
+    if (paymentMethodId && stripe) {
+      try {
+        // Get rider information for Stripe customer
+        const rider = await prisma.users.findUnique({
+          where: { id: parseInt(riderId) },
+          select: { email: true, fullName: true },
+        });
+
+        if (rider) {
+          // Get or create Stripe customer (reuse logic from payment.ts)
+          let stripeCustomerId: string;
+          const customers = await stripe.customers.list({
+            email: rider.email,
+            limit: 1,
+          });
+          const existingCustomer = customers.data[0];
+          if (existingCustomer) {
+            stripeCustomerId = existingCustomer.id;
+          } else {
+            const customer = await stripe.customers.create({
+              email: rider.email,
+              name: rider.fullName,
+              metadata: { riderId: riderId.toString() },
+            });
+            stripeCustomerId = customer.id;
+          }
+
+          // Create PaymentIntent with manual capture (authorize only)
+          const paymentIntent = await stripe.paymentIntents.create({
+            amount: totalAmount,
+            currency: 'usd',
+            customer: stripeCustomerId,
+            payment_method: paymentMethodId,
+            payment_method_types: ['card'], // Only allow card payments (no redirect-based methods)
+            capture_method: 'manual', // Authorize but don't capture
+            confirmation_method: 'manual',
+            confirm: true, // Automatically confirm and authorize
+            metadata: {
+              bookingId: 'pending', // Will update after booking is created
+              rideId: rideId.toString(),
+              riderId: riderId.toString(),
+              numberOfSeats: seatsToBook.toString(),
+            },
+          });
+
+          paymentIntentId = paymentIntent.id;
+          console.log(`✅ Payment authorized for booking: ${paymentIntentId}, amount: $${(totalAmount / 100).toFixed(2)}`);
+        }
+      } catch (paymentError: any) {
+        console.error('❌ Error authorizing payment:', paymentError);
+        return res.status(400).json({
+          success: false,
+          message: paymentError.message || 'Failed to authorize payment. Please try again.',
+        });
+      }
+    }
+
     // Create booking as pending (request) - don't decrement seats yet
     const booking = await prisma.bookings.create({
       data: {
@@ -213,6 +276,7 @@ router.post('/book', async (req: Request, res: Response) => {
         pickupLongitude: parseFloat(pickupLongitude),
         numberOfSeats: seatsToBook,
         status: 'pending', // Start as pending request
+        paymentIntentId: paymentIntentId || null,
       },
       include: {
         rides: {
@@ -457,12 +521,18 @@ router.get('/bookings', async (req: Request, res: Response) => {
       success: true,
       bookings: formattedBookings,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Error fetching bookings:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name,
+    });
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch bookings',
+      message: error?.message || 'Failed to fetch bookings',
       bookings: [],
+      error: process.env.NODE_ENV === 'development' ? error?.message : undefined,
     });
   }
 });

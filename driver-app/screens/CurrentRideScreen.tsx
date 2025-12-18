@@ -23,7 +23,7 @@ import {
   type ApiError,
 } from "@/services/api";
 import { useUser } from "@/context/UserContext";
-import { calculateDistance as calculateDistanceMiles } from "@/utils/distance";
+import { calculateDistance as calculateDistanceMiles, calculateDistanceMeters } from "@/utils/distance";
 
 // Import new components
 import {
@@ -47,6 +47,15 @@ export default function CurrentRideScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
   const { user } = useUser();
   const mapRef = useRef<MapView>(null);
+
+  // Helper function to safely navigate back or to home
+  const handleGoBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  }, []);
 
   // Parse IDs
   const rideId = params.rideId ? parseInt(params.rideId as string) : null;
@@ -353,9 +362,52 @@ export default function CurrentRideScreen(): React.JSX.Element {
       return;
     }
 
+    // Check if ride data is available
+    if (!rideData || !rideData.toLatitude || !rideData.toLongitude) {
+      Alert.alert(
+        "Error",
+        "Unable to verify destination location. Please try again."
+      );
+      return;
+    }
+
+    // Check if user is a test user (by email pattern)
+    const isTestUser = user?.email && (
+      user.email.toLowerCase().includes('test') ||
+      user.email.toLowerCase().endsWith('@waypool.com') ||
+      user.email.toLowerCase().includes('waypool.com')
+    );
+
+    // Calculate distance from destination (in meters)
+    const distanceToDestination = calculateDistanceMeters(
+      location.latitude,
+      location.longitude,
+      rideData.toLatitude,
+      rideData.toLongitude
+    );
+
+    const MAX_DISTANCE_METERS = 50; // 50 meters radius (stricter than backend)
+
+    // Frontend validation: Check if driver is close enough to destination (skip for test users)
+    if (!isTestUser && distanceToDestination > MAX_DISTANCE_METERS) {
+      const distanceInFeet = Math.round(distanceToDestination * 3.28084);
+      Alert.alert(
+        "Too Far From Destination",
+        `You must be within ${MAX_DISTANCE_METERS} meters (${Math.round(MAX_DISTANCE_METERS * 3.28084)} feet) of the destination to complete the ride.\n\nYou are currently ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) away.\n\nPlease navigate to the destination first.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    // Show confirmation with distance info
+    const distanceInFeet = Math.round(distanceToDestination * 3.28084);
+    const distanceMessage = isTestUser 
+      ? `🧪 Test Mode: Bypassing distance validation.\n\nYou are ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) from the destination.\n\nMark this ride as completed?`
+      : `You are ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) from the destination.\n\nMark this ride as completed?`;
+    
     Alert.alert(
       "Complete Ride",
-      "Mark this ride as completed? We'll verify you're at the destination.",
+      distanceMessage,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -369,7 +421,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
                 location.longitude
               );
               Alert.alert("Success", "Ride completed! Great job!", [
-                { text: "OK", onPress: () => router.back() },
+                { text: "OK", onPress: handleGoBack },
               ]);
             } catch (error: any) {
               Alert.alert(
@@ -406,7 +458,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
             try {
               await cancelRide(rideId, driverId);
               Alert.alert("Cancelled", "Ride has been cancelled.", [
-                { text: "OK", onPress: () => router.back() },
+                { text: "OK", onPress: handleGoBack },
               ]);
             } catch (error: any) {
               Alert.alert("Error", error.message || "Failed to cancel ride");
@@ -617,7 +669,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
   if (error || !rideData) {
     // Show alert and go back
     Alert.alert("Error", error || "Ride not found", [
-      { text: "Go Back", onPress: () => router.back() },
+      { text: "Go Back", onPress: handleGoBack },
     ]);
 
     return (
@@ -627,7 +679,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
           <Text style={styles.errorText}>{error || "Ride not found"}</Text>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={handleGoBack}
             activeOpacity={0.7}
           >
             <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
@@ -645,7 +697,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
       {/* Header with Back Button */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={handleGoBack}
           style={styles.backButton}
           activeOpacity={0.7}
         >

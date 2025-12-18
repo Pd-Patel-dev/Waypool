@@ -28,6 +28,7 @@ model bookings {
   pickupPinExpiresAt   DateTime?
   pickupPinAttempts    Int             @default(0)
   pickupPinLockedUntil DateTime?
+  paymentIntentId     String?
   rides                rides           @relation(fields: [rideId], references: [id], onDelete: Cascade)
   users                users           @relation(fields: [riderId], references: [id], onDelete: Cascade)
   notifications        notifications[]

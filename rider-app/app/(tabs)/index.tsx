@@ -25,6 +25,7 @@ export default function HomeScreen(): React.JSX.Element {
 
   useEffect(() => {
     // If no user is logged in, redirect to welcome screen
+    // Wait for UserProvider to finish loading before checking
     if (!isLoading && !user) {
       router.replace('/welcome');
     }

@@ -1,184 +1,286 @@
-# Driver App - All Errors and Warnings
+# Driver App - All Errors and Issues
 
-## Summary
-
-- **TypeScript Errors:** 58 errors
-- **Linter Errors:** 1 error, 46 warnings
-- **Total Issues:** 105
+**Generated:** $(date)  
+**Project:** Waypool Driver App  
+**Total Issues:** 58 TypeScript Errors
 
 ---
 
 ## 🔴 TypeScript Errors (58)
 
-### Missing Exports from API Service
+### 1. Type Mismatch Errors
 
-1. **`app/(tabs)/index.tsx:20`** - `deleteRide` is not exported from `@/services/api`
-2. **`app/edit-ride.tsx:20`** - `updateRide` is not exported from `@/services/api`
-3. **`app/profile.tsx:21`** - `getProfile` is not exported from `@/services/api`
-4. **`app/profile.tsx:28`** - `Profile` type is not exported from `@/services/api`
-5. **`app/vehicle.tsx:18`** - `getVehicle`, `updateVehicle`, and `Vehicle` are not exported from `@/services/api`
+#### 1.1 Timeout Type Error
 
-### Type Mismatches
+- **File:** `app/(tabs)/index.tsx:183`
+- **Error:** `Type 'number' is not assignable to type 'Timeout'`
+- **Issue:** setTimeout returns a number in browser/React Native, but TypeScript expects Timeout type
+- **Fix:** Use `ReturnType<typeof setTimeout>` or cast to `any` for React Native compatibility
 
-6. **`app/booking-request.tsx:411`** - `pickupZipCode` does not exist on booking type (appears twice)
-7. **`app/booking-request.tsx:458,463,470`** - `booking.ride.pricePerSeat` is possibly `null` (3 errors)
-8. **`app/edit-ride.tsx:182`** - `rideData.passengers` is possibly `undefined`
-9. **`app/edit-ride.tsx:266`** - `user` is possibly `null`
-10. **`app/past-ride-details.tsx:476,498`** - `passenger.riderPhone` is possibly `undefined` (2 errors)
-11. **`app/profile.tsx:166`** - Type mismatch: `city` is `string | null` but expected `string | undefined`
-12. **`app/profile.tsx:312`** - Parameter `password` implicitly has `any` type
-13. **`app/profile.tsx:345`** - Route type mismatch: `"/(auth)/login"` not assignable to expected route type
-14. **`app/ride-completion.tsx:228`** - `estimatedTimeMinutes` does not exist on `Ride` type
-15. **`app/upcoming-ride-details.tsx:547,549`** - `numberOfSeats` does not exist on `Passenger` type (3 errors)
-16. **`app/upcoming-ride-details.tsx:563,586`** - `passenger.riderPhone` is possibly `undefined` (2 errors)
+#### 1.2 TextInput onBlur Type Errors (5 errors)
 
-### Missing Style Properties
-
-17. **`app/settings.tsx:148`** - `phoneLink` does not exist on styles object
-18. **`app/upcoming-ride-details.tsx:295-303,310-312`** - Missing recurring styles:
-
-- `recurringCard`
-- `recurringHeader`
-- `recurringTitle`
-- `recurringContent`
-- `recurringRow`
-- `recurringLabel`
-- `recurringValue`
-
-### Component Type Errors
-
-19. **`components/MapComponent.native.tsx:75`** - `onError` prop does not exist on `MapView`
-20. **`components/MapComponent.native.tsx:75`** - Parameter `error` implicitly has `any` type
-21. **`components/NavigationComponent.tsx:443,491`** - Type `string` not assignable to `SFSymbols6_0` (2 errors)
-22. **`components/ui/icon-symbol.tsx:16`** - Type conversion error in IconMapping
-23. **`hooks/useRideLocation.ts:86`** - Parameter `newLocation` implicitly has `any` type
-24. **`i18n/index.ts:1`** - Cannot find module `expo-localization`
-25. **`screens/AddRideScreen.tsx:358`** - `RefObject<MapView | null>` not assignable to `RefObject<MapView>`
-26. **`screens/CurrentRideScreen.tsx:296,464,573,715`** - `rideData.passengers` is possibly `undefined` (4 errors)
-27. **`screens/CurrentRideScreen.tsx:644`** - `backButtonText` does not exist (should be `backButton`)
-28. **`screens/CurrentRideScreen.tsx:671`** - `RefObject<MapView | null>` not assignable to `RefObject<MapView>`
-29. **`screens/CurrentRideScreen.tsx:675,717`** - `Passenger[] | undefined` not assignable to `Passenger[]` (2 errors)
-30. **`screens/CurrentRideScreen.tsx:703,705,706,710,711,712,725`** - Type mismatches with `undefined` vs `null` or `string` (7 errors)
-31. **`screens/SignupScreen.tsx:202`** - `carYear` type mismatch: `string` not assignable to `number`
-32. **`screens/SignupScreen.tsx:318,331`** - `CustomDropdown` props mismatch: `data` property does not exist (2 errors)
-33. **`services/notificationService.ts:8`** - Type mismatch in `NotificationBehavior`
-34. **`services/notificationService.ts:250`** - Missing `type` property in `NotificationTriggerInput`
+- **File:** `app/profile.tsx`
+- **Lines:** 451, 470, 491, 510
+- **Error:** `Type '(value: string) => void' is not assignable to type '(e: BlurEvent) => void'`
+- **Issue:** onBlur handler expects BlurEvent but receiving string
+- **Fix:** Update handlers to accept `BlurEvent` or use `onBlur={(e) => handler(e.nativeEvent.text)}`
 
 ---
 
-## ⚠️ Linter Errors and Warnings (47)
+### 2. Missing Exports / Undefined Names (18 errors)
 
-### Critical Error (1)
+#### 2.1 Missing Component: InlineLoader
 
-1. **`app/(tabs)/index.tsx:674`** - Unescaped entity: `'` should be escaped as `&apos;`, `&lsquo;`, `&#39;`, or `&rsquo;`
+- **File:** `app/booking-history.tsx:170`
+- **Error:** `Cannot find name 'InlineLoader'`
+- **Issue:** Component is referenced but not imported or doesn't exist
+- **Fix:** Import InlineLoader or create/replace with existing loading component
 
-### React Hooks Warnings (8)
+#### 2.2 Missing Function: calculateRideEarnings
 
-2. **`app/(tabs)/earnings.tsx:55`** - Missing dependency: `fetchEarnings` in `useEffect`
-3. **`app/(tabs)/index.tsx:298`** - Missing dependency: `fetchRides` in `useCallback`
-4. **`app/past-rides.tsx:41`** - Missing dependency: `fetchPastRides` in `useEffect`
-5. **`app/ride-completion.tsx:47`** - Missing dependency: `fetchRideDetails` in `useEffect`
-6. **`components/AddressAutocomplete.tsx:101,108,342`** - Missing dependencies in `useEffect` (3 warnings)
-7. **`components/NavigationComponent.tsx:331`** - Missing dependency: `fetchDirections` in `useEffect`
+- **File:** `app/past-rides.tsx:163`
+- **Error:** `Cannot find name 'calculateRideEarnings'`
+- **Issue:** Function is called but not defined or imported
+- **Fix:** Import from utils or implement the function
 
-### Unused Variables (30)
+#### 2.3 Missing Function: getUserFriendlyErrorMessage (Multiple)
 
-8. **`app/(tabs)/earnings.tsx:65,67,137`** - `monthlyEarnings`, `totalSeatsBooked`, `formatDate` unused (3 warnings)
-9. **`app/(tabs)/inbox.tsx:10`** - `Platform` imported but never used
-10. **`app/(tabs)/index.tsx:11,19,53,60,400`** - `Animated`, `MapComponent`, `formatCurrency`, `locationError`, `initialRegion` unused (5 warnings)
-11. **`app/(tabs)/menu.tsx:2,10`** - React Native imported multiple times (2 warnings)
-12. **`app/booking-history.tsx:19,24`** - `Ride` type and `params` unused (2 warnings)
-13. **`app/profile.tsx:24,28,39,101`** - `updateProfilePhoto`, `Profile`, `isUploadingPhoto`, `setIsUploadingPhoto`, `prefsError` unused (5 warnings)
-14. **`app/settings.tsx:37,86`** - `loading`, `setLoading`, `error` unused (3 warnings)
-15. **`app/upcoming-ride-details.tsx:11,19`** - React Native imported multiple times (2 warnings)
-16. **`app/vehicle.tsx:18`** - `Vehicle` type unused
-17. **`components/AddressAutocomplete.tsx:7,10,399,400,470`** - `TouchableOpacity`, `Modal`, `streetNumber`, `route`, `countryIndex` unused (5 warnings)
-18. **`components/add-ride/RideDetailsForm.tsx:9`** - `IconSymbol` unused
-19. **`components/add-ride/RouteMap.tsx:7`** - `PROVIDER_DEFAULT` unused
-20. **`components/current-ride/PassengerList.tsx:9,83`** - `Alert`, `isPending` unused (2 warnings)
-21. **`components/current-ride/RideMap.tsx:7,10`** - `PROVIDER_DEFAULT`, `IconSymbol` unused (2 warnings)
+- **Files:**
+  - `app/profile.tsx:118, 183`
+  - `app/vehicle.tsx:122`
+- **Error:** `Cannot find name 'getUserFriendlyErrorMessage'`
+- **Issue:** Function is used but not imported
+- **Fix:** Import from `@/utils/errorHandler` or `@/utils/errorHandler.ts`
 
-### Code Style Warnings (8)
+#### 2.4 Missing Functions: validateAll, createFieldChangeHandler, createFieldBlurHandler
 
-22. **`app/(tabs)/index.tsx:28`** - `require()` style import is forbidden
-23. **`components/MapComponent.tsx:25,28`** - `require()` style imports forbidden (2 warnings)
+- **File:** `app/vehicle.tsx`
+- **Lines:** 72, 197, 199, 218, 220, 238, 240
+- **Errors:**
+  - `Cannot find name 'validateAll'`
+  - `Cannot find name 'createFieldChangeHandler'`
+  - `Cannot find name 'createFieldBlurHandler'`
+- **Issue:** Utility functions are missing or not imported
+- **Fix:** Import from validation utilities or implement these helper functions
 
----
+#### 2.5 Missing Export: validateTime
 
-## 📋 Error Categories
+- **File:** `hooks/useFormValidation.ts:16`
+- **Error:** `'"@/utils/validation"' has no exported member named 'validateTime'. Did you mean 'validateDate'?`
+- **Issue:** validateTime doesn't exist in validation utils
+- **Fix:** Use validateDate or implement validateTime function
 
-### High Priority (Must Fix)
+#### 2.6 Missing Platform Import
 
-- Missing API exports (`deleteRide`, `updateRide`, `getProfile`, `getVehicle`, `updateVehicle`)
-- Type mismatches causing runtime errors
-- Missing style properties
-- Missing module (`expo-localization`)
-
-### Medium Priority (Should Fix)
-
-- Null/undefined checks
-- Type safety improvements
-- React Hooks dependency warnings
-- Unescaped entities
-
-### Low Priority (Nice to Fix)
-
-- Unused variables
-- Code style warnings
-- Duplicate imports
+- **File:** `services/notificationService.ts:100`
+- **Error:** `Cannot find name 'Platform'`
+- **Issue:** Platform is used but not imported from 'react-native'
+- **Fix:** Add `import { Platform } from 'react-native';`
 
 ---
 
-## 🔧 Recommended Fixes
+### 3. Type Safety Errors (35 errors)
 
-### 1. Add Missing API Functions
+#### 3.1 Error Handler Type Errors (28 errors)
 
-Add to `services/api.ts`:
+- **File:** `utils/errorHandler.ts`
+- **Issue:** Multiple properties don't exist on type '{}'
+- **Errors:**
+  - Lines 36, 38, 41, 48, 51, 60, 68, 71, 79, 82, 83, 90, 93, 95, 97, 103, 111: Property 'message', 'status', or 'errors' does not exist on type '{}'
+  - Lines 82, 83, 103: 'error' is of type 'unknown'
+- **Root Cause:** Error objects are typed as `{}` instead of proper error types
+- **Fix:**
 
-- `deleteRide()`
-- `updateRide()`
-- `getProfile()`
-- `getVehicle()`
-- `updateVehicle()`
-- Export `Profile` and `Vehicle` types
+  ```typescript
+  // Change from:
+  function parseApiError(error: {}): AppError;
 
-### 2. Fix Type Definitions
+  // To:
+  function parseApiError(error: unknown): AppError {
+    const err = error as {
+      message?: string;
+      status?: number;
+      errors?: string[];
+    };
+    // ... rest of function
+  }
+  ```
 
-- Add `pickupZipCode` to booking type
-- Add `estimatedTimeMinutes` to `Ride` type
-- Add `numberOfSeats` to `Passenger` type
-- Fix `NotificationBehavior` and `NotificationTriggerInput` types
+#### 3.2 API Retry Type Errors (10 errors)
 
-### 3. Add Missing Styles
+- **File:** `utils/apiRetry.ts`
+- **Lines:** 72, 73, 91, 96, 101, 106
+- **Error:** Property 'status' or 'message' does not exist on type '{}'
+- **Issue:** Error objects need proper typing
+- **Fix:** Type error objects properly or use type guards
 
-Add to `upcoming-ride-details.tsx`:
+#### 3.3 useFormValidation Type Error
 
-- `recurringCard`, `recurringHeader`, `recurringTitle`
-- `recurringContent`, `recurringRow`, `recurringLabel`, `recurringValue`
-- `phoneLink` to `settings.tsx`
+- **File:** `hooks/useFormValidation.ts:191`
+- **Error:** `Argument of type 'string | number | null | undefined' is not assignable to parameter of type 'string | number'`
+- **Issue:** Function doesn't handle null/undefined values
+- **Fix:** Add null checks or update function signature to accept null/undefined
 
-### 4. Install Missing Package
+---
 
-```bash
-npm install expo-localization
+### 4. Component Type Errors (4 errors)
+
+#### 4.1 CachedImage Component Errors
+
+- **File:** `components/CachedImage.tsx`
+- **Errors:**
+  - Line 130: `Type 'number | ImageSource | ImageSource[] | {...}' is not assignable to type 'ImageSource'`
+  - Line 182: `Type '"scaleDown"' is not assignable to type 'ImageContentFit | undefined'. Did you mean '"scale-down"'?`
+  - Line 183: `Type 'number | boolean' is not assignable to type 'number | ImageTransition | null | undefined'`
+  - Line 187: `Type '(error: Error) => void' is not assignable to type '(event: ImageErrorEventData) => void'`
+- **Fixes:**
+  1. Fix ImageSource type - ensure single ImageSource, not union
+  2. Change `"scaleDown"` to `"scale-down"`
+  3. Fix transition prop - ensure it's number or ImageTransition, not boolean
+  4. Update error handler to accept `ImageErrorEventData` instead of `Error`
+
+---
+
+## 📋 Error Summary by Category
+
+| Category                | Count  | Files Affected |
+| ----------------------- | ------ | -------------- |
+| Type Mismatches         | 6      | 2 files        |
+| Missing Exports/Imports | 18     | 6 files        |
+| Type Safety Issues      | 35     | 3 files        |
+| Component Type Errors   | 4      | 1 file         |
+| **Total**               | **58** | **12 files**   |
+
+---
+
+## 🔧 Recommended Fixes (Priority Order)
+
+### High Priority (Blocks Compilation)
+
+1. **Fix errorHandler.ts type errors** (28 errors)
+
+   - Update function signatures to properly type error parameters
+   - Use type guards for unknown error types
+
+2. **Fix apiRetry.ts type errors** (10 errors)
+
+   - Properly type error objects in retry logic
+
+3. **Add missing imports** (5 errors)
+
+   - Import Platform in notificationService.ts
+   - Import getUserFriendlyErrorMessage in profile.tsx and vehicle.tsx
+
+4. **Fix missing functions/components** (7 errors)
+   - Implement or import: InlineLoader, calculateRideEarnings, validateAll, createFieldChangeHandler, createFieldBlurHandler
+   - Fix validateTime export issue
+
+### Medium Priority (Type Safety)
+
+5. **Fix TextInput onBlur handlers** (5 errors)
+
+   - Update handlers to match React Native TextInput API
+
+6. **Fix CachedImage component types** (4 errors)
+
+   - Update prop types to match expo-image API
+
+7. **Fix useFormValidation null handling** (1 error)
+   - Add null/undefined checks
+
+### Low Priority (Minor Issues)
+
+8. **Fix setTimeout type** (1 error)
+   - Use proper type for setTimeout return value
+
+---
+
+## 📝 Detailed Fix Recommendations
+
+### Fix 1: errorHandler.ts
+
+```typescript
+// Current (causing errors):
+export function parseApiError(error: {}): AppError;
+
+// Fixed:
+export function parseApiError(error: unknown): AppError {
+  // Type guard
+  const isErrorWithMessage = (err: unknown): err is { message: string } => {
+    return typeof err === "object" && err !== null && "message" in err;
+  };
+
+  const isApiError = (
+    err: unknown
+  ): err is { message?: string; status?: number; errors?: string[] } => {
+    return typeof err === "object" && err !== null;
+  };
+
+  if (!isApiError(error)) {
+    return {
+      code: ErrorCode.UNKNOWN_ERROR,
+      message: "Unknown error",
+      userMessage: "An unexpected error occurred. Please try again.",
+      recoverable: true,
+      retryable: false,
+    };
+  }
+
+  // Now TypeScript knows error has message, status, errors properties
+  // ... rest of function
+}
 ```
 
-### 5. Fix Null/Undefined Checks
+### Fix 2: apiRetry.ts
 
-Add proper null checks and default values for:
+```typescript
+// Add proper error type
+interface ApiError {
+  message?: string;
+  status?: number;
+}
 
-- `rideData.passengers`
-- `passenger.riderPhone`
-- `booking.ride.pricePerSeat`
-- `user` object
+// Type guard
+function isApiError(error: unknown): error is ApiError {
+  return typeof error === "object" && error !== null;
+}
 
-### 6. Fix Type Conversions
+// Use in retry logic
+if (isApiError(error)) {
+  if (error.status === 401) {
+    // ...
+  }
+}
+```
 
-- Convert `carYear` from string to number in `SignupScreen`
-- Fix `city` type: use `undefined` instead of `null` or add conversion
-- Fix route type in `profile.tsx`
+### Fix 3: Missing Imports
+
+```typescript
+// notificationService.ts
+import { Platform } from "react-native";
+
+// profile.tsx and vehicle.tsx
+import { getUserFriendlyErrorMessage } from "@/utils/errorHandler";
+```
 
 ---
 
-**Generated:** $(date)
-**Total Issues:** 105 (58 TypeScript errors + 47 linter issues)
+## 🎯 Next Steps
+
+1. Fix all High Priority errors first (blocks compilation)
+2. Run `npx tsc --noEmit` to verify fixes
+3. Fix Medium Priority errors for better type safety
+4. Address Low Priority issues for code quality
+
+---
+
+## 📊 Error Distribution
+
+```
+errorHandler.ts:     28 errors (48%)
+apiRetry.ts:         10 errors (17%)
+vehicle.tsx:          7 errors (12%)
+profile.tsx:          5 errors (9%)
+CachedImage.tsx:      4 errors (7%)
+Other files:          4 errors (7%)
+```

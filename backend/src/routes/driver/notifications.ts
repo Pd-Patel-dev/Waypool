@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { getUserIdFromRequest } from '../../middleware/testModeAuth';
 
 const router = express.Router();
 
@@ -11,14 +12,14 @@ const router = express.Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId && typeof req.query.driverId === 'string' 
-      ? parseInt(req.query.driverId) 
-      : null;
-
-    if (!driverId || isNaN(driverId)) {
+    // Use test mode helper to get validated user ID (bypasses in test mode)
+    let driverId: number;
+    try {
+      driverId = getUserIdFromRequest(req, 'driver');
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        message: 'Driver ID is required',
+        message: error instanceof Error ? error.message : 'Driver ID is required',
         notifications: [],
       });
     }
@@ -155,9 +156,6 @@ router.put('/:id/read', async (req: Request, res: Response) => {
     }
 
     const notificationId = parseInt(notificationIdParam);
-    const driverId = req.query.driverId && typeof req.query.driverId === 'string' 
-      ? parseInt(req.query.driverId) 
-      : null;
 
     if (isNaN(notificationId)) {
       return res.status(400).json({
@@ -166,10 +164,14 @@ router.put('/:id/read', async (req: Request, res: Response) => {
       });
     }
 
-    if (!driverId || isNaN(driverId)) {
+    // Use test mode helper to get validated user ID (bypasses in test mode)
+    let driverId: number;
+    try {
+      driverId = getUserIdFromRequest(req, 'driver');
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        message: 'Driver ID is required',
+        message: error instanceof Error ? error.message : 'Driver ID is required',
       });
     }
 
@@ -220,14 +222,14 @@ router.put('/:id/read', async (req: Request, res: Response) => {
  */
 router.put('/read-all', async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId && typeof req.query.driverId === 'string' 
-      ? parseInt(req.query.driverId) 
-      : null;
-
-    if (!driverId || isNaN(driverId)) {
+    // Use test mode helper to get validated user ID (bypasses in test mode)
+    let driverId: number;
+    try {
+      driverId = getUserIdFromRequest(req, 'driver');
+    } catch (error) {
       return res.status(400).json({
         success: false,
-        message: 'Driver ID is required',
+        message: error instanceof Error ? error.message : 'Driver ID is required',
       });
     }
 

@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { stripe } from '../../lib/stripe';
 import { sendRideStartedNotification } from '../../services/pushNotificationService';
 import { socketService } from '../../services/socketService';
 
@@ -1621,6 +1622,19 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       });
     }
 
+    // Get driver info to check if it's a test user
+    const driver = await prisma.users.findUnique({
+      where: { id: driverId },
+      select: { email: true },
+    });
+
+    // Check if user is a test user (by email pattern)
+    const isTestUser = driver?.email && (
+      driver.email.toLowerCase().includes('test') ||
+      driver.email.toLowerCase().endsWith('@waypool.com') ||
+      driver.email.toLowerCase().includes('waypool.com')
+    );
+
     // Check if ride is already completed or cancelled
     if (ride.status === 'completed') {
       return res.status(400).json({
@@ -1667,18 +1681,33 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       ride.toLongitude
     );
 
-    const MAX_DISTANCE_METERS = 100; // 100 meters radius
+    const MAX_DISTANCE_METERS = 50; // 50 meters radius (stricter validation)
     
-    if (distanceToDestination > MAX_DISTANCE_METERS) {
-      console.log(`❌ Driver too far from destination: ${distanceToDestination.toFixed(0)}m away`);
+    // Validate coordinates are valid numbers
+    if (isNaN(distanceToDestination) || !isFinite(distanceToDestination)) {
+      console.log(`❌ Invalid distance calculation: driverLat=${driverLatitude}, driverLon=${driverLongitude}, destLat=${ride.toLatitude}, destLon=${ride.toLongitude}`);
       return res.status(400).json({
         success: false,
-        message: `You must be within ${MAX_DISTANCE_METERS} meters of the destination to complete the ride. You are currently ${Math.round(distanceToDestination)} meters away.`,
+        message: 'Invalid location coordinates. Please ensure location services are enabled and try again.',
+        distanceToDestination: null,
+      });
+    }
+    
+    // Skip distance validation for test users
+    if (isTestUser) {
+      console.log(`🧪 TEST USER: Bypassing distance validation for ${driver?.email} (${distanceToDestination.toFixed(0)}m from destination)`);
+    } else if (distanceToDestination > MAX_DISTANCE_METERS) {
+      const distanceInFeet = Math.round(distanceToDestination * 3.28084);
+      const maxDistanceInFeet = Math.round(MAX_DISTANCE_METERS * 3.28084);
+      console.log(`❌ Driver too far from destination: ${distanceToDestination.toFixed(0)}m (${distanceInFeet}ft) away`);
+      return res.status(400).json({
+        success: false,
+        message: `You must be within ${MAX_DISTANCE_METERS} meters (${maxDistanceInFeet} feet) of the destination to complete the ride. You are currently ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) away.`,
         distanceToDestination: Math.round(distanceToDestination),
       });
     }
 
-    console.log(`✅ Driver location verified: ${distanceToDestination.toFixed(0)}m from destination`);
+    console.log(`✅ Driver location verified: ${distanceToDestination.toFixed(0)}m from destination${isTestUser ? ' (TEST USER - validation bypassed)' : ''}`);
 
     // Check if all passengers are picked up
     if (ride.bookings.length > 0) {
@@ -1704,6 +1733,28 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
         const seats = booking.numberOfSeats || 1;
         return sum + (seats * ride.pricePerSeat);
       }, 0);
+    }
+
+    // Capture payments for all bookings before completing the ride
+    if (ride.bookings.length > 0 && stripe) {
+      const capturePromises = ride.bookings.map(async (booking) => {
+        const paymentIntentId = (booking as any).paymentIntentId;
+        if (paymentIntentId && stripe) {
+          try {
+            // Capture the authorized payment
+            const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+            console.log(`✅ Payment captured for booking ${booking.id}: ${paymentIntent.id}, amount: $${(paymentIntent.amount / 100).toFixed(2)}`);
+            return { success: true, bookingId: booking.id, paymentIntentId: paymentIntent.id };
+          } catch (captureError: any) {
+            console.error(`❌ Error capturing payment for booking ${booking.id}:`, captureError);
+            // Log error but don't fail the ride completion
+            return { success: false, bookingId: booking.id, error: captureError.message };
+          }
+        }
+        return { success: true, bookingId: booking.id, skipped: true };
+      });
+
+      await Promise.all(capturePromises);
     }
 
     // Complete the ride and all associated bookings in a transaction

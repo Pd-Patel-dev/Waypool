@@ -7,6 +7,8 @@ import { getDatabaseStatus, disconnectDatabase } from "./utils/database";
 import driverRoutes from "./routes/driver";
 import riderRoutes from "./routes/rider";
 import { socketService } from "./services/socketService";
+import { testModeMiddleware } from "./middleware/testModeAuth";
+import { isTestModeEnabled } from "./utils/testMode";
 
 const app = express();
 const httpServer = createServer(app);
@@ -28,6 +30,13 @@ app.use(
   })
 );
 app.use(express.json());
+
+// Test Mode Middleware (only active in development when enabled)
+if (isTestModeEnabled()) {
+  console.log("🧪 TEST MODE ENABLED - Security checks will be bypassed");
+  console.log("⚠️  WARNING: This should NEVER be enabled in production!");
+  app.use(testModeMiddleware);
+}
 
 // Routes
 app.use("/api/driver", driverRoutes);

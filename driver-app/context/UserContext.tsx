@@ -24,7 +24,15 @@ interface UserContextType {
   logout: () => Promise<void>;
 }
 
-const UserContext = createContext<UserContextType | undefined>(undefined);
+// Create context with a default value to avoid undefined during hot reload
+const defaultContextValue: UserContextType = {
+  user: null,
+  setUser: async () => {},
+  isAuthenticated: false,
+  logout: async () => {},
+};
+
+const UserContext = createContext<UserContextType>(defaultContextValue);
 
 const USER_STORAGE_KEY = '@waypool_user';
 
@@ -103,15 +111,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Always provide context value, even during loading
+  // This ensures child components can always access the context
+  const contextValue: UserContextType = {
+    user,
+    setUser,
+    isAuthenticated: !!user,
+    logout,
+  };
+
   return (
-    <UserContext.Provider
-      value={{
-        user,
-        setUser,
-        isAuthenticated: !!user,
-        logout,
-      }}
-    >
+    <UserContext.Provider value={contextValue}>
       {children}
     </UserContext.Provider>
   );
@@ -119,9 +129,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
 export function useUser() {
   const context = useContext(UserContext);
-  if (context === undefined) {
-    throw new Error('useUser must be used within a UserProvider');
-  }
+  // Context is always defined now (has default value)
+  // During hot reload, React might use the default value temporarily
+  // This is safe - the provider will re-render with the actual value
   return context;
 }
 

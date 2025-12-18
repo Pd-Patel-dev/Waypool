@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { calculateRideEarnings } from '../../utils/earnings';
 
 const router = express.Router();
 
@@ -68,8 +69,12 @@ router.get('/', async (req: Request, res: Response) => {
       const distance = ride.distance || 0;
       const pricePerSeat = ride.pricePerSeat || 0;
       
-      // Calculate earnings: only based on booked seats
-      const rideEarnings = seatsBooked * pricePerSeat;
+      // Calculate gross earnings (before fees)
+      const grossRideEarnings = seatsBooked * pricePerSeat;
+      
+      // Calculate driver earnings after fees (processing fee + $2 commission)
+      const earningsBreakdown = calculateRideEarnings(pricePerSeat, ride.bookings);
+      const rideEarnings = earningsBreakdown.netEarnings; // Net earnings for driver
 
       totalEarnings += rideEarnings;
       totalRides += 1;
@@ -110,9 +115,8 @@ router.get('/', async (req: Request, res: Response) => {
     );
 
     const thisWeekEarnings = thisWeekRides.reduce((sum, ride) => {
-      const seatsBooked = ride.bookings.reduce((s, b) => s + (b.numberOfSeats || 1), 0);
-      const pricePerSeat = ride.pricePerSeat || 0;
-      return sum + (seatsBooked * pricePerSeat);
+      const earningsBreakdown = calculateRideEarnings(ride.pricePerSeat || 0, ride.bookings);
+      return sum + earningsBreakdown.netEarnings; // Net earnings after fees
     }, 0);
 
     // Get this month's earnings
@@ -124,9 +128,8 @@ router.get('/', async (req: Request, res: Response) => {
     );
 
     const thisMonthEarnings = thisMonthRides.reduce((sum, ride) => {
-      const seatsBooked = ride.bookings.reduce((s, b) => s + (b.numberOfSeats || 1), 0);
-      const pricePerSeat = ride.pricePerSeat || 0;
-      return sum + (seatsBooked * pricePerSeat);
+      const earningsBreakdown = calculateRideEarnings(ride.pricePerSeat || 0, ride.bookings);
+      return sum + earningsBreakdown.netEarnings; // Net earnings after fees
     }, 0);
 
     console.log(`✅ Calculated earnings for driver ${driverId}: $${totalEarnings.toFixed(2)}`);

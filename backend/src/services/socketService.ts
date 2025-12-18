@@ -33,8 +33,30 @@ class SocketService {
   private setupMiddleware() {
     if (!this.io) return;
 
-    // Authentication middleware
+    // Authentication middleware (with test mode support)
     this.io.use((socket: Socket, next) => {
+      const { isTestModeEnabled, getTestUserId, logTestModeUsage } = require('../utils/testMode');
+      
+      // Check if test mode is enabled
+      if (isTestModeEnabled()) {
+        const role = (socket.handshake.query.role as string) || 'driver';
+        const testUserId = getTestUserId(role as 'driver' | 'rider');
+        
+        logTestModeUsage('Socket connection', { 
+          role, 
+          testUserId,
+          socketId: socket.id 
+        });
+        
+        // Store test user info in socket
+        (socket as any).userId = testUserId;
+        (socket as any).role = role;
+        (socket as any).testMode = true;
+        
+        return next();
+      }
+      
+      // Normal authentication
       const driverId = socket.handshake.query.driverId;
       const riderId = socket.handshake.query.riderId;
       const role = socket.handshake.query.role;

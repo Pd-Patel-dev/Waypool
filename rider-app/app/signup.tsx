@@ -38,6 +38,7 @@ export default function SignupScreen(): React.JSX.Element {
   }>({});
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState<boolean>(false);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -89,6 +90,7 @@ export default function SignupScreen(): React.JSX.Element {
   };
 
   const handleSignup = async (): Promise<void> => {
+    setHasAttemptedSubmit(true);
     if (!validateForm()) {
       return;
     }
@@ -178,7 +180,7 @@ export default function SignupScreen(): React.JSX.Element {
                 <View style={[styles.inputGroup, styles.halfWidth]}>
                   <Text style={styles.label}>First name</Text>
                   <TextInput
-                    style={[styles.input, errors.firstName && styles.inputError]}
+                    style={[styles.input, hasAttemptedSubmit && errors.firstName && styles.inputError]}
                     placeholder="John"
                     placeholderTextColor="#666"
                     value={formData.firstName}
@@ -187,7 +189,7 @@ export default function SignupScreen(): React.JSX.Element {
                     autoCapitalize="words"
                     autoCorrect={false}
                   />
-                  {errors.firstName && (
+                  {hasAttemptedSubmit && errors.firstName && (
                     <Text style={styles.fieldError}>{errors.firstName}</Text>
                   )}
                 </View>
@@ -195,7 +197,7 @@ export default function SignupScreen(): React.JSX.Element {
                 <View style={[styles.inputGroup, styles.halfWidth]}>
                   <Text style={styles.label}>Last name</Text>
                   <TextInput
-                    style={[styles.input, errors.lastName && styles.inputError]}
+                    style={[styles.input, hasAttemptedSubmit && errors.lastName && styles.inputError]}
                     placeholder="Doe"
                     placeholderTextColor="#666"
                     value={formData.lastName}
@@ -204,7 +206,7 @@ export default function SignupScreen(): React.JSX.Element {
                     autoCapitalize="words"
                     autoCorrect={false}
                   />
-                  {errors.lastName && (
+                  {hasAttemptedSubmit && errors.lastName && (
                     <Text style={styles.fieldError}>{errors.lastName}</Text>
                   )}
                 </View>
@@ -213,7 +215,7 @@ export default function SignupScreen(): React.JSX.Element {
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Email</Text>
                 <TextInput
-                  style={[styles.input, errors.email && styles.inputError]}
+                  style={[styles.input, hasAttemptedSubmit && errors.email && styles.inputError]}
                   placeholder="your.email@example.com"
                   placeholderTextColor="#666"
                   value={formData.email}
@@ -223,7 +225,7 @@ export default function SignupScreen(): React.JSX.Element {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                {errors.email && (
+                {hasAttemptedSubmit && errors.email && (
                   <Text style={styles.fieldError}>{errors.email}</Text>
                 )}
               </View>
@@ -231,7 +233,7 @@ export default function SignupScreen(): React.JSX.Element {
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Phone number</Text>
                 <TextInput
-                  style={[styles.input, errors.phoneNumber && styles.inputError]}
+                  style={[styles.input, hasAttemptedSubmit && errors.phoneNumber && styles.inputError]}
                   placeholder="(555) 123-4567"
                   placeholderTextColor="#666"
                   value={formData.phoneNumber}
@@ -240,7 +242,7 @@ export default function SignupScreen(): React.JSX.Element {
                   keyboardType="phone-pad"
                   autoCorrect={false}
                 />
-                {errors.phoneNumber && (
+                {hasAttemptedSubmit && errors.phoneNumber && (
                   <Text style={styles.fieldError}>{errors.phoneNumber}</Text>
                 )}
               </View>
@@ -248,7 +250,7 @@ export default function SignupScreen(): React.JSX.Element {
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Password</Text>
                 <TextInput
-                  style={[styles.input, errors.password && styles.inputError]}
+                  style={[styles.input, hasAttemptedSubmit && errors.password && styles.inputError]}
                   placeholder="At least 6 characters"
                   placeholderTextColor="#666"
                   value={formData.password}
@@ -257,12 +259,12 @@ export default function SignupScreen(): React.JSX.Element {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
-                  textContentType={Platform.OS === 'ios' ? 'none' : 'password'}
+                  textContentType={Platform.OS === 'ios' ? 'newPassword' : 'password'}
                   autoComplete={Platform.OS === 'android' ? 'password-new' : 'off'}
                   enablesReturnKeyAutomatically={false}
                   keyboardType="default"
                 />
-                {errors.password && (
+                {hasAttemptedSubmit && errors.password && (
                   <Text style={styles.fieldError}>{errors.password}</Text>
                 )}
               </View>
@@ -270,7 +272,7 @@ export default function SignupScreen(): React.JSX.Element {
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Confirm password</Text>
                 <TextInput
-                  style={[styles.input, errors.confirmPassword && styles.inputError]}
+                  style={[styles.input, hasAttemptedSubmit && errors.confirmPassword && styles.inputError]}
                   placeholder="Re-enter your password"
                   placeholderTextColor="#666"
                   value={formData.confirmPassword}
@@ -279,12 +281,12 @@ export default function SignupScreen(): React.JSX.Element {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
-                  textContentType={Platform.OS === 'ios' ? 'none' : 'password'}
+                  textContentType={Platform.OS === 'ios' ? 'newPassword' : 'password'}
                   autoComplete={Platform.OS === 'android' ? 'password-new' : 'off'}
                   enablesReturnKeyAutomatically={false}
                   keyboardType="default"
                 />
-                {errors.confirmPassword && (
+                {hasAttemptedSubmit && errors.confirmPassword && (
                   <Text style={styles.fieldError}>{errors.confirmPassword}</Text>
                 )}
               </View>
