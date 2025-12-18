@@ -18,6 +18,8 @@ import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { type Ride, getRideById } from "@/services/api";
 import { useUser } from "@/context/UserContext";
 import { calculateTotalDistance } from "@/utils/distance";
+import { calculateNetEarnings } from "@/utils/price";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 export default function PastRideDetailsScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
@@ -57,14 +59,12 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
             onPress={() => router.back()}
             activeOpacity={0.7}
           >
-            <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
+            <IconSymbol size={20} name="chevron.left" color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Ride Details</Text>
           <View style={styles.backButton} />
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
+        <LoadingScreen message="Loading ride details..." />
       </SafeAreaView>
     );
   }
@@ -79,19 +79,19 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
             onPress={() => router.back()}
             activeOpacity={0.7}
           >
-            <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
+            <IconSymbol size={20} name="chevron.left" color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Ride Details</Text>
           <View style={styles.backButton} />
         </View>
         <View style={styles.emptyContainer}>
+          <IconSymbol size={48} name="exclamationmark.circle" color="#666666" />
           <Text style={styles.emptyText}>Ride not found</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Use stored totalEarnings from database, or calculate if not available (for backward compatibility)
   const pricePerSeat = rideData.pricePerSeat || rideData.price || 0;
   const totalSeatsBooked = rideData.passengers?.reduce((sum, passenger) => {
     const seats = (passenger as any).numberOfSeats || 1;
@@ -99,14 +99,13 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
   }, 0) || 0;
   const totalEarnings = rideData.totalEarnings !== undefined && rideData.totalEarnings !== null
     ? rideData.totalEarnings
-    : totalSeatsBooked * pricePerSeat;
+    : calculateNetEarnings(rideData);
   const passengerCount = rideData.passengers?.length || 0;
 
   const formatDateTime = (dateString: string, fallbackDate?: string, fallbackTime?: string): string => {
     try {
       let date: Date | null = null;
       
-      // Try to parse as ISO string first
       if (dateString) {
         date = new Date(dateString);
         if (isNaN(date.getTime())) {
@@ -114,15 +113,11 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
         }
       }
       
-      // If that fails and we have fallback date/time, combine them
       if (!date && fallbackDate && fallbackTime) {
         try {
-          // Parse MM/DD/YYYY format
           const dateParts = fallbackDate.split('/').map(Number);
           if (dateParts.length === 3) {
             const [month, day, year] = dateParts;
-            
-            // Parse time with AM/PM
             const timeMatch = fallbackTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
             if (timeMatch) {
               let hours = parseInt(timeMatch[1], 10);
@@ -139,7 +134,6 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
         }
       }
       
-      // Format the date and time together
       if (date && !isNaN(date.getTime())) {
         const dateStr = date.toLocaleDateString("en-US", {
           month: "short",
@@ -153,7 +147,6 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
         return `${dateStr} at ${timeStr}`;
       }
       
-      // Last resort: combine fallback strings
       if (fallbackDate && fallbackTime) {
         return `${fallbackDate} at ${fallbackTime}`;
       }
@@ -167,7 +160,6 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
     }
   };
 
-  // Calculate total distance including all passenger pickups
   const totalDistance = calculateTotalDistance(rideData);
 
   const mapRegion: Region | undefined =
@@ -183,13 +175,15 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar style="light" />
+      
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
+          <IconSymbol size={20} name="chevron.left" color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Ride Details</Text>
         <View style={styles.backButton} />
@@ -200,87 +194,57 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Status Badge */}
-        <View style={styles.statusSection}>
-          <View style={styles.statusBadge}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Completed</Text>
-          </View>
-        </View>
-
-        {/* Earnings Card - Prominent */}
+        {/* Earnings Card - Hero Section */}
         <View style={styles.earningsCard}>
-          <Text style={styles.earningsLabel}>Total Earnings</Text>
+          <View style={styles.earningsHeader}>
+            <Text style={styles.earningsLabel}>Net Earnings</Text>
+            <View style={styles.statusBadge}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusText}>Completed</Text>
+            </View>
+          </View>
           <Text style={styles.earningsAmount}>${totalEarnings.toFixed(2)}</Text>
-          <View style={styles.earningsBreakdown}>
-            <Text style={styles.earningsBreakdownText}>
-              {totalSeatsBooked} seat{totalSeatsBooked !== 1 ? "s" : ""} × ${pricePerSeat.toFixed(2)} per seat
+          <View style={styles.earningsInfo}>
+            <Text style={styles.earningsInfoText}>
+              {totalSeatsBooked} seat{totalSeatsBooked !== 1 ? "s" : ""} × ${pricePerSeat.toFixed(2)}
             </Text>
-            {passengerCount > 0 && (
-              <Text style={styles.earningsBreakdownText}>
-                ({passengerCount} passenger{passengerCount !== 1 ? "s" : ""})
-              </Text>
-            )}
           </View>
         </View>
 
-        {/* Recurring Ride Badge */}
-        {rideData.isRecurring && (
-          <View style={styles.recurringCard}>
-            <View style={styles.recurringHeader}>
-              <IconSymbol size={18} name="repeat" color="#4285F4" />
-              <Text style={styles.recurringTitle}>Recurring Ride</Text>
+        {/* Quick Stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <IconSymbol size={20} name="person.2.fill" color="#4285F4" />
+            <Text style={styles.statValue}>{passengerCount}</Text>
+            <Text style={styles.statLabel}>Passengers</Text>
+          </View>
+          {totalDistance > 0 && (
+            <View style={styles.statCard}>
+              <IconSymbol size={20} name="mappin" color="#34C759" />
+              <Text style={styles.statValue}>{totalDistance.toFixed(1)}</Text>
+              <Text style={styles.statLabel}>Miles</Text>
             </View>
-            <View style={styles.recurringContent}>
-              <View style={styles.recurringRow}>
-                <Text style={styles.recurringLabel}>Pattern:</Text>
-                <Text style={styles.recurringValue}>
-                  {rideData.recurringPattern === 'daily' ? 'Daily' : 
-                   rideData.recurringPattern === 'weekly' ? 'Weekly' : 
-                   rideData.recurringPattern === 'monthly' ? 'Monthly' : 'N/A'}
-                </Text>
+          )}
+          <View style={styles.statCard}>
+            <IconSymbol size={20} name="dollarsign.circle" color="#FF9500" />
+            <Text style={styles.statValue}>${pricePerSeat.toFixed(0)}</Text>
+            <Text style={styles.statLabel}>Per Seat</Text>
+          </View>
+        </View>
+
+        {/* Route Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Route</Text>
+          <View style={styles.routeCard}>
+            <View style={styles.routeItem}>
+              <View style={styles.routeIcon}>
+                <IconSymbol size={16} name="mappin.circle.fill" color="#4285F4" />
               </View>
-              {rideData.recurringEndDate && (
-                <View style={styles.recurringRow}>
-                  <Text style={styles.recurringLabel}>Ends:</Text>
-                  <Text style={styles.recurringValue}>
-                    {new Date(rideData.recurringEndDate).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric'
-                    })}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Date & Time */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <IconSymbol size={18} name="calendar" color="#4285F4" />
-            <Text style={styles.sectionTitle}>Date & Time</Text>
-          </View>
-          <View style={styles.sectionContent}>
-            <Text style={styles.dateTimeText}>
-              {formatDateTime(rideData.departureTime || "", rideData.departureDate, rideData.departureTimeString)}
-            </Text>
-          </View>
-        </View>
-
-        {/* Route Information */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <IconSymbol size={18} name="map" color="#4285F4" />
-            <Text style={styles.sectionTitle}>Route</Text>
-          </View>
-          <View style={styles.routeContainer}>
-            <View style={styles.routePoint}>
-              <View style={styles.routeMarker} />
               <View style={styles.routeContent}>
-                <Text style={styles.routeLabel}>FROM</Text>
-                <Text style={styles.routeAddress}>{rideData.fromAddress}</Text>
+                <Text style={styles.routeLabel}>From</Text>
+                <Text style={styles.routeAddress} numberOfLines={2}>
+                  {rideData.fromAddress}
+                </Text>
                 {rideData.fromCity && (
                   <Text style={styles.routeCity}>
                     {rideData.fromCity}, {rideData.fromState}
@@ -289,41 +253,41 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
               </View>
             </View>
 
-            <View style={styles.routeLine} />
-
             {/* Passenger Pickups */}
-            {rideData.passengers &&
-              rideData.passengers.length > 0 &&
-              rideData.passengers.map((passenger, index) => (
-                <React.Fragment key={`passenger-${passenger.id || index}`}>
-                  <View style={styles.routeLine} />
-                  <View style={styles.routePoint}>
-                    <View style={styles.passengerRouteMarker} />
-                    <View style={styles.routeContent}>
-                      <Text style={styles.routeLabel}>
-                        PICKUP {index + 1}
-                        {passenger.riderName ? ` • ${passenger.riderName}` : ""}
-                      </Text>
-                      <Text style={styles.routeAddress}>
-                        {passenger.pickupAddress}
-                      </Text>
-                      {passenger.pickupCity && (
-                        <Text style={styles.routeCity}>
-                          {passenger.pickupCity}, {passenger.pickupState}
-                        </Text>
-                      )}
-                    </View>
+            {rideData.passengers && rideData.passengers.length > 0 && rideData.passengers.map((passenger, index) => (
+              <React.Fragment key={`passenger-${passenger.id || index}`}>
+                <View style={styles.routeDivider} />
+                <View style={styles.routeItem}>
+                  <View style={[styles.routeIcon, styles.routeIconPassenger]}>
+                    <IconSymbol size={14} name="person.fill" color="#34C759" />
                   </View>
-                </React.Fragment>
-              ))}
+                  <View style={styles.routeContent}>
+                    <Text style={styles.routeLabel}>
+                      Pickup {index + 1}{passenger.riderName ? ` • ${passenger.riderName}` : ""}
+                    </Text>
+                    <Text style={styles.routeAddress} numberOfLines={2}>
+                      {passenger.pickupAddress}
+                    </Text>
+                    {passenger.pickupCity && (
+                      <Text style={styles.routeCity}>
+                        {passenger.pickupCity}, {passenger.pickupState}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </React.Fragment>
+            ))}
 
-            <View style={styles.routeLine} />
-
-            <View style={styles.routePoint}>
-              <View style={[styles.routeMarker, styles.routeMarkerDest]} />
+            <View style={styles.routeDivider} />
+            <View style={styles.routeItem}>
+              <View style={[styles.routeIcon, styles.routeIconDest]}>
+                <IconSymbol size={16} name="flag.fill" color="#FF3B30" />
+              </View>
               <View style={styles.routeContent}>
-                <Text style={styles.routeLabel}>TO</Text>
-                <Text style={styles.routeAddress}>{rideData.toAddress}</Text>
+                <Text style={styles.routeLabel}>To</Text>
+                <Text style={styles.routeAddress} numberOfLines={2}>
+                  {rideData.toAddress}
+                </Text>
                 {rideData.toCity && (
                   <Text style={styles.routeCity}>
                     {rideData.toCity}, {rideData.toState}
@@ -337,10 +301,7 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
         {/* Map */}
         {mapRegion && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol size={18} name="mappin" color="#4285F4" />
-              <Text style={styles.sectionTitle}>Route Map</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Map</Text>
             <View style={styles.mapContainer}>
               <MapView
                 provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
@@ -351,7 +312,6 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                 showsUserLocation={false}
                 showsMyLocationButton={false}
               >
-                {/* Pickup marker */}
                 {rideData.fromLatitude && rideData.fromLongitude && (
                   <Marker
                     coordinate={{
@@ -359,45 +319,34 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                       longitude: rideData.fromLongitude,
                     }}
                     title="Pickup"
-                    description={rideData.fromAddress}
                   >
                     <View style={styles.markerContainer}>
                       <View style={styles.pickupMarker}>
-                        <IconSymbol size={16} name="car" color="#FFFFFF" />
+                        <IconSymbol size={14} name="car.fill" color="#FFFFFF" />
                       </View>
                     </View>
                   </Marker>
                 )}
 
-                {/* Passenger pickup markers */}
-                {rideData.passengers &&
-                  rideData.passengers.map((passenger, index) => {
-                    if (!passenger.pickupLatitude || !passenger.pickupLongitude)
-                      return null;
-                    return (
-                      <Marker
-                        key={`passenger-${passenger.id || index}`}
-                        coordinate={{
-                          latitude: passenger.pickupLatitude,
-                          longitude: passenger.pickupLongitude,
-                        }}
-                        title={`Passenger ${index + 1} Pickup`}
-                        description={passenger.pickupAddress}
-                      >
-                        <View style={styles.markerContainer}>
-                          <View style={styles.passengerMarker}>
-                            <IconSymbol
-                              size={14}
-                              name="person.fill"
-                              color="#FFFFFF"
-                            />
-                          </View>
+                {rideData.passengers && rideData.passengers.map((passenger, index) => {
+                  if (!passenger.pickupLatitude || !passenger.pickupLongitude) return null;
+                  return (
+                    <Marker
+                      key={`passenger-${passenger.id || index}`}
+                      coordinate={{
+                        latitude: passenger.pickupLatitude,
+                        longitude: passenger.pickupLongitude,
+                      }}
+                    >
+                      <View style={styles.markerContainer}>
+                        <View style={styles.passengerMarker}>
+                          <IconSymbol size={12} name="person.fill" color="#FFFFFF" />
                         </View>
-                      </Marker>
-                    );
-                  })}
+                      </View>
+                    </Marker>
+                  );
+                })}
 
-                {/* Destination marker */}
                 {rideData.toLatitude && rideData.toLongitude && (
                   <Marker
                     coordinate={{
@@ -405,11 +354,10 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                       longitude: rideData.toLongitude,
                     }}
                     title="Destination"
-                    description={rideData.toAddress}
                   >
                     <View style={styles.markerContainer}>
                       <View style={styles.destinationMarker}>
-                        <IconSymbol size={14} name="flag" color="#FFFFFF" />
+                        <IconSymbol size={14} name="flag.fill" color="#FFFFFF" />
                       </View>
                     </View>
                   </Marker>
@@ -419,57 +367,61 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
           </View>
         )}
 
-        {/* Trip Details */}
+        {/* Trip Information */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <IconSymbol size={18} name="info.circle" color="#4285F4" />
-            <Text style={styles.sectionTitle}>Trip Details</Text>
-          </View>
-          <View style={styles.sectionContent}>
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Passengers</Text>
-              <Text style={styles.detailValue}>
-                {passengerCount} passenger{passengerCount !== 1 ? "s" : ""}
+          <Text style={styles.sectionTitle}>Trip Information</Text>
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <View style={styles.infoItem}>
+                <IconSymbol size={18} name="calendar" color="#999999" />
+                <Text style={styles.infoLabel}>Date & Time</Text>
+              </View>
+              <Text style={styles.infoValue}>
+                {formatDateTime(rideData.departureTime || "", rideData.departureDate, rideData.departureTimeString)}
               </Text>
             </View>
-            {totalDistance > 0 && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Total Distance</Text>
-                <Text style={styles.detailValue}>
-                  {totalDistance.toFixed(1)} mi
+            {rideData.isRecurring && (
+              <View style={styles.infoRow}>
+                <View style={styles.infoItem}>
+                  <IconSymbol size={18} name="repeat" color="#999999" />
+                  <Text style={styles.infoLabel}>Recurring</Text>
+                </View>
+                <Text style={styles.infoValue}>
+                  {rideData.recurringPattern === 'daily' ? 'Daily' : 
+                   rideData.recurringPattern === 'weekly' ? 'Weekly' : 
+                   rideData.recurringPattern === 'monthly' ? 'Monthly' : 'N/A'}
                 </Text>
               </View>
             )}
-            <View style={[styles.detailRow, styles.detailRowLast]}>
-              <Text style={styles.detailLabel}>Price per Seat</Text>
-              <Text style={styles.detailValue}>${pricePerSeat.toFixed(2)}</Text>
-            </View>
           </View>
         </View>
 
-        {/* Passengers List */}
+        {/* Passengers */}
         {rideData.passengers && rideData.passengers.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol size={18} name="person.2.fill" color="#4285F4" />
-              <Text style={styles.sectionTitle}>
-                Passengers ({rideData.passengers.length})
-              </Text>
-            </View>
+            <Text style={styles.sectionTitle}>Passengers</Text>
             {rideData.passengers.map((passenger, index) => (
-              <View key={`passenger-info-${passenger.id || index}`} style={styles.passengerCard}>
-                <View style={styles.passengerInfo}>
-                  <Text style={styles.passengerName}>
-                    {passenger.riderName || `Passenger ${index + 1}`}
-                  </Text>
-                  <Text style={styles.passengerPickup}>
-                    Pickup: {passenger.pickupAddress}
-                  </Text>
+              <View key={`passenger-${passenger.id || index}`} style={styles.passengerCard}>
+                <View style={styles.passengerHeader}>
+                  <View style={styles.passengerAvatar}>
+                    <IconSymbol size={20} name="person.fill" color="#4285F4" />
+                  </View>
+                  <View style={styles.passengerInfo}>
+                    <Text style={styles.passengerName}>
+                      {passenger.riderName || `Passenger ${index + 1}`}
+                    </Text>
+                    <Text style={styles.passengerSeats}>
+                      {passenger.numberOfSeats || 1} seat{(passenger.numberOfSeats || 1) !== 1 ? "s" : ""}
+                    </Text>
+                  </View>
                 </View>
+                <Text style={styles.passengerPickup} numberOfLines={1}>
+                  {passenger.pickupAddress}
+                </Text>
                 {passenger.riderPhone && (
                   <View style={styles.passengerActions}>
                     <TouchableOpacity
-                      style={styles.callButton}
+                      style={styles.actionButton}
                       onPress={() => {
                         if (!passenger.riderPhone) return;
                         const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
@@ -482,7 +434,7 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                               Alert.alert('Error', 'Unable to make phone call.');
                             }
                           })
-                          .catch((err) => {
+                          .catch(() => {
                             Alert.alert('Error', 'Unable to make phone call.');
                           });
                       }}
@@ -491,7 +443,7 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                       <IconSymbol size={16} name="phone.fill" color="#4285F4" />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={styles.messageButton}
+                      style={styles.actionButton}
                       onPress={() => {
                         if (!passenger.riderPhone) return;
                         const cleanPhone = passenger.riderPhone.replace(/\D/g, '');
@@ -504,7 +456,7 @@ export default function PastRideDetailsScreen(): React.JSX.Element {
                               Alert.alert('Error', 'Unable to open messaging app');
                             }
                           })
-                          .catch((err) => {
+                          .catch(() => {
                             Alert.alert('Error', 'Unable to open messaging app');
                           });
                       }}
@@ -538,23 +490,18 @@ const styles = StyleSheet.create({
     borderBottomColor: "#1A1A1A",
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "#1A1A1A",
     justifyContent: "center",
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: "#FFFFFF",
-    letterSpacing: -0.5,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    letterSpacing: -0.3,
   },
   scrollView: {
     flex: 1,
@@ -563,118 +510,127 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
-  statusSection: {
-    marginBottom: 20,
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(52, 199, 89, 0.15)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 8,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#34C759",
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#34C759",
-    textTransform: "uppercase",
-  },
   earningsCard: {
     backgroundColor: "#0F0F0F",
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 24,
-    marginBottom: 24,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#1A1A1A",
+    borderColor: "#2A2A2A",
+  },
+  earningsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 12,
   },
   earningsLabel: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 13,
+    fontWeight: "600",
     color: "#999999",
     textTransform: "uppercase",
-    marginBottom: 8,
     letterSpacing: 0.5,
   },
   earningsAmount: {
-    fontSize: 48,
+    fontSize: 42,
     fontWeight: "800",
     color: "#34C759",
-    marginBottom: 8,
     letterSpacing: -1,
+    marginBottom: 8,
   },
-  earningsBreakdown: {
-    marginTop: 8,
+  earningsInfo: {
+    marginTop: 4,
   },
-  earningsBreakdownText: {
+  earningsInfoText: {
     fontSize: 14,
     fontWeight: "500",
     color: "#666666",
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
+  statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
+    backgroundColor: "rgba(52, 199, 89, 0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#34C759",
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#34C759",
+    textTransform: "uppercase",
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 24,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: "#0F0F0F",
+    borderRadius: 16,
+    padding: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#2A2A2A",
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#666666",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  section: {
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: "#FFFFFF",
+    marginBottom: 12,
     letterSpacing: -0.3,
   },
-  sectionContent: {
+  routeCard: {
     backgroundColor: "#0F0F0F",
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     borderWidth: 1,
-    borderColor: "#1A1A1A",
+    borderColor: "#2A2A2A",
   },
-  dateTimeText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  routeContainer: {
-    backgroundColor: "#0F0F0F",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#1A1A1A",
-  },
-  routePoint: {
+  routeItem: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
   },
-  routeMarker: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#4285F4",
-    marginTop: 4,
+  routeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(66, 133, 244, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 2,
   },
-  passengerRouteMarker: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#34C759",
-    marginTop: 4,
+  routeIconPassenger: {
+    backgroundColor: "rgba(52, 199, 89, 0.15)",
   },
-  routeMarkerDest: {
-    backgroundColor: "#FF3B30",
+  routeIconDest: {
+    backgroundColor: "rgba(255, 59, 48, 0.15)",
   },
   routeContent: {
     flex: 1,
@@ -689,7 +645,7 @@ const styles = StyleSheet.create({
   },
   routeAddress: {
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: "600",
     color: "#FFFFFF",
     lineHeight: 20,
     marginBottom: 2,
@@ -699,19 +655,18 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     color: "#999999",
   },
-  routeLine: {
-    width: 2,
-    height: 16,
-    backgroundColor: "#1A1A1A",
-    marginLeft: 5,
-    marginVertical: 4,
+  routeDivider: {
+    height: 1,
+    backgroundColor: "#2A2A2A",
+    marginVertical: 16,
+    marginLeft: 44,
   },
   mapContainer: {
-    height: 250,
-    borderRadius: 12,
+    height: 220,
+    borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#1A1A1A",
+    borderColor: "#2A2A2A",
   },
   map: {
     flex: 1,
@@ -720,150 +675,129 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   pickupMarker: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#4285F4",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 3,
-    borderColor: "#FFFFFF",
-  },
-  passengerMarker: {
     width: 28,
     height: 28,
     borderRadius: 14,
+    backgroundColor: "#4285F4",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  passengerMarker: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "#34C759",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: "#FFFFFF",
   },
   destinationMarker: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: "#FF3B30",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: "#FFFFFF",
   },
-  detailRow: {
+  infoCard: {
+    backgroundColor: "#0F0F0F",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#2A2A2A",
+    gap: 16,
+  },
+  infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1A1A1A",
   },
-  detailRowLast: {
-    borderBottomWidth: 0,
+  infoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  detailLabel: {
+  infoLabel: {
     fontSize: 14,
     fontWeight: "500",
     color: "#999999",
   },
-  detailValue: {
-    fontSize: 15,
+  infoValue: {
+    fontSize: 14,
     fontWeight: "600",
     color: "#FFFFFF",
+    textAlign: "right",
+    flex: 1,
   },
   passengerCard: {
     backgroundColor: "#0F0F0F",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#1A1A1A",
+    borderColor: "#2A2A2A",
+  },
+  passengerHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  passengerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(66, 133, 244, 0.15)",
+    justifyContent: "center",
     alignItems: "center",
   },
   passengerInfo: {
     flex: 1,
   },
-  passengerActions: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
-  callButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#1A1A1A",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  messageButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#1A1A1A",
-    justifyContent: "center",
-    alignItems: "center",
-  },
   passengerName: {
     fontSize: 16,
     fontWeight: "600",
     color: "#FFFFFF",
-    marginBottom: 4,
+    marginBottom: 2,
+  },
+  passengerSeats: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#666666",
   },
   passengerPickup: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "400",
     color: "#999999",
+    marginBottom: 12,
+  },
+  passengerActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  actionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#1A1A1A",
+    justifyContent: "center",
+    alignItems: "center",
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 40,
   },
   emptyText: {
     fontSize: 16,
     fontWeight: "500",
     color: "#999999",
-  },
-  recurringCard: {
-    backgroundColor: "#0F0F0F",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#1A1A1A",
-  },
-  recurringHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  recurringTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    letterSpacing: -0.3,
-  },
-  recurringContent: {
-    gap: 8,
-  },
-  recurringRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  recurringLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#999999",
-  },
-  recurringValue: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#4285F4",
-    textTransform: "capitalize",
+    marginTop: 16,
   },
 });
-

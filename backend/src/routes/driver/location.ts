@@ -45,12 +45,6 @@ router.put('/', async (req: Request, res: Response) => {
       },
     });
 
-    console.log('✅ Driver location updated:', {
-      driverId: parseInt(driverId),
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-      timestamp: new Date().toISOString(),
-    });
 
     return res.json({
       success: true,

@@ -12,7 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
-    "clean:db": "ts-node --require tsconfig-paths/register scripts/clear-data.ts"
+    "clean:db": "ts-node --project tsconfig.scripts.json --require tsconfig-paths/register scripts/clear-data.ts"
   },
   "keywords": [],
   "author": "",

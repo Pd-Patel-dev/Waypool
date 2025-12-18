@@ -29,26 +29,74 @@ export type UnknownError =
   | unknown;
 
 /**
+ * Type guard to check if error has message property
+ */
+function hasMessage(error: unknown): error is { message: string } {
+  return typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string';
+}
+
+/**
+ * Type guard to check if error has status property
+ */
+function hasStatus(error: unknown): error is { status: number } {
+  return typeof error === 'object' && error !== null && 'status' in error && typeof (error as any).status === 'number';
+}
+
+/**
+ * Type guard to check if error has errors array
+ */
+function hasErrors(error: unknown): error is { errors: string[] } {
+  return typeof error === 'object' && error !== null && 'errors' in error && Array.isArray((error as any).errors);
+}
+
+/**
+ * Get error message safely
+ */
+function getErrorMessage(error: unknown): string {
+  if (hasMessage(error)) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return 'An unexpected error occurred';
+}
+
+/**
+ * Get error status safely
+ */
+function getErrorStatus(error: unknown): number | undefined {
+  if (hasStatus(error)) {
+    return error.status;
+  }
+  return undefined;
+}
+
+/**
  * Parse API error response into standardized AppError
  */
 export function parseApiError(error: UnknownError): AppError {
+  const errorMessage = getErrorMessage(error);
+  const errorStatus = getErrorStatus(error);
+  const hasErrorsArray = hasErrors(error);
+
   // Network errors (no response from server)
-  if (error?.message?.includes('Network') || error?.message?.includes('fetch') || error?.message?.includes('Failed to fetch')) {
+  if (errorMessage.includes('Network') || errorMessage.includes('fetch') || errorMessage.includes('Failed to fetch')) {
     // Check for specific network error types
-    if (error?.message?.includes('timeout') || error?.message?.includes('TIMEOUT')) {
+    if (errorMessage.includes('timeout') || errorMessage.includes('TIMEOUT')) {
       return {
         code: ErrorCode.NETWORK_ERROR,
-        message: error.message || 'Network timeout',
+        message: errorMessage || 'Network timeout',
         userMessage: 'The request took too long. Please check your internet connection and try again.',
         recoverable: true,
         retryable: true,
       };
     }
     
-    if (error?.message?.includes('CORS') || error?.message?.includes('cors')) {
+    if (errorMessage.includes('CORS') || errorMessage.includes('cors')) {
       return {
         code: ErrorCode.NETWORK_ERROR,
-        message: error.message || 'CORS error',
+        message: errorMessage || 'CORS error',
         userMessage: 'Connection blocked. Please contact support if this issue persists.',
         recoverable: false,
         retryable: false,
@@ -57,7 +105,7 @@ export function parseApiError(error: UnknownError): AppError {
 
     return {
       code: ErrorCode.NETWORK_ERROR,
-      message: error.message || 'Network request failed',
+      message: errorMessage || 'Network request failed',
       userMessage: 'Unable to connect to the server. Please check your internet connection and try again.',
       recoverable: true,
       retryable: true,
@@ -65,10 +113,10 @@ export function parseApiError(error: UnknownError): AppError {
   }
 
   // Authentication errors
-  if (error?.status === 401 || error?.message?.includes('unauthorized') || error?.message?.includes('authentication')) {
+  if (errorStatus === 401 || errorMessage.includes('unauthorized') || errorMessage.includes('authentication')) {
     return {
       code: ErrorCode.AUTHENTICATION_ERROR,
-      message: error.message || 'Authentication failed',
+      message: errorMessage || 'Authentication failed',
       userMessage: 'Your session has expired. Please log in again.',
       recoverable: true,
       retryable: false,
@@ -76,31 +124,31 @@ export function parseApiError(error: UnknownError): AppError {
   }
 
   // Validation errors
-  if (error?.status === 400 || error?.errors?.length > 0) {
+  if (errorStatus === 400 || (hasErrorsArray && error.errors.length > 0)) {
     return {
       code: ErrorCode.VALIDATION_ERROR,
-      message: error.message || 'Validation failed',
-      userMessage: error.errors?.join('\n') || error.message || 'Please check your input and try again.',
+      message: errorMessage || 'Validation failed',
+      userMessage: (hasErrorsArray ? error.errors.join('\n') : '') || errorMessage || 'Please check your input and try again.',
       recoverable: true,
       retryable: false,
     };
   }
 
   // Server errors
-  if (error?.status === 500 || error?.status >= 500) {
+  if (errorStatus !== undefined && (errorStatus === 500 || errorStatus >= 500)) {
     let userMessage = 'The server is experiencing issues. Please try again later.';
     
-    if (error?.status === 503) {
+    if (errorStatus === 503) {
       userMessage = 'The service is temporarily unavailable. Please try again in a few moments.';
-    } else if (error?.status === 504) {
+    } else if (errorStatus === 504) {
       userMessage = 'The server took too long to respond. Please try again.';
-    } else if (error?.status === 502) {
+    } else if (errorStatus === 502) {
       userMessage = 'The server is not responding correctly. Please try again later.';
     }
 
     return {
       code: ErrorCode.SERVER_ERROR,
-      message: error.message || 'Server error',
+      message: errorMessage || 'Server error',
       userMessage,
       recoverable: true,
       retryable: true,
@@ -108,10 +156,10 @@ export function parseApiError(error: UnknownError): AppError {
   }
 
   // Permission errors
-  if (error?.status === 403 || error?.message?.includes('permission') || error?.message?.includes('forbidden')) {
+  if (errorStatus === 403 || errorMessage.includes('permission') || errorMessage.includes('forbidden')) {
     return {
       code: ErrorCode.PERMISSION_ERROR,
-      message: error.message || 'Permission denied',
+      message: errorMessage || 'Permission denied',
       userMessage: 'You don\'t have permission to perform this action.',
       recoverable: false,
       retryable: false,
@@ -121,8 +169,8 @@ export function parseApiError(error: UnknownError): AppError {
   // Unknown errors
   return {
     code: ErrorCode.UNKNOWN_ERROR,
-    message: error?.message || 'An unexpected error occurred',
-    userMessage: error?.message || 'Something went wrong. Please try again.',
+    message: errorMessage || 'An unexpected error occurred',
+    userMessage: errorMessage || 'Something went wrong. Please try again.',
     recoverable: true,
     retryable: true,
   };

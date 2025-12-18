@@ -85,14 +85,6 @@ router.get('/:rideId', async (req: Request, res: Response) => {
       });
     }
 
-    console.log('📍 Tracking request:', {
-      rideId,
-      riderId,
-      driverId: ride.users.id,
-      hasLocation: !!(ride.users.lastLocationLatitude && ride.users.lastLocationLongitude),
-      rideStatus: ride.status,
-      lastUpdate: ride.users.lastLocationUpdate?.toISOString(),
-    });
 
     // Return driver location if available
     if (ride.users.lastLocationLatitude && ride.users.lastLocationLongitude) {

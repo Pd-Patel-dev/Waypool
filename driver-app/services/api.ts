@@ -338,6 +338,14 @@ export const logout = async (): Promise<LogoutResponse> => {
 /**
  * Individual ride earning details
  */
+export interface EarningsBreakdown {
+  grossEarnings: number;
+  processingFee: number;
+  commission: number;
+  totalFees: number;
+  netEarnings: number;
+}
+
 export interface RideEarning {
   rideId: number;
   date: string; // ISO date string for parsing
@@ -347,7 +355,8 @@ export interface RideEarning {
   seatsBooked: number;
   pricePerSeat: number;
   distance: number;
-  earnings: number;
+  earnings: number; // Net earnings (after fees)
+  earningsBreakdown?: EarningsBreakdown; // Detailed breakdown of fees
 }
 
 /**
@@ -395,6 +404,16 @@ export const getEarnings = async (driverId: number): Promise<EarningsResponse> =
       } as ApiError;
     }
 
+    // Handle standardized response format (data wrapper)
+    if (result.data && result.data.earnings) {
+      return {
+        success: result.success,
+        message: result.message,
+        earnings: result.data.earnings,
+      } as EarningsResponse;
+    }
+
+    // Fallback for direct earnings response (backwards compatibility)
     return result as EarningsResponse;
   } catch (error) {
     if (error && typeof error === "object" && "message" in error) {

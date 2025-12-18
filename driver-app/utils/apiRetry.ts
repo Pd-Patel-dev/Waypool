@@ -54,6 +54,43 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Type guard to check if error has message property
+ */
+function hasMessage(error: unknown): error is { message: string } {
+  return typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string';
+}
+
+/**
+ * Type guard to check if error has status property
+ */
+function hasStatus(error: unknown): error is { status: number } {
+  return typeof error === 'object' && error !== null && 'status' in error && typeof (error as any).status === 'number';
+}
+
+/**
+ * Get error message safely
+ */
+function getErrorMessage(error: unknown): string {
+  if (hasMessage(error)) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return '';
+}
+
+/**
+ * Get error status safely
+ */
+function getErrorStatus(error: unknown): number | undefined {
+  if (hasStatus(error)) {
+    return error.status;
+  }
+  return undefined;
+}
+
+/**
  * Check if error is retryable
  * Integrates with errorHandler to use centralized retry logic
  */
@@ -67,20 +104,22 @@ function isRetryableError(error: unknown, options: Required<Omit<RetryOptions, '
     }
   }
 
+  const errorStatus = getErrorStatus(error);
+  const errorMessage = getErrorMessage(error).toLowerCase();
+
   // Manual retryable check as fallback
   // Network errors (no status code) are usually retryable
-  if (!error?.status) {
-    const message = error?.message?.toLowerCase() || '';
+  if (errorStatus === undefined) {
     // Check for network-related error messages
     if (
-      message.includes('network') ||
-      message.includes('fetch') ||
-      message.includes('failed to fetch') ||
-      message.includes('networkerror') ||
-      message.includes('network request failed')
+      errorMessage.includes('network') ||
+      errorMessage.includes('fetch') ||
+      errorMessage.includes('failed to fetch') ||
+      errorMessage.includes('networkerror') ||
+      errorMessage.includes('network request failed')
     ) {
       // CORS errors should not be retried
-      if (message.includes('cors')) {
+      if (errorMessage.includes('cors')) {
         return false;
       }
       return true;
@@ -88,22 +127,22 @@ function isRetryableError(error: unknown, options: Required<Omit<RetryOptions, '
   }
 
   // Check if status code is in retryable list
-  if (error?.status && options.retryableStatusCodes.includes(error.status)) {
+  if (errorStatus !== undefined && options.retryableStatusCodes.includes(errorStatus)) {
     return true;
   }
 
   // 5xx server errors are generally retryable
-  if (error?.status >= 500 && error?.status < 600) {
+  if (errorStatus !== undefined && errorStatus >= 500 && errorStatus < 600) {
     return true;
   }
 
   // 408 (Request Timeout) and 429 (Too Many Requests) are retryable
-  if (error?.status === 408 || error?.status === 429) {
+  if (errorStatus === 408 || errorStatus === 429) {
     return true;
   }
 
   // 4xx client errors (except 408, 429) are generally NOT retryable
-  if (error?.status >= 400 && error?.status < 500) {
+  if (errorStatus !== undefined && errorStatus >= 400 && errorStatus < 500) {
     return false;
   }
 

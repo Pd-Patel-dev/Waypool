@@ -42,15 +42,15 @@ async function getOrCreateStripeCustomer(riderId: number, email: string, name: s
     });
 
     return customer.id;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating/retrieving Stripe customer:', error);
     
     // Provide more specific error messages
-    if (error.type === 'StripeAuthenticationError') {
+    if (error && typeof error === 'object' && 'type' in error && error.type === 'StripeAuthenticationError') {
       throw new Error('Invalid Stripe API key. Please check your STRIPE_SECRET_KEY environment variable. It should start with "sk_test_" (test mode) or "sk_live_" (production mode).');
     }
     
-    if (error.message) {
+    if (error instanceof Error) {
       throw new Error(`Stripe error: ${error.message}`);
     }
     
@@ -67,11 +67,6 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
   try {
     const { riderId, paymentMethodId, paymentMethodType } = req.body;
 
-    console.log('Received attach-payment-method request:', {
-      riderId,
-      paymentMethodId: paymentMethodId ? `${paymentMethodId.substring(0, 10)}...` : null,
-      paymentMethodType,
-    });
 
     // Validation
     if (!riderId || !paymentMethodId) {
@@ -135,20 +130,11 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
       // First, verify the payment method exists and is valid
       const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
       
-      console.log('Payment method retrieved:', {
-        id: paymentMethod.id,
-        type: paymentMethod.type,
-        card: paymentMethod.card ? {
-          brand: paymentMethod.card.brand,
-          last4: paymentMethod.card.last4,
-        } : null,
-      });
       
       // Check if payment method is already attached to a customer
       if (paymentMethod.customer) {
         if (paymentMethod.customer === stripeCustomerId) {
           // Already attached to this customer
-          console.log('Payment method already attached to this customer');
           return res.json({
             success: true,
             message: 'Payment method already saved',
@@ -156,7 +142,6 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
           });
         } else {
           // Attached to different customer - detach first
-          console.log('Payment method attached to different customer, detaching...');
           await stripe.paymentMethods.detach(paymentMethodId);
         }
       }
@@ -173,30 +158,35 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
         },
       });
 
-      console.log(`✅ Payment method ${paymentMethodId} attached to customer ${stripeCustomerId} for rider ${riderId}`);
 
       return res.json({
         success: true,
         message: 'Payment method saved successfully',
         paymentMethodId: paymentMethodId,
       });
-    } catch (stripeError: any) {
+    } catch (stripeError: unknown) {
+      const errorObj = stripeError && typeof stripeError === 'object' ? stripeError : {};
+      const errorCode = 'code' in errorObj && typeof errorObj.code === 'string' ? errorObj.code : undefined;
+      const errorMessage = 'message' in errorObj && typeof errorObj.message === 'string' ? errorObj.message : 'Unknown error';
+      const errorType = 'type' in errorObj && typeof errorObj.type === 'string' ? errorObj.type : undefined;
+      const statusCode = 'statusCode' in errorObj && typeof errorObj.statusCode === 'number' ? errorObj.statusCode : undefined;
+      
       console.error('Stripe error attaching payment method:', {
-        code: stripeError.code,
-        message: stripeError.message,
-        type: stripeError.type,
-        statusCode: stripeError.statusCode,
+        code: errorCode,
+        message: errorMessage,
+        type: errorType,
+        statusCode,
       });
       
       // Handle specific Stripe errors
-      if (stripeError.code === 'resource_already_exists') {
+      if (errorCode === 'resource_already_exists') {
         return res.status(409).json({
           success: false,
           message: 'This payment method is already saved',
         });
       }
       
-      if (stripeError.code === 'resource_missing') {
+      if (errorCode === 'resource_missing') {
         return res.status(404).json({
           success: false,
           message: 'Payment method not found. Please try adding the card again.',
@@ -205,15 +195,16 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
 
       return res.status(400).json({
         success: false,
-        message: stripeError.message || 'Failed to save payment method',
-        errorCode: stripeError.code,
+        message: errorMessage || 'Failed to save payment method',
+        ...(errorCode && { errorCode }),
       });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     console.error('Error attaching payment method:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
+      message: errorMessage,
     });
   }
 });
@@ -306,11 +297,12 @@ router.get('/payment-methods', async (req: Request, res: Response) => {
       success: true,
       paymentMethods: formattedMethods,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     console.error('Error fetching payment methods:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
+      message: errorMessage,
       paymentMethods: [],
     });
   }
@@ -392,16 +384,19 @@ router.delete('/payment-methods/:paymentMethodId', async (req: Request, res: Res
     // Detach payment method (removes from customer but doesn't delete it)
     await stripe.paymentMethods.detach(paymentMethodId);
 
-    console.log(`✅ Payment method ${paymentMethodId} detached for rider ${riderId}`);
 
     return res.json({
       success: true,
       message: 'Payment method deleted successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorObj = error && typeof error === 'object' ? error : {};
+    const errorCode = 'code' in errorObj && typeof errorObj.code === 'string' ? errorObj.code : undefined;
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    
     console.error('Error deleting payment method:', error);
     
-    if (error.code === 'resource_missing') {
+    if (errorCode === 'resource_missing') {
       return res.status(404).json({
         success: false,
         message: 'Payment method not found',
@@ -410,7 +405,7 @@ router.delete('/payment-methods/:paymentMethodId', async (req: Request, res: Res
 
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
+      message: errorMessage,
     });
   }
 });
@@ -475,11 +470,12 @@ router.post('/create-setup-intent', async (req: Request, res: Response) => {
       setupIntentClientSecret: setupIntent.client_secret,
       paymentMethodId: setupIntent.payment_method as string | undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     console.error('Error creating setup intent:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error',
+      message: errorMessage,
     });
   }
 });

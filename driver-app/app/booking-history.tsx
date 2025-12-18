@@ -17,6 +17,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useUser } from '@/context/UserContext';
 import { getUpcomingRides, getPastRides } from '@/services/api';
+import { InlineLoader } from '@/components/LoadingScreen';
 
 type FilterStatus = 'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled';
 

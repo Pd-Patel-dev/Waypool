@@ -40,8 +40,15 @@ export default function EarningsScreen(): React.JSX.Element {
       setError(null);
       const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
       const response = await getEarnings(driverId);
-      setEarnings(response.earnings); // Extract earnings from response
+      console.log('📊 Earnings response:', JSON.stringify(response, null, 2));
+      if (response.earnings) {
+        setEarnings(response.earnings); // Extract earnings from response
+      } else {
+        console.warn('⚠️ No earnings data in response:', response);
+        setEarnings(null);
+      }
     } catch (error: unknown) {
+      console.error('❌ Error fetching earnings:', error);
       const errorMessage = error instanceof Error ? error.message : "Failed to load earnings. Please try again.";
       setError(errorMessage);
     } finally {
@@ -401,156 +408,114 @@ export default function EarningsScreen(): React.JSX.Element {
           >
             {selectedRide && (
               <>
-                {/* Modal Header */}
+                {/* Simple Header */}
                 <View style={styles.modalHeader}>
-                  <View style={styles.modalIconLarge}>
-                    <IconSymbol
-                      size={28}
-                      name="dollarsign.circle.fill"
-                      color="#4285F4"
-                    />
-                  </View>
+                  <Text style={styles.modalTitle}>Earnings Details</Text>
                   <TouchableOpacity
                     style={styles.closeButton}
                     onPress={closeModal}
                     activeOpacity={0.7}
                   >
-                    <IconSymbol
-                      size={24}
-                      name="xmark.circle.fill"
-                      color="#666666"
-                    />
+                    <IconSymbol size={20} name="xmark" color="#999999" />
                   </TouchableOpacity>
                 </View>
 
-                {/* Route */}
-                <View style={styles.modalRoute}>
-                  <Text style={styles.modalTitle}>Ride Details</Text>
-                  <View style={styles.modalRouteItem}>
+                {/* Route - Simplified */}
+                <View style={styles.modalRouteSection}>
+                  <View style={styles.modalRouteRow}>
                     <View style={styles.modalRouteDot} />
-                    <Text style={styles.modalRouteText}>
+                    <Text style={styles.modalRouteText} numberOfLines={1}>
                       {selectedRide.from}
                     </Text>
                   </View>
                   <View style={styles.modalRouteLine} />
-                  <View style={styles.modalRouteItem}>
-                    <View
-                      style={[styles.modalRouteDot, styles.modalRouteDotEnd]}
-                    />
-                    <Text style={styles.modalRouteText}>{selectedRide.to}</Text>
-                  </View>
-                </View>
-
-                {/* Trip Info */}
-                <View style={styles.modalInfoSection}>
-                  <View style={styles.modalInfoRow}>
-                    <IconSymbol size={16} name="calendar" color="#999999" />
-                    <Text style={styles.modalInfoLabel}>Date</Text>
-                    <Text style={styles.modalInfoValue}>
-                      {selectedRide.displayDate ||
-                        new Date(selectedRide.date).toLocaleDateString(
-                          "en-US",
-                          {
-                            month: "short",
-                            day: "numeric",
-                          }
-                        )}
-                    </Text>
-                  </View>
-
-                  <View style={styles.modalInfoRow}>
-                    <IconSymbol
-                      size={16}
-                      name="person.2.fill"
-                      color="#999999"
-                    />
-                    <Text style={styles.modalInfoLabel}>Seats Booked</Text>
-                    <Text style={styles.modalInfoValue}>
-                      {selectedRide.seatsBooked} seat
-                      {selectedRide.seatsBooked !== 1 ? "s" : ""}
-                    </Text>
-                  </View>
-
-                  <View style={styles.modalInfoRow}>
-                    <IconSymbol
-                      size={16}
-                      name="mappin.circle"
-                      color="#999999"
-                    />
-                    <Text style={styles.modalInfoLabel}>Distance</Text>
-                    <Text style={styles.modalInfoValue}>
-                      {selectedRide.distance.toFixed(1)} km (
-                      {(selectedRide.distance * 0.621371).toFixed(1)} mi)
+                  <View style={styles.modalRouteRow}>
+                    <View style={[styles.modalRouteDot, styles.modalRouteDotEnd]} />
+                    <Text style={styles.modalRouteText} numberOfLines={1}>
+                      {selectedRide.to}
                     </Text>
                   </View>
                 </View>
 
-                {/* Earnings Breakdown */}
-                <View style={styles.modalBreakdown}>
-                  <Text style={styles.modalBreakdownTitle}>
-                    Earnings Breakdown
-                  </Text>
-
-                  <View style={styles.modalBreakdownRow}>
-                    <View style={styles.modalBreakdownLeft}>
-                      <IconSymbol
-                        size={16}
-                        name="person.2.fill"
-                        color="#4285F4"
-                      />
-                      <Text style={styles.modalBreakdownLabel}>
-                        Booked Seats
-                      </Text>
-                    </View>
-                    <Text style={styles.modalBreakdownValue}>
-                      {selectedRide.seatsBooked} seat
-                      {selectedRide.seatsBooked !== 1 ? "s" : ""}
-                    </Text>
-                  </View>
-
-                  <View style={styles.modalBreakdownRow}>
-                    <View style={styles.modalBreakdownLeft}>
-                      <IconSymbol
-                        size={16}
-                        name="dollarsign.circle"
-                        color="#34C759"
-                      />
-                      <Text style={styles.modalBreakdownLabel}>
-                        Price per Seat
-                      </Text>
-                    </View>
-                    <Text style={styles.modalBreakdownValue}>
-                      {formatCurrency(selectedRide.pricePerSeat)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.modalDivider} />
-
-                  <View style={styles.modalTotalRow}>
-                    <Text style={styles.modalTotalLabel}>Total Earnings</Text>
-                    <Text style={styles.modalTotalValue}>
-                      {formatCurrency(selectedRide.earnings)}
-                    </Text>
-                  </View>
-                  <Text style={styles.modalBreakdownDetail}>
-                    {selectedRide.seatsBooked} seat
-                    {selectedRide.seatsBooked !== 1 ? "s" : ""} ×{" "}
-                    {formatCurrency(selectedRide.pricePerSeat)} ={" "}
+                {/* Earnings Summary Card */}
+                <View style={styles.modalEarningsCard}>
+                  <Text style={styles.modalEarningsLabel}>Net Earnings</Text>
+                  <Text style={styles.modalEarningsAmount}>
                     {formatCurrency(selectedRide.earnings)}
                   </Text>
-                  <Text style={styles.modalTaxNote}>
-                    💡 Tax-free earnings - taxes handled at year-end
+                  <Text style={styles.modalEarningsSubtext}>
+                    {selectedRide.displayDate ||
+                      new Date(selectedRide.date).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                   </Text>
                 </View>
 
-                {/* Close Button */}
-                <TouchableOpacity
-                  style={styles.modalCloseButton}
-                  onPress={closeModal}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.modalCloseButtonText}>Close</Text>
-                </TouchableOpacity>
+                {/* Breakdown Section */}
+                {selectedRide.earningsBreakdown ? (
+                  <View style={styles.modalBreakdownSection}>
+                    <Text style={styles.modalSectionTitle}>Breakdown</Text>
+                    
+                    <View style={styles.modalBreakdownItem}>
+                      <Text style={styles.modalBreakdownLabel}>Gross Earnings</Text>
+                      <Text style={styles.modalBreakdownValue}>
+                        {formatCurrency(selectedRide.earningsBreakdown.grossEarnings)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.modalBreakdownItem}>
+                      <Text style={styles.modalBreakdownLabel}>Processing Fee</Text>
+                      <Text style={styles.modalBreakdownFee}>
+                        -{formatCurrency(selectedRide.earningsBreakdown.processingFee)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.modalBreakdownItem}>
+                      <Text style={styles.modalBreakdownLabel}>Platform Fee</Text>
+                      <Text style={styles.modalBreakdownFee}>
+                        -{formatCurrency(selectedRide.earningsBreakdown.commission)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.modalBreakdownDivider} />
+
+                    <View style={styles.modalBreakdownItem}>
+                      <Text style={styles.modalBreakdownTotalLabel}>Net Earnings</Text>
+                      <Text style={styles.modalBreakdownTotalValue}>
+                        {formatCurrency(selectedRide.earnings)}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.modalBreakdownSection}>
+                    <View style={styles.modalBreakdownItem}>
+                      <Text style={styles.modalBreakdownLabel}>
+                        {selectedRide.seatsBooked} seat{selectedRide.seatsBooked !== 1 ? "s" : ""} × {formatCurrency(selectedRide.pricePerSeat)}
+                      </Text>
+                      <Text style={styles.modalBreakdownValue}>
+                        {formatCurrency(selectedRide.earnings)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Trip Details - Compact */}
+                <View style={styles.modalDetailsSection}>
+                  <View style={styles.modalDetailRow}>
+                    <Text style={styles.modalDetailLabel}>Distance</Text>
+                    <Text style={styles.modalDetailValue}>
+                      {(selectedRide.distance * 0.621371).toFixed(1)} mi
+                    </Text>
+                  </View>
+                  <View style={styles.modalDetailRow}>
+                    <Text style={styles.modalDetailLabel}>Seats</Text>
+                    <Text style={styles.modalDetailValue}>
+                      {selectedRide.seatsBooked}
+                    </Text>
+                  </View>
+                </View>
               </>
             )}
           </Pressable>
@@ -1013,19 +978,19 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
   modalContent: {
-    backgroundColor: "#1C1C1E",
-    borderRadius: 24,
-    padding: 24,
+    backgroundColor: "#1A1A1A",
+    borderRadius: 20,
+    padding: 20,
     width: "100%",
-    maxWidth: 400,
+    maxWidth: 380,
     borderWidth: 1,
-    borderColor: "#2A2A2C",
+    borderColor: "#2A2A2A",
   },
   modalHeader: {
     flexDirection: "row",
@@ -1033,169 +998,148 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  modalIconLarge: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "rgba(66, 133, 244, 0.1)",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "rgba(66, 133, 244, 0.3)",
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: "#FFFFFF",
-    marginBottom: 16,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
-  modalRoute: {
-    marginBottom: 24,
+  closeButton: {
+    width: 28,
+    height: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 14,
+    backgroundColor: "#0F0F0F",
   },
-  modalRouteItem: {
+  modalRouteSection: {
+    marginBottom: 20,
+    paddingVertical: 12,
+  },
+  modalRouteRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
   },
   modalRouteDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: "#4285F4",
   },
   modalRouteDotEnd: {
-    backgroundColor: "#FF3B30",
+    backgroundColor: "#34C759",
   },
   modalRouteLine: {
     width: 2,
-    height: 16,
-    backgroundColor: "#2A2A2C",
-    marginLeft: 4,
-    marginVertical: 4,
+    height: 12,
+    backgroundColor: "#2A2A2A",
+    marginLeft: 3,
+    marginVertical: 6,
   },
   modalRouteText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#FFFFFF",
-    flex: 1,
-  },
-  modalInfoSection: {
-    backgroundColor: "#0F0F0F",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#2A2A2C",
-    gap: 12,
-  },
-  modalInfoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  modalInfoLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "500",
-    color: "#999999",
+    color: "#FFFFFF",
     flex: 1,
   },
-  modalInfoValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  modalBreakdown: {
+  modalEarningsCard: {
     backgroundColor: "#0F0F0F",
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#2A2A2C",
+    borderColor: "#2A2A2A",
+    alignItems: "center",
   },
-  modalBreakdownTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 16,
-    letterSpacing: -0.3,
+  modalEarningsLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#999999",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
-  modalBreakdownRow: {
+  modalEarningsAmount: {
+    fontSize: 36,
+    fontWeight: "800",
+    color: "#4285F4",
+    letterSpacing: -1,
+    marginBottom: 4,
+  },
+  modalEarningsSubtext: {
+    fontSize: 13,
+    fontWeight: "400",
+    color: "#666666",
+  },
+  modalBreakdownSection: {
+    marginBottom: 20,
+  },
+  modalSectionTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#999999",
+    marginBottom: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  modalBreakdownItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
-  },
-  modalBreakdownLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    paddingVertical: 10,
   },
   modalBreakdownLabel: {
     fontSize: 14,
     fontWeight: "500",
-    color: "#999999",
+    color: "#CCCCCC",
   },
   modalBreakdownValue: {
     fontSize: 14,
     fontWeight: "600",
     color: "#FFFFFF",
   },
-  modalBreakdownDetail: {
-    fontSize: 11,
-    fontWeight: "400",
-    color: "#666666",
-    marginLeft: 24,
-    marginTop: -8,
-    marginBottom: 12,
+  modalBreakdownFee: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FF9500",
   },
-  modalDivider: {
+  modalBreakdownDivider: {
     height: 1,
-    backgroundColor: "#2A2A2C",
+    backgroundColor: "#2A2A2A",
     marginVertical: 12,
   },
-  modalTaxNote: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#999999",
-    marginTop: 12,
-    textAlign: "center",
-    fontStyle: "italic",
-  },
-  modalTotalRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 12,
-  },
-  modalTotalLabel: {
-    fontSize: 16,
+  modalBreakdownTotalLabel: {
+    fontSize: 15,
     fontWeight: "700",
     color: "#FFFFFF",
   },
-  modalTotalValue: {
-    fontSize: 24,
+  modalBreakdownTotalValue: {
+    fontSize: 18,
     fontWeight: "800",
     color: "#4285F4",
-    letterSpacing: -0.5,
   },
-  modalCloseButton: {
-    backgroundColor: "#4285F4",
-    borderRadius: 12,
-    paddingVertical: 14,
-    justifyContent: "center",
+  modalDetailsSection: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#2A2A2A",
+  },
+  modalDetailRow: {
     alignItems: "center",
+    gap: 4,
   },
-  modalCloseButtonText: {
-    fontSize: 16,
+  modalDetailLabel: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#666666",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  modalDetailValue: {
+    fontSize: 14,
     fontWeight: "600",
     color: "#FFFFFF",
-    letterSpacing: 0.3,
   },
 });

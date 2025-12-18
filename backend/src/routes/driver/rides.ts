@@ -1,9 +1,21 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { stripe } from '../../lib/stripe';
 import { sendRideStartedNotification } from '../../services/pushNotificationService';
 import { socketService } from '../../services/socketService';
+import { calculateRideEarnings } from '../../utils/earnings';
+import {
+  sendSuccess,
+  sendError,
+  sendBadRequest,
+  sendNotFound,
+  sendConflict,
+  sendInternalError,
+  sendUnauthorized,
+  sendForbidden,
+} from '../../utils/apiResponse';
 
 const router = express.Router();
 
@@ -47,54 +59,33 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Validate required fields
     if (!driverId || !driverName || !driverPhone) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver information is required',
-      });
+      return sendBadRequest(res, 'Driver information is required');
     }
 
     if (!fromAddress || !fromCity || !fromState || !fromLatitude || !fromLongitude) {
-      return res.status(400).json({
-        success: false,
-        message: 'Complete pickup location is required',
-      });
+      return sendBadRequest(res, 'Complete pickup location is required');
     }
 
     if (!toAddress || !toCity || !toState || !toLatitude || !toLongitude) {
-      return res.status(400).json({
-        success: false,
-        message: 'Complete destination is required',
-      });
+      return sendBadRequest(res, 'Complete destination is required');
     }
 
     if (!departureDate || !departureTime) {
-      return res.status(400).json({
-        success: false,
-        message: 'Departure date and time are required',
-      });
+      return sendBadRequest(res, 'Departure date and time are required');
     }
 
     if (!availableSeats || availableSeats < 1 || availableSeats > 8) {
-      return res.status(400).json({
-        success: false,
-        message: 'Available seats must be between 1 and 8',
-      });
+      return sendBadRequest(res, 'Available seats must be between 1 and 8');
     }
 
     if (pricePerSeat === undefined || pricePerSeat < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Price per seat must be a positive number',
-      });
+      return sendBadRequest(res, 'Price per seat must be a positive number');
     }
 
     // Validate recurring ride fields
     if (isRecurring === true) {
       if (!recurringPattern || !['daily', 'weekly', 'monthly'].includes(recurringPattern)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Recurring pattern must be "daily", "weekly", or "monthly" when isRecurring is true',
-        });
+        return sendBadRequest(res, 'Recurring pattern must be "daily", "weekly", or "monthly" when isRecurring is true');
       }
     }
 
@@ -104,10 +95,7 @@ router.post('/', async (req: Request, res: Response) => {
     });
 
     if (!driver) {
-      return res.status(404).json({
-        success: false,
-        message: 'Driver not found',
-      });
+      return sendNotFound(res, 'Driver');
     }
 
     // Note: We allow multiple scheduled rides in advance with a minimum 5-hour gap
@@ -173,11 +161,10 @@ router.post('/', async (req: Request, res: Response) => {
           // If gap is less than 5 hours, reject the ride
           if (timeDifference < MIN_GAP_MS) {
             const hoursDiff = (timeDifference / (1000 * 60 * 60)).toFixed(1);
-            return res.status(409).json({
-              success: false,
-              message: `You have another ride scheduled too close to this time. Please ensure at least ${MIN_GAP_HOURS} hours between rides. Current gap: ${hoursDiff} hours.`,
-              conflictingRideId: existingRide.id,
-            });
+            return sendConflict(
+              res,
+              `You have another ride scheduled too close to this time. Please ensure at least ${MIN_GAP_HOURS} hours between rides. Current gap: ${hoursDiff} hours.`
+            );
           }
         }
       } catch (dateParseError) {
@@ -224,12 +211,6 @@ router.post('/', async (req: Request, res: Response) => {
       },
     });
 
-    console.log('✅ Ride created:', {
-      id: ride.id,
-      driver: driverName,
-      route: `${fromCity} → ${toCity}`,
-      distance: distance ? `${distance} mi` : 'N/A',
-    });
 
     // Convert departureDate and departureTime to ISO string
     // Format: "12/09/2025" and "05:10 PM"
@@ -265,11 +246,8 @@ router.post('/', async (req: Request, res: Response) => {
     };
     
     const departureISO = parseDateTimeToISO(ride.departureDate, ride.departureTime);
-    console.log('📅 Converted:', ride.departureDate, ride.departureTime, '→', departureISO);
     
-    return res.status(201).json({
-      success: true,
-      message: 'Ride created successfully',
+    return sendSuccess(res, 'Ride created successfully', {
       ride: {
         id: ride.id,
         fromAddress: ride.fromAddress,
@@ -285,14 +263,9 @@ router.post('/', async (req: Request, res: Response) => {
         status: ride.status,
         distance: ride.distance,
       },
-    });
+    }, 201);
   } catch (error) {
-    console.error('❌ Error creating ride:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to create ride',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    return sendInternalError(res, error, 'Failed to create ride');
   }
 });
 
@@ -343,7 +316,6 @@ router.get('/past', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`📊 Found ${rides.length} completed rides for driver ${driverId}`);
 
     // Helper function to parse date and time to ISO string
     const parseDateTimeToISO = (dateStr: string, timeStr: string): string => {
@@ -397,6 +369,11 @@ router.get('/past', async (req: Request, res: Response) => {
         pickedUpAt: booking.pickedUpAt,
       }));
       
+      // Calculate net earnings (after fees) for this ride
+      const grossEarnings = ride.totalEarnings || 0; // This is the gross earnings stored in DB
+      const earningsBreakdown = calculateRideEarnings(ride.pricePerSeat || 0, ride.bookings);
+      const netEarnings = earningsBreakdown.netEarnings; // Net earnings after fees
+      
       return {
         id: ride.id,
         fromAddress: ride.fromAddress,
@@ -418,7 +395,7 @@ router.get('/past', async (req: Request, res: Response) => {
         totalSeats: ride.totalSeats,
         price: ride.pricePerSeat,
         pricePerSeat: ride.pricePerSeat,
-        totalEarnings: ride.totalEarnings,
+        totalEarnings: netEarnings, // Return net earnings instead of gross
         status: ride.status,
         distance: ride.distance,
         isRecurring: ride.isRecurring,
@@ -497,7 +474,6 @@ router.get('/upcoming', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`📊 Found ${rides.length} rides for driver ${driverId}`);
 
     // Helper function to parse date and time to ISO string
     const parseDateTimeToISO = (dateStr: string, timeStr: string): string => {
@@ -623,6 +599,21 @@ router.get('/earnings', async (req: Request, res: Response) => {
     }
 
     // Get all completed rides for the driver with bookings to calculate earnings
+    type CompletedRideForEarnings = Prisma.ridesGetPayload<{
+      select: {
+        id: true;
+        totalEarnings: true;
+        pricePerSeat: true;
+        updatedAt: true;
+        createdAt: true;
+        bookings: {
+          select: {
+            numberOfSeats: true;
+          };
+        };
+      };
+    }>;
+    
     const completedRides = await prisma.rides.findMany({
       where: {
         driverId: driverId,
@@ -648,7 +639,7 @@ router.get('/earnings', async (req: Request, res: Response) => {
       orderBy: {
         updatedAt: 'desc',
       },
-    });
+    }) as CompletedRideForEarnings[];
 
     // Calculate totals - use stored totalEarnings if available, otherwise calculate from bookings
     const totalEarnings = completedRides.reduce((sum, ride) => {
@@ -664,12 +655,12 @@ router.get('/earnings', async (req: Request, res: Response) => {
     }, 0);
 
     // Helper function to get earnings for a ride
-    const getRideEarnings = (ride: any): number => {
+    const getRideEarnings = (ride: CompletedRideForEarnings): number => {
       if (ride.totalEarnings !== null && ride.totalEarnings !== undefined) {
         return ride.totalEarnings;
       }
       // Fallback: calculate from bookings
-      return ride.bookings.reduce((sum: number, booking: any) => {
+      return ride.bookings.reduce((sum: number, booking) => {
         const seats = booking.numberOfSeats || 1;
         return sum + (seats * (ride.pricePerSeat || 0));
       }, 0);
@@ -723,7 +714,6 @@ router.get('/earnings', async (req: Request, res: Response) => {
       return sum + (ride.distance || 0);
     }, 0);
 
-    console.log(`💰 Earnings summary for driver ${driverId}: Total: $${totalEarnings.toFixed(2)}, Monthly: $${monthlyEarnings.toFixed(2)}, Weekly: $${weeklyEarnings.toFixed(2)}`);
 
     return res.json({
       success: true,
@@ -878,7 +868,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       pickedUpAt: booking.pickedUpAt,
     }));
 
-    console.log(`✅ Returning ride ${rideId} with ${passengers.length} passengers`);
+    // Calculate net earnings (after fees) for this ride if it's completed
+    let netEarnings = ride.totalEarnings || 0;
+    if (ride.status === 'completed' && ride.bookings.length > 0) {
+      const earningsBreakdown = calculateRideEarnings(ride.pricePerSeat || 0, ride.bookings);
+      netEarnings = earningsBreakdown.netEarnings; // Net earnings after fees
+    }
+
 
     return res.json({
       success: true,
@@ -910,7 +906,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         totalSeats: ride.totalSeats,
         price: ride.pricePerSeat,
         pricePerSeat: ride.pricePerSeat,
-        totalEarnings: ride.totalEarnings,
+        totalEarnings: netEarnings, // Return net earnings for completed rides
         status: ride.status,
         distance: ride.distance,
         isRecurring: ride.isRecurring,
@@ -1007,7 +1003,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
       where: { id: rideId },
     });
 
-    console.log(`✅ Ride ${rideId} deleted by driver ${driverId}`);
 
     return res.json({
       success: true,
@@ -1089,8 +1084,8 @@ router.put('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Extract bookings with proper typing - TypeScript needs help recognizing the included relation
-    const bookings = (ride as any).bookings || [];
+    // Extract bookings - properly typed from Prisma include
+    const bookings = ride.bookings || [];
     const bookingsCount = bookings.length;
 
     // Verify that the ride belongs to this driver
@@ -1194,10 +1189,8 @@ router.put('/:id', async (req: Request, res: Response) => {
       );
 
       await Promise.all(notificationPromises);
-      console.log(`✅ Created ${bookingsCount} notifications for ride update`);
     }
 
-    console.log(`✅ Ride ${rideId} updated by driver ${driverId}. Changes: ${changes.join(', ')}`);
 
     return res.json({
       success: true,
@@ -1325,7 +1318,6 @@ router.put('/:id/cancel', async (req: Request, res: Response) => {
       }
     });
 
-    console.log(`✅ Ride ${rideId} cancelled by driver ${driverId}`);
 
     return res.json({
       success: true,
@@ -1492,7 +1484,6 @@ router.put('/:id/start', async (req: Request, res: Response) => {
       );
 
       await Promise.all(notificationPromises);
-      console.log(`✅ Created ${ride.bookings.length} notifications for ride start`);
 
       // Send push notifications to all passengers
       const passengerIds = ride.bookings.map(booking => booking.riderId);
@@ -1525,7 +1516,6 @@ router.put('/:id/start', async (req: Request, res: Response) => {
       startedAt: new Date().toISOString(),
     });
 
-    console.log(`✅ Ride ${rideId} started by driver ${driverId}`);
 
     return res.json({
       success: true,
@@ -1685,7 +1675,6 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     
     // Validate coordinates are valid numbers
     if (isNaN(distanceToDestination) || !isFinite(distanceToDestination)) {
-      console.log(`❌ Invalid distance calculation: driverLat=${driverLatitude}, driverLon=${driverLongitude}, destLat=${ride.toLatitude}, destLon=${ride.toLongitude}`);
       return res.status(400).json({
         success: false,
         message: 'Invalid location coordinates. Please ensure location services are enabled and try again.',
@@ -1695,11 +1684,9 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     
     // Skip distance validation for test users
     if (isTestUser) {
-      console.log(`🧪 TEST USER: Bypassing distance validation for ${driver?.email} (${distanceToDestination.toFixed(0)}m from destination)`);
     } else if (distanceToDestination > MAX_DISTANCE_METERS) {
       const distanceInFeet = Math.round(distanceToDestination * 3.28084);
       const maxDistanceInFeet = Math.round(MAX_DISTANCE_METERS * 3.28084);
-      console.log(`❌ Driver too far from destination: ${distanceToDestination.toFixed(0)}m (${distanceInFeet}ft) away`);
       return res.status(400).json({
         success: false,
         message: `You must be within ${MAX_DISTANCE_METERS} meters (${maxDistanceInFeet} feet) of the destination to complete the ride. You are currently ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) away.`,
@@ -1707,7 +1694,6 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`✅ Driver location verified: ${distanceToDestination.toFixed(0)}m from destination${isTestUser ? ' (TEST USER - validation bypassed)' : ''}`);
 
     // Check if all passengers are picked up
     if (ride.bookings.length > 0) {
@@ -1738,17 +1724,17 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     // Capture payments for all bookings before completing the ride
     if (ride.bookings.length > 0 && stripe) {
       const capturePromises = ride.bookings.map(async (booking) => {
-        const paymentIntentId = (booking as any).paymentIntentId;
+        const paymentIntentId = booking.paymentIntentId;
         if (paymentIntentId && stripe) {
           try {
             // Capture the authorized payment
             const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
-            console.log(`✅ Payment captured for booking ${booking.id}: ${paymentIntent.id}, amount: $${(paymentIntent.amount / 100).toFixed(2)}`);
             return { success: true, bookingId: booking.id, paymentIntentId: paymentIntent.id };
-          } catch (captureError: any) {
+          } catch (captureError: unknown) {
+            const errorMessage = captureError instanceof Error ? captureError.message : 'Unknown error';
             console.error(`❌ Error capturing payment for booking ${booking.id}:`, captureError);
             // Log error but don't fail the ride completion
-            return { success: false, bookingId: booking.id, error: captureError.message };
+            return { success: false, bookingId: booking.id, error: errorMessage };
           }
         }
         return { success: true, bookingId: booking.id, skipped: true };
@@ -1802,10 +1788,8 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       );
 
       await Promise.all(notificationPromises);
-      console.log(`✅ Created ${ride.bookings.length} notifications for ride completion`);
     }
 
-    console.log(`✅ Ride ${rideId} completed by driver ${driverId} with earnings: $${totalEarnings.toFixed(2)}`);
 
     // Fetch the completed ride with all details for the response
     const completedRide = await prisma.rides.findUnique({
@@ -1849,8 +1833,26 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       }
     };
 
-    // Format passengers
-    const passengers = completedRide?.bookings.map((booking: any) => ({
+    // Format passengers - properly typed from Prisma include
+    type CompletedRideWithBookings = Prisma.ridesGetPayload<{
+      include: {
+        bookings: {
+          include: {
+            users: {
+              select: {
+                id: true;
+                fullName: true;
+                email: true;
+                phoneNumber: true;
+                photoUrl: true;
+              };
+            };
+          };
+        };
+      };
+    }>;
+    
+    const passengers = (completedRide as CompletedRideWithBookings | null)?.bookings.map((booking) => ({
       id: booking.id,
       riderId: booking.riderId,
       riderName: booking.users?.fullName,

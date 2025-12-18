@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import type { Prisma } from '@prisma/client';
 
 const router = express.Router();
 
@@ -29,6 +30,21 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Verify ride exists and belongs to driver
+    // Type-safe Prisma query with conditional include
+    type RideWithBookings = Prisma.ridesGetPayload<{
+      include: {
+        bookings: {
+          include: {
+            users: {
+              select: {
+                id: true;
+              };
+            };
+          };
+        };
+      };
+    }>;
+    
     const ride = await prisma.rides.findUnique({
       where: { id: parseInt(rideId) },
       include: {
@@ -51,7 +67,7 @@ router.post('/', async (req: Request, res: Response) => {
           },
         },
       },
-    }) as any;
+    }) as RideWithBookings | null;
 
     if (!ride) {
       return res.status(404).json({
@@ -69,7 +85,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Verify booking exists and belongs to the rider (if bookingId provided)
     if (bookingId) {
-      const booking = ride.bookings.find((b: any) => b.id === parseInt(bookingId));
+      const booking = ride.bookings.find((b) => b.id === parseInt(bookingId));
       if (!booking || booking.riderId !== parseInt(riderId)) {
         return res.status(404).json({
           success: false,
@@ -122,11 +138,12 @@ router.post('/', async (req: Request, res: Response) => {
       message: 'Rating submitted successfully',
       rating: newRating,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to submit rating';
     console.error('❌ Error submitting rating:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to submit rating',
+      message: errorMessage,
     });
   }
 });
@@ -202,7 +219,7 @@ router.get('/ride/:rideId', async (req: Request, res: Response) => {
       success: true,
       ratings,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Error fetching ratings:', error);
     return res.status(500).json({
       success: false,

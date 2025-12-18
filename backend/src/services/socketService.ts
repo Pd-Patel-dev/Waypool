@@ -5,6 +5,7 @@ interface SocketUser {
   userId: number;
   role: 'driver' | 'rider';
   socketId: string;
+  testMode?: boolean;
 }
 
 class SocketService {
@@ -27,7 +28,6 @@ class SocketService {
     this.setupMiddleware();
     this.setupEventHandlers();
 
-    console.log('✅ Socket.IO server initialized');
   }
 
   private setupMiddleware() {
@@ -48,10 +48,13 @@ class SocketService {
           socketId: socket.id 
         });
         
-        // Store test user info in socket
-        (socket as any).userId = testUserId;
-        (socket as any).role = role;
-        (socket as any).testMode = true;
+        // Store test user info in Map (type-safe, no assertions needed)
+        this.socketToUser.set(socket.id, {
+          userId: testUserId,
+          role: role as 'driver' | 'rider',
+          socketId: socket.id,
+          testMode: true,
+        });
         
         return next();
       }
@@ -74,9 +77,12 @@ class SocketService {
         return next(new Error('User ID is required'));
       }
 
-      // Store user info in socket
-      (socket as any).userId = userId;
-      (socket as any).role = role;
+      // Store user info in Map (type-safe, no assertions needed)
+      this.socketToUser.set(socket.id, {
+        userId,
+        role: role as 'driver' | 'rider',
+        socketId: socket.id,
+      });
 
       next();
     });
@@ -86,15 +92,22 @@ class SocketService {
     if (!this.io) return;
 
     this.io.on('connection', (socket: Socket) => {
-      const userId = (socket as any).userId as number;
-      const role = (socket as any).role as 'driver' | 'rider';
+      // Get user info from Map (type-safe, no assertions needed)
+      const userInfo = this.socketToUser.get(socket.id);
+      
+      if (!userInfo) {
+        console.error(`❌ No user info found for socket ${socket.id}. Connection rejected.`);
+        socket.disconnect();
+        return;
+      }
+      
+      const { userId, role } = userInfo;
 
       // Track connected user
       if (!this.connectedUsers.has(userId)) {
         this.connectedUsers.set(userId, new Set());
       }
       this.connectedUsers.get(userId)!.add(socket.id);
-      this.socketToUser.set(socket.id, { userId, role, socketId: socket.id });
 
       // Join user-specific room
       socket.join(`user:${userId}`);
@@ -104,18 +117,19 @@ class SocketService {
         socket.join(`rider:${userId}`);
       }
 
-      console.log(`✅ ${role} ${userId} connected (socket: ${socket.id})`);
-
       // Handle disconnection
       socket.on('disconnect', (reason) => {
-        console.log(`❌ ${role} ${userId} disconnected: ${reason}`);
-        
-        // Remove from tracking
-        const userSockets = this.connectedUsers.get(userId);
-        if (userSockets) {
-          userSockets.delete(socket.id);
-          if (userSockets.size === 0) {
-            this.connectedUsers.delete(userId);
+        const disconnectedUserInfo = this.socketToUser.get(socket.id);
+        if (disconnectedUserInfo) {
+          const { userId: disconnectedUserId, role: disconnectedRole } = disconnectedUserInfo;
+          
+          // Remove from tracking
+          const userSockets = this.connectedUsers.get(disconnectedUserId);
+          if (userSockets) {
+            userSockets.delete(socket.id);
+            if (userSockets.size === 0) {
+              this.connectedUsers.delete(disconnectedUserId);
+            }
           }
         }
         this.socketToUser.delete(socket.id);
@@ -123,10 +137,11 @@ class SocketService {
 
       // Handle location updates (for real-time tracking)
       socket.on('location:update', (data: { latitude: number; longitude: number; rideId?: number }) => {
-        if (role === 'driver' && data.rideId) {
+        const locationUserInfo = this.socketToUser.get(socket.id);
+        if (locationUserInfo && locationUserInfo.role === 'driver' && data.rideId) {
           // Broadcast driver location to passengers in the ride
           socket.to(`ride:${data.rideId}`).emit('location:driver', {
-            driverId: userId,
+            driverId: locationUserInfo.userId,
             latitude: data.latitude,
             longitude: data.longitude,
             timestamp: Date.now(),
@@ -136,14 +151,18 @@ class SocketService {
 
       // Handle join ride room (for real-time ride updates)
       socket.on('ride:join', (rideId: number) => {
-        socket.join(`ride:${rideId}`);
-        console.log(`📍 ${role} ${userId} joined ride room: ${rideId}`);
+        const joinUserInfo = this.socketToUser.get(socket.id);
+        if (joinUserInfo) {
+          socket.join(`ride:${rideId}`);
+        }
       });
 
       // Handle leave ride room
       socket.on('ride:leave', (rideId: number) => {
-        socket.leave(`ride:${rideId}`);
-        console.log(`📍 ${role} ${userId} left ride room: ${rideId}`);
+        const leaveUserInfo = this.socketToUser.get(socket.id);
+        if (leaveUserInfo) {
+          socket.leave(`ride:${rideId}`);
+        }
       });
     });
   }

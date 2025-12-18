@@ -5,13 +5,18 @@
 
 import { Ride } from '@/services/api';
 
+// Platform fee constants (matching backend)
+const PROCESSING_FEE_PERCENTAGE = 0.029; // 2.9%
+const PROCESSING_FEE_FIXED = 0.30; // $0.30
+const COMMISSION_PER_RIDE = 2.00; // $2.00 per ride
+
 /**
- * Calculate earnings for a ride based on booked seats
+ * Calculate gross earnings for a ride based on booked seats
  * Standardizes the calculation logic across the entire app
  * 
  * @param ride - Ride object with price information
  * @param bookedSeats - Number of booked seats (optional, will calculate if not provided)
- * @returns Total earnings for the ride
+ * @returns Gross earnings for the ride (before fees)
  */
 export function calculateRideEarnings(ride: Ride, bookedSeats?: number): number {
   // If bookedSeats is not provided, calculate it
@@ -32,8 +37,34 @@ export function calculateRideEarnings(ride: Ride, bookedSeats?: number): number 
   // Use pricePerSeat if available, otherwise fall back to price
   const pricePerSeat = ride.pricePerSeat ?? ride.price ?? 0;
 
-  // Calculate total earnings: booked seats * price per seat
+  // Calculate gross earnings: booked seats * price per seat
   return bookedSeats * pricePerSeat;
+}
+
+/**
+ * Calculate net earnings for a ride (after processing fee and commission)
+ * This matches the backend calculation logic
+ * 
+ * @param ride - Ride object with price information
+ * @returns Net earnings for the ride (after all fees)
+ */
+export function calculateNetEarnings(ride: Ride): number {
+  // Calculate gross earnings
+  const grossEarnings = calculateRideEarnings(ride);
+  
+  // Calculate processing fee
+  const processingFee = (grossEarnings * PROCESSING_FEE_PERCENTAGE) + PROCESSING_FEE_FIXED;
+  
+  // Commission is per ride
+  const commission = COMMISSION_PER_RIDE;
+  
+  // Total fees
+  const totalFees = processingFee + commission;
+  
+  // Net earnings (after all fees)
+  const netEarnings = Math.max(0, grossEarnings - totalFees);
+  
+  return parseFloat(netEarnings.toFixed(2));
 }
 
 /**

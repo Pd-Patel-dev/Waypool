@@ -133,7 +133,6 @@ router.put('/', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`✅ Vehicle information updated for driver ${driverId}`);
 
     return res.json({
       success: true,

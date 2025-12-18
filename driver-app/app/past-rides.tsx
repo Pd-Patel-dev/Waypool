@@ -16,6 +16,7 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { getPastRides, type Ride } from "@/services/api";
 import { useUser } from "@/context/UserContext";
 import { calculateTotalDistance } from "@/utils/distance";
+import { calculateNetEarnings } from "@/utils/price";
 
 export default function PastRidesScreen(): React.JSX.Element {
   const { user } = useUser();
@@ -156,11 +157,11 @@ export default function PastRidesScreen(): React.JSX.Element {
 
   const renderRideItem = ({ item }: { item: Ride }) => {
     const passengerCount = item.passengers?.length || 0;
-    // Use stored totalEarnings from database, or calculate if not available (for backward compatibility)
-    // Using centralized calculation utility
+    // Use stored totalEarnings from database (now contains net earnings), 
+    // or calculate net earnings if not available (for backward compatibility)
     const totalEarnings = item.totalEarnings !== undefined && item.totalEarnings !== null
       ? item.totalEarnings
-      : calculateRideEarnings(item);
+      : calculateNetEarnings(item);
     
     // Calculate total distance including passenger pickups
     const totalDistance = calculateTotalDistance(item);

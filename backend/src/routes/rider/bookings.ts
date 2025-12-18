@@ -5,9 +5,22 @@ import crypto from 'crypto';
 
 const router = express.Router();
 
+// Get encryption secret - required in production
+const getEncryptionSecret = (): string => {
+  const secret = process.env.PIN_ENCRYPTION_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('PIN_ENCRYPTION_SECRET environment variable is required in production');
+    }
+    console.warn('⚠️  PIN_ENCRYPTION_SECRET not set. Using default (development only).');
+    return 'default-secret-key-change-in-production';
+  }
+  return secret;
+};
+
 // Decrypt PIN (same logic as driver bookings)
 const decryptPIN = (encrypted: string): string => {
-  const secret = process.env.PIN_ENCRYPTION_SECRET || 'default-secret-key-change-in-production';
+  const secret = getEncryptionSecret();
   const encryptedBuffer = Buffer.from(encrypted, 'base64');
   const key = crypto.createHash('sha256').update(secret).digest();
   const decrypted = Buffer.alloc(encryptedBuffer.length);
@@ -149,13 +162,11 @@ router.put('/:id/cancel', async (req: Request, res: Response) => {
           isRead: false,
         },
       });
-      console.log(`✅ Notification created for driver ${booking.rides.driverId} about booking cancellation ${booking.id}`);
     } catch (notificationError) {
       // Don't fail the cancellation if notification creation fails
       console.error('❌ Error creating cancellation notification:', notificationError);
     }
 
-    console.log(`✅ Booking ${bookingId} cancelled by rider ${riderId}`);
 
     return res.json({
       success: true,

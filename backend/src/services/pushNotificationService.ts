@@ -2,6 +2,8 @@ import { Expo, ExpoPushMessage, ExpoPushTicket, ExpoPushErrorReceipt } from 'exp
 import { prisma } from '../lib/prisma';
 
 // Create a new Expo SDK client
+// Note: Environment validation is done at startup in index.ts
+// This module just initializes Expo with the validated token
 const expo = new Expo({
   ...(process.env.EXPO_ACCESS_TOKEN ? { accessToken: process.env.EXPO_ACCESS_TOKEN } : {}),
   // Optionally use batching to send multiple notifications efficiently
@@ -43,7 +45,6 @@ export async function sendPushNotification(
     });
 
     if (!user || !user.pushToken) {
-      console.log(`⚠️ No push token for user ${userId}`);
       return false;
     }
 
@@ -51,22 +52,18 @@ export async function sendPushNotification(
     const notificationType = payload.data?.type;
     if (notificationType) {
       if (notificationType === 'booking_request' && !user.notifyBookings) {
-        console.log(`⏭️ User ${userId} has disabled booking notifications`);
         return false;
       }
       if (notificationType === 'message' && !user.notifyMessages) {
-        console.log(`⏭️ User ${userId} has disabled message notifications`);
         return false;
       }
       if (
         (notificationType === 'ride_update' || notificationType === 'ride_started') &&
         !user.notifyRideUpdates
       ) {
-        console.log(`⏭️ User ${userId} has disabled ride update notifications`);
         return false;
       }
       if (notificationType === 'promotion' && !user.notifyPromotions) {
-        console.log(`⏭️ User ${userId} has disabled promotional notifications`);
         return false;
       }
     }
@@ -99,10 +96,12 @@ export async function sendPushNotification(
     }
 
     if (ticket.status === 'error') {
-      console.error(`❌ Error sending push notification to user ${userId}:`, (ticket as any).message);
+      const errorTicket = ticket as ExpoPushErrorReceipt;
+      const errorMessage = errorTicket.message || 'Unknown error';
+      console.error(`❌ Error sending push notification to user ${userId}:`, errorMessage);
       
       // If token is invalid, clear it from database
-      if ((ticket as any).details && 'error' in (ticket as any).details && (ticket as any).details.error === 'DeviceNotRegistered') {
+      if (errorTicket.details?.error === 'DeviceNotRegistered') {
         await prisma.users.update({
           where: { id: userId },
           data: {
@@ -110,13 +109,11 @@ export async function sendPushNotification(
             pushTokenType: null,
           },
         });
-        console.log(`🗑️ Cleared invalid push token for user ${userId}`);
       }
       
       return false;
     }
 
-    console.log(`✅ Push notification sent to user ${userId}`);
     return true;
   } catch (error) {
     console.error(`❌ Error sending push notification to user ${userId}:`, error);
@@ -152,7 +149,6 @@ export async function sendBulkPushNotifications(
     });
 
     if (users.length === 0) {
-      console.log('⚠️ No users with push tokens found');
       return 0;
     }
 
@@ -186,7 +182,6 @@ export async function sendBulkPushNotifications(
       }));
 
     if (messages.length === 0) {
-      console.log('⚠️ No valid push tokens found');
       return 0;
     }
 
@@ -211,7 +206,6 @@ export async function sendBulkPushNotifications(
       }
     }
 
-    console.log(`✅ Sent ${successCount}/${messages.length} push notifications`);
     return successCount;
   } catch (error) {
     console.error('❌ Error sending bulk push notifications:', error);

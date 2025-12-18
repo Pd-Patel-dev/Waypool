@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { getUserIdFromRequest } from '../../middleware/testModeAuth';
 
 const router = express.Router();
@@ -72,8 +73,46 @@ router.get('/', async (req: Request, res: Response) => {
       throw error;
     });
 
-    // Format notifications for frontend
-    const formattedNotifications = notifications.map((notification: any) => {
+    // Format notifications for frontend - properly typed from Prisma include
+    type NotificationWithRelations = Prisma.notificationsGetPayload<{
+      include: {
+        bookings: {
+          include: {
+            users: {
+              select: {
+                id: true;
+                fullName: true;
+                email: true;
+                phoneNumber: true;
+              };
+            };
+            rides: {
+              select: {
+                id: true;
+                fromAddress: true;
+                toAddress: true;
+                fromCity: true;
+                toCity: true;
+                departureDate: true;
+                departureTime: true;
+                pricePerSeat: true;
+              };
+            };
+          };
+        };
+        rides: {
+          select: {
+            id: true;
+            fromAddress: true;
+            toAddress: true;
+            fromCity: true;
+            toCity: true;
+          };
+        };
+      };
+    }>;
+    
+    const formattedNotifications = notifications.map((notification: NotificationWithRelations) => {
       const timeAgo = getTimeAgo(notification.createdAt);
 
       return {
@@ -88,7 +127,7 @@ router.get('/', async (req: Request, res: Response) => {
           ? {
               id: notification.bookings.id,
               confirmationNumber: notification.bookings.confirmationNumber,
-              numberOfSeats: (notification.bookings as any).numberOfSeats || 1,
+              numberOfSeats: notification.bookings.numberOfSeats || 1,
               status: notification.bookings.status,
               pickupAddress: notification.bookings.pickupAddress,
               pickupCity: notification.bookings.pickupCity,

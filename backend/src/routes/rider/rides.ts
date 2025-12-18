@@ -251,13 +251,13 @@ router.post('/book', async (req: Request, res: Response) => {
           });
 
           paymentIntentId = paymentIntent.id;
-          console.log(`✅ Payment authorized for booking: ${paymentIntentId}, amount: $${(totalAmount / 100).toFixed(2)}`);
         }
-      } catch (paymentError: any) {
+      } catch (paymentError: unknown) {
+        const errorMessage = paymentError instanceof Error ? paymentError.message : 'Failed to authorize payment. Please try again.';
         console.error('❌ Error authorizing payment:', paymentError);
         return res.status(400).json({
           success: false,
-          message: paymentError.message || 'Failed to authorize payment. Please try again.',
+          message: errorMessage,
         });
       }
     }
@@ -317,7 +317,6 @@ router.post('/book', async (req: Request, res: Response) => {
           isRead: false,
         },
       });
-      console.log(`✅ Notification created for driver ${booking.rides.driverId} about booking request ${booking.id}`);
     } catch (notificationError) {
       // Don't fail the booking if notification creation fails
       console.error('❌ Error creating notification:', notificationError);
@@ -476,7 +475,7 @@ router.get('/bookings', async (req: Request, res: Response) => {
       return {
         id: booking.id,
         confirmationNumber: booking.confirmationNumber,
-        numberOfSeats: (booking as any).numberOfSeats || 1,
+        numberOfSeats: booking.numberOfSeats || 1,
         pickupAddress: booking.pickupAddress,
         pickupCity: booking.pickupCity,
         pickupState: booking.pickupState,
@@ -521,18 +520,19 @@ router.get('/bookings', async (req: Request, res: Response) => {
       success: true,
       bookings: formattedBookings,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorObj = error instanceof Error ? error : { message: 'Unknown error', stack: undefined, name: 'Error' };
     console.error('❌ Error fetching bookings:', error);
     console.error('Error details:', {
-      message: error?.message,
-      stack: error?.stack,
-      name: error?.name,
+      message: errorObj.message,
+      stack: errorObj.stack,
+      name: errorObj.name,
     });
     return res.status(500).json({
       success: false,
-      message: error?.message || 'Failed to fetch bookings',
+      message: errorObj.message || 'Failed to fetch bookings',
       bookings: [],
-      error: process.env.NODE_ENV === 'development' ? error?.message : undefined,
+      error: process.env.NODE_ENV === 'development' ? errorObj.message : undefined,
     });
   }
 });

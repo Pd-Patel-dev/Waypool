@@ -31,6 +31,7 @@ import {
 import { useUser } from '@/context/UserContext';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { validateRequired, validateEmail, validatePhoneNumber } from '@/utils/validation';
+import { getUserFriendlyErrorMessage } from '@/utils/errorHandler';
 
 export default function ProfileScreen(): React.JSX.Element {
   const { user, setUser, logout } = useUser();

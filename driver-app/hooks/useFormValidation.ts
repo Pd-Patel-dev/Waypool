@@ -289,7 +289,7 @@ export function useFormValidation(
 
   // Handle field blur
   const handleFieldBlur = useCallback(
-    (field: string) => () => {
+    (field: string) => (_e: any) => {
       // Mark field as touched
       setTouchedFields((prev) => new Set(prev).add(field));
 

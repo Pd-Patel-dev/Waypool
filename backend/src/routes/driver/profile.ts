@@ -3,6 +3,13 @@ import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcrypt';
 import { getValidatedUserId, shouldBypassAuth, logTestModeUsage } from '../../utils/testMode';
 import { getUserIdFromRequest } from '../../middleware/testModeAuth';
+import {
+  sendSuccess,
+  sendBadRequest,
+  sendNotFound,
+  sendValidationError,
+  sendInternalError,
+} from '../../utils/apiResponse';
 
 const router = express.Router();
 
@@ -18,10 +25,7 @@ router.get('/', async (req: Request, res: Response) => {
     try {
       driverId = getUserIdFromRequest(req, 'driver');
     } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Driver ID is required',
-      });
+      return sendBadRequest(res, error instanceof Error ? error.message : 'Driver ID is required');
     }
     
     logTestModeUsage('Get profile', { driverId });
@@ -41,23 +45,12 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
+      return sendNotFound(res, 'User');
     }
 
-    return res.json({
-      success: true,
-      user,
-    });
+    return sendSuccess(res, 'Profile retrieved successfully', { user });
   } catch (error) {
-    console.error('❌ Error fetching profile:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to fetch profile',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    return sendInternalError(res, error, 'Failed to fetch profile');
   }
 });
 
@@ -72,10 +65,7 @@ router.put('/', async (req: Request, res: Response) => {
     const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
 
     if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-      });
+      return sendBadRequest(res, 'Driver ID is required');
     }
 
     // Check if user exists
@@ -84,10 +74,7 @@ router.put('/', async (req: Request, res: Response) => {
     });
 
     if (!existingUser) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
+      return sendNotFound(res, 'User');
     }
 
     const { fullName, email, phoneNumber, photoUrl, city } = req.body;
@@ -118,11 +105,7 @@ router.put('/', async (req: Request, res: Response) => {
     }
 
     if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors,
-      });
+      return sendValidationError(res, 'Validation failed', errors);
     }
 
     // Build update data
@@ -159,20 +142,10 @@ router.put('/', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`✅ Profile updated for driver ${driverId}`);
 
-    return res.json({
-      success: true,
-      message: 'Profile updated successfully',
-      user: updatedUser,
-    });
+    return sendSuccess(res, 'Profile updated successfully', { user: updatedUser });
   } catch (error) {
-    console.error('❌ Error updating profile:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to update profile',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    return sendInternalError(res, error, 'Failed to update profile');
   }
 });
 
@@ -246,7 +219,6 @@ router.put('/password', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`✅ Password updated for driver ${driverId}`);
 
     return res.json({
       success: true,
@@ -328,7 +300,6 @@ router.put('/photo', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`✅ Profile photo updated for driver ${driverId}`);
 
     return res.json({
       success: true,
@@ -477,7 +448,6 @@ router.put('/preferences', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`✅ Preferences updated for driver ${driverId}`);
 
     return res.json({
       success: true,
@@ -591,7 +561,6 @@ router.delete('/', async (req: Request, res: Response) => {
 
     // Log deletion reason if provided
     if (reason) {
-      console.log(`📝 Account deletion reason for user ${user.email}: ${reason}`);
     }
 
     // Delete user (cascades will handle related data)
@@ -599,7 +568,6 @@ router.delete('/', async (req: Request, res: Response) => {
       where: { id: driverId },
     });
 
-    console.log(`✅ Account deleted for driver ${driverId} (${user.email})`);
 
     return res.json({
       success: true,

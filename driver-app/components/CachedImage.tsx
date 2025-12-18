@@ -6,7 +6,7 @@
 
 import React, { useState } from 'react';
 import { View, StyleSheet, ViewStyle, ImageStyle, ActivityIndicator } from 'react-native';
-import { Image, ImageSource } from 'expo-image';
+import { Image, ImageSource, ImageContentFit, ImageTransition, ImageErrorEventData } from 'expo-image';
 import { IconSymbol } from './ui/icon-symbol';
 
 interface CachedImageProps {
@@ -35,13 +35,13 @@ interface CachedImageProps {
    * Content fit mode for the image
    * @default 'cover'
    */
-  contentFit?: 'contain' | 'cover' | 'fill' | 'scaleDown' | 'none';
+  contentFit?: ImageContentFit;
 
   /**
    * Transition effect when image loads
-   * @default true
+   * @default 200
    */
-  transition?: number | boolean;
+  transition?: number | ImageTransition | null;
 
   /**
    * Priority for image loading
@@ -75,7 +75,7 @@ interface CachedImageProps {
   /**
    * Callback when image fails to load
    */
-  onError?: (error: Error) => void;
+  onError?: (error: ImageErrorEventData) => void;
 
   /**
    * Accessibility label
@@ -113,7 +113,7 @@ export const CachedImage: React.FC<CachedImageProps> = ({
   style,
   imageStyle,
   placeholder = 'default',
-  contentFit = 'cover',
+  contentFit = 'cover' as ImageContentFit,
   transition = 200,
   priority = 'normal',
   cachePolicy = 'disk',
@@ -127,10 +127,8 @@ export const CachedImage: React.FC<CachedImageProps> = ({
   const [hasError, setHasError] = useState(false);
 
   // Convert string source to ImageSource format
-  const imageSource: ImageSource = typeof source === 'string'
-    ? { uri: source, priority, cachePolicy }
-    : typeof source === 'number'
-    ? source
+  const imageSource: ImageSource | ImageSource[] | number = typeof source === 'string'
+    ? ({ uri: source, priority, cachePolicy } as ImageSource)
     : source;
 
   // Determine if we should show placeholder
@@ -144,7 +142,7 @@ export const CachedImage: React.FC<CachedImageProps> = ({
   };
 
   // Handle image error
-  const handleError = (error: Error) => {
+  const handleError = (error: ImageErrorEventData) => {
     setIsLoading(false);
     setHasError(true);
     onError?.(error);

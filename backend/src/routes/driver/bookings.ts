@@ -18,9 +18,22 @@ const generatePickupPIN = (): string => {
   return pin;
 };
 
+// Get encryption secret - required in production
+const getEncryptionSecret = (): string => {
+  const secret = process.env.PIN_ENCRYPTION_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('PIN_ENCRYPTION_SECRET environment variable is required in production');
+    }
+    console.warn('⚠️  PIN_ENCRYPTION_SECRET not set. Using default (development only).');
+    return 'default-secret-key-change-in-production';
+  }
+  return secret;
+};
+
 // Encrypt PIN for temporary storage (simple XOR encryption with server secret)
 const encryptPIN = (pin: string): string => {
-  const secret = process.env.PIN_ENCRYPTION_SECRET || 'default-secret-key-change-in-production';
+  const secret = getEncryptionSecret();
   const buffer = Buffer.from(pin);
   const key = crypto.createHash('sha256').update(secret).digest();
   const encrypted = Buffer.alloc(buffer.length);
@@ -36,7 +49,7 @@ const encryptPIN = (pin: string): string => {
 
 // Decrypt PIN
 const decryptPIN = (encrypted: string): string => {
-  const secret = process.env.PIN_ENCRYPTION_SECRET || 'default-secret-key-change-in-production';
+  const secret = getEncryptionSecret();
   const encryptedBuffer = Buffer.from(encrypted, 'base64');
   const key = crypto.createHash('sha256').update(secret).digest();
   const decrypted = Buffer.alloc(encryptedBuffer.length);
@@ -217,7 +230,6 @@ router.put('/:id/accept', async (req: Request, res: Response) => {
       availableSeats: booking.rides.availableSeats - booking.numberOfSeats,
     });
 
-    console.log(`✅ Booking ${bookingId} accepted by driver ${driverId}`);
 
     return res.json({
       success: true,
@@ -353,7 +365,6 @@ router.put('/:id/reject', async (req: Request, res: Response) => {
       status: 'rejected',
     });
 
-    console.log(`✅ Booking ${bookingId} rejected by driver ${driverId}`);
 
     return res.json({
       success: true,
@@ -576,7 +587,6 @@ router.put('/:id/pickup-complete', async (req: Request, res: Response) => {
       pickedUpAt: now.toISOString(),
     });
 
-    console.log(`✅ Passenger ${booking.users.fullName} marked as picked up for booking ${bookingId}`);
 
     return res.json({
       success: true,

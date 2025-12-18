@@ -2,6 +2,15 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcrypt';
+import {
+  sendSuccess,
+  sendError,
+  sendValidationError,
+  sendUnauthorized,
+  sendConflict,
+  sendBadRequest,
+  sendInternalError,
+} from '../../utils/apiResponse';
 
 const router = express.Router();
 
@@ -23,17 +32,11 @@ router.get('/check-email', async (req: Request, res: Response) => {
     const { email } = req.query;
 
     if (!email || typeof email !== 'string' || !email.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required',
-      });
+      return sendBadRequest(res, 'Email is required');
     }
 
     if (!validateEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid email format',
-      });
+      return sendBadRequest(res, 'Invalid email format');
     }
 
     // Check if user already exists
@@ -41,24 +44,11 @@ router.get('/check-email', async (req: Request, res: Response) => {
       where: { email: email.trim().toLowerCase() },
     });
 
-    res.json({
-      success: true,
+    return sendSuccess(res, existingUser ? 'Email is already registered' : 'Email is available', {
       available: !existingUser,
-      message: existingUser
-        ? 'Email is already registered'
-        : 'Email is available',
     });
   } catch (error) {
-    console.error('Check email error:', error);
-    console.error('Error details:', error instanceof Error ? error.message : String(error));
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      ...(process.env.NODE_ENV === 'development' && {
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    });
+    return sendInternalError(res, error, 'Failed to check email availability');
   }
 });
 
@@ -137,11 +127,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     }
 
     if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors,
-      });
+      return sendValidationError(res, 'Validation failed', errors);
     }
 
     // Check if user already exists
@@ -156,11 +142,11 @@ router.post('/signup', async (req: Request, res: Response) => {
       const isPasswordValid = await bcrypt.compare(password, existingUser.password);
 
       if (!isPasswordValid) {
-        return res.status(409).json({
-          success: false,
-          message: 'User with this email already exists',
-          errors: ['Email already exists with a different password. Please use the correct password or log in.'],
-        });
+        return sendValidationError(
+          res,
+          'User with this email already exists',
+          ['Email already exists with a different password. Please use the correct password or log in.']
+        );
       }
 
       // Password matches - update user to enable driver flag and update driver-specific fields
@@ -234,17 +220,9 @@ router.post('/signup', async (req: Request, res: Response) => {
       });
     }
 
-    res.status(201).json({
-      success: true,
-      message: 'User created successfully',
-      user,
-    });
+    return sendSuccess(res, 'User created successfully', { user }, 201);
   } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-    });
+    return sendInternalError(res, error, 'Failed to create user account');
   }
 });
 
@@ -255,17 +233,11 @@ router.post('/login', async (req: Request, res: Response) => {
 
     // Validation
     if (!email || !email.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required',
-      });
+      return sendBadRequest(res, 'Email is required');
     }
 
     if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password is required',
-      });
+      return sendBadRequest(res, 'Password is required');
     }
 
     // Find user by email
@@ -274,26 +246,18 @@ router.post('/login', async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password',
-      });
+      return sendUnauthorized(res, 'Invalid email or password');
     }
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password',
-      });
+      return sendUnauthorized(res, 'Invalid email or password');
     }
 
     // Return user data (without password)
-    res.json({
-      success: true,
-      message: 'Login successful',
+    return sendSuccess(res, 'Login successful', {
       user: {
         id: user.id,
         fullName: user.fullName,
@@ -312,11 +276,7 @@ router.post('/login', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-    });
+    return sendInternalError(res, error, 'Failed to authenticate user');
   }
 });
 
@@ -325,16 +285,9 @@ router.post('/logout', async (req: Request, res: Response) => {
   try {
     // For now, just return success
     // In the future, this could invalidate tokens, clear sessions, etc.
-    res.json({
-      success: true,
-      message: 'Logout successful',
-    });
+    return sendSuccess(res, 'Logout successful');
   } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-    });
+    return sendInternalError(res, error, 'Failed to logout');
   }
 });
 

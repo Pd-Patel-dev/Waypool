@@ -184,7 +184,7 @@ export default function HomeScreen(): React.JSX.Element {
               if (isMounted) {
                 reject(new Error("Location request timeout"));
               }
-            }, 15000);
+            }, 15000) as unknown as NodeJS.Timeout;
           });
           
           const currentLocation = await Promise.race([

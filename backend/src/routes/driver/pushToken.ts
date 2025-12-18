@@ -51,7 +51,6 @@ router.post('/', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`✅ Push token registered for user ${userId} (${platform})`);
 
     return res.json({
       success: true,
@@ -95,7 +94,6 @@ router.delete('/', async (req: Request, res: Response) => {
       },
     });
 
-    console.log(`✅ Push token removed for user ${userId}`);
 
     return res.json({
       success: true,

@@ -19,6 +19,7 @@ import { getVehicle, updateVehicle, type ApiError } from '@/services/api';
 import { useUser } from '@/context/UserContext';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { useFormValidation } from '@/hooks/useFormValidation';
+import { getUserFriendlyErrorMessage } from '@/utils/errorHandler';
 
 export default function VehicleScreen(): React.JSX.Element {
   const { user, setUser } = useUser();
@@ -31,14 +32,25 @@ export default function VehicleScreen(): React.JSX.Element {
   const [carYear, setCarYear] = useState<string>('');
   const [carColor, setCarColor] = useState<string>('');
 
-  // Errors
-  const [errors, setErrors] = useState<{
-    carMake?: string;
-    carModel?: string;
-    carYear?: string;
-    carColor?: string;
-    general?: string;
-  }>({});
+  // Form validation with real-time feedback
+  const {
+    errors,
+    setErrors,
+    validateField,
+    validateAll,
+    handleFieldChange: createFieldChangeHandler,
+    handleFieldBlur: createFieldBlurHandler,
+  } = useFormValidation({
+    rules: {
+      carMake: { required: true, minLength: 2 },
+      carModel: { required: true, minLength: 2 },
+      carYear: { required: true, year: true },
+      carColor: { required: false },
+    },
+    validateOnChange: true,
+    validateOnBlur: true,
+    validateOnMount: false,
+  });
 
   // Fetch vehicle data
   useEffect(() => {
@@ -68,11 +80,10 @@ export default function VehicleScreen(): React.JSX.Element {
   }, [user?.id]);
 
   const validateForm = (): boolean => {
-    // Use the validation hook's validateAll function
     return validateAll({
       carMake,
       carModel,
-      carYear,
+      carYear: carYear ? parseInt(carYear, 10) : null,
       carColor,
     });
   };
@@ -174,10 +185,9 @@ export default function VehicleScreen(): React.JSX.Element {
                 value={carMake}
                 onChangeText={(text) => {
                   setCarMake(text);
-                  if (errors.carMake) {
-                    setErrors({ ...errors, carMake: undefined });
-                  }
+                  createFieldChangeHandler('carMake')(text);
                 }}
+                onBlur={createFieldBlurHandler('carMake')}
                 placeholder="e.g., Toyota, Honda, Ford"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"
@@ -192,11 +202,11 @@ export default function VehicleScreen(): React.JSX.Element {
               <TextInput
                 style={[styles.input, errors.carModel && styles.inputError]}
                 value={carModel}
-                    onChangeText={(text) => {
-                      setCarModel(text);
-                      createFieldChangeHandler('carModel')(text);
-                    }}
-                    onBlur={createFieldBlurHandler('carModel')}
+                onChangeText={(text) => {
+                  setCarModel(text);
+                  createFieldChangeHandler('carModel')(text);
+                }}
+                onBlur={createFieldBlurHandler('carModel')}
                 placeholder="e.g., Camry, Civic, F-150"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"
@@ -233,11 +243,11 @@ export default function VehicleScreen(): React.JSX.Element {
               <TextInput
                 style={[styles.input, errors.carColor && styles.inputError]}
                 value={carColor}
-                    onChangeText={(text) => {
-                      setCarColor(text);
-                      createFieldChangeHandler('carColor')(text);
-                    }}
-                    onBlur={createFieldBlurHandler('carColor')}
+                onChangeText={(text) => {
+                  setCarColor(text);
+                  createFieldChangeHandler('carColor')(text);
+                }}
+                onBlur={createFieldBlurHandler('carColor')}
                 placeholder="e.g., Black, White, Red"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"

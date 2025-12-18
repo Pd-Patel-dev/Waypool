@@ -66,7 +66,6 @@ export function getValidatedUserId(
   // If test mode is enabled, return test user ID
   if (shouldBypassAuth()) {
     const testId = getTestUserId(role);
-    console.log(`🧪 TEST MODE: Using test ${role} ID: ${testId}`);
     return testId;
   }
   

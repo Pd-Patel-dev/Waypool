@@ -4,11 +4,15 @@ import type { Request, Response } from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { getDatabaseStatus, disconnectDatabase } from "./utils/database";
+import { validateAndLogEnvironment } from "./utils/envValidation";
 import driverRoutes from "./routes/driver";
 import riderRoutes from "./routes/rider";
 import { socketService } from "./services/socketService";
 import { testModeMiddleware } from "./middleware/testModeAuth";
 import { isTestModeEnabled } from "./utils/testMode";
+
+// Validate environment variables at startup (before initializing services)
+validateAndLogEnvironment();
 
 const app = express();
 const httpServer = createServer(app);
@@ -101,15 +105,6 @@ httpServer.listen(PORT, "0.0.0.0", async () => {
 
   console.log(`🚀 Waypool Server is running on http://0.0.0.0:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`💻 Accessible from browser at: http://localhost:${PORT}`);
-  console.log(`🌐 Accessible from local network at: http://${localIP}:${PORT}`);
-  console.log(
-    `📱 Accessible from Android emulator at: http://10.0.2.2:${PORT}`
-  );
-  console.log(
-    `\n⚠️  Make sure your Mac firewall allows connections on port ${PORT}`
-  );
-  console.log(`   Test from iPhone Safari: http://${localIP}:${PORT}/health\n`);
 
   // Check database migration status
   try {

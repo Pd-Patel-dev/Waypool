@@ -1,0 +1,25 @@
+{
+  // TypeScript configuration for scripts
+  // Extends the main tsconfig.json but allows scripts to be outside src/
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Override rootDir to include both src/ and scripts/
+    "rootDir": ".",
+    // Scripts output to scripts/ directory (optional, for compiled output)
+    "outDir": "scripts",
+    // Keep all other settings from parent config
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": [
+    "scripts/**/*",
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
+

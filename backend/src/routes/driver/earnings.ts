@@ -1,6 +1,11 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { calculateRideEarnings } from '../../utils/earnings';
+import {
+  sendSuccess,
+  sendBadRequest,
+  sendInternalError,
+} from '../../utils/apiResponse';
 
 const router = express.Router();
 
@@ -14,10 +19,7 @@ router.get('/', async (req: Request, res: Response) => {
     const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
 
     if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid driver ID is required',
-      });
+      return sendBadRequest(res, 'Valid driver ID is required');
     }
 
     // Get all completed rides for this driver
@@ -62,6 +64,13 @@ router.get('/', async (req: Request, res: Response) => {
       pricePerSeat: number;
       distance: number;
       earnings: number;
+      earningsBreakdown: {
+        grossEarnings: number;
+        processingFee: number;
+        commission: number;
+        totalFees: number;
+        netEarnings: number;
+      };
     }> = [];
 
     completedRides.forEach((ride) => {
@@ -100,6 +109,13 @@ router.get('/', async (req: Request, res: Response) => {
         pricePerSeat: parseFloat(pricePerSeat.toFixed(2)),
         distance,
         earnings: parseFloat(rideEarnings.toFixed(2)),
+        earningsBreakdown: {
+          grossEarnings: parseFloat(earningsBreakdown.grossEarnings.toFixed(2)),
+          processingFee: parseFloat(earningsBreakdown.processingFee.toFixed(2)),
+          commission: parseFloat(earningsBreakdown.commission.toFixed(2)),
+          totalFees: parseFloat(earningsBreakdown.totalFees.toFixed(2)),
+          netEarnings: parseFloat(earningsBreakdown.netEarnings.toFixed(2)),
+        },
       });
     });
 
@@ -132,10 +148,8 @@ router.get('/', async (req: Request, res: Response) => {
       return sum + earningsBreakdown.netEarnings; // Net earnings after fees
     }, 0);
 
-    console.log(`✅ Calculated earnings for driver ${driverId}: $${totalEarnings.toFixed(2)}`);
 
-    return res.json({
-      success: true,
+    return sendSuccess(res, 'Earnings calculated successfully', {
       earnings: {
         total: parseFloat(totalEarnings.toFixed(2)),
         totalRides,
@@ -150,12 +164,7 @@ router.get('/', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('❌ Error calculating earnings:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to calculate earnings',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    return sendInternalError(res, error, 'Failed to calculate earnings');
   }
 });
 
@@ -169,10 +178,7 @@ router.get('/summary', async (req: Request, res: Response) => {
     const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
 
     if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid driver ID is required',
-      });
+      return sendBadRequest(res, 'Valid driver ID is required');
     }
 
     // Quick count of completed rides
@@ -197,8 +203,7 @@ router.get('/summary', async (req: Request, res: Response) => {
       },
     });
 
-    return res.json({
-      success: true,
+    return sendSuccess(res, 'Earnings summary retrieved successfully', {
       summary: {
         totalRides: completedCount,
         thisWeekRides: thisWeekCount,
@@ -208,11 +213,7 @@ router.get('/summary', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('❌ Error getting earnings summary:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to get earnings summary',
-    });
+    return sendInternalError(res, error, 'Failed to get earnings summary');
   }
 });
 
