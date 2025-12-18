@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getRideById, type Ride, type ApiError } from '@/services/api';
+import { TIME } from '@/utils/constants';
 
 interface UseRideDataOptions {
   rideId: number | null;
@@ -19,7 +20,7 @@ export function useRideData({
   rideId,
   driverId,
   autoRefresh = false,
-  refreshInterval = 30000, // 30 seconds
+  refreshInterval = TIME.RIDE_DATA_REFRESH_INTERVAL,
 }: UseRideDataOptions): UseRideDataReturn {
   const [rideData, setRideData] = useState<Ride | null>(null);
   const [isLoading, setIsLoading] = useState(true);

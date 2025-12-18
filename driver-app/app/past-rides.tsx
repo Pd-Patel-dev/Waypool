@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { LoadingScreen } from "@/components/LoadingScreen";
 import { getPastRides, type Ride } from "@/services/api";
 import { useUser } from "@/context/UserContext";
 import { calculateTotalDistance } from "@/utils/distance";
@@ -28,7 +29,8 @@ export default function PastRidesScreen(): React.JSX.Element {
     try {
       const pastRides = await getPastRides(user.id);
       setRides(pastRides);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // Silently handle error - user can retry by refreshing
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -154,18 +156,11 @@ export default function PastRidesScreen(): React.JSX.Element {
 
   const renderRideItem = ({ item }: { item: Ride }) => {
     const passengerCount = item.passengers?.length || 0;
-    const pricePerSeat = item.pricePerSeat || item.price || 0;
     // Use stored totalEarnings from database, or calculate if not available (for backward compatibility)
+    // Using centralized calculation utility
     const totalEarnings = item.totalEarnings !== undefined && item.totalEarnings !== null
       ? item.totalEarnings
-      : (() => {
-          // Fallback calculation for older rides without stored earnings
-          const totalSeatsBooked = item.passengers?.reduce((sum, passenger) => {
-            const seats = (passenger as any).numberOfSeats || 1;
-            return sum + seats;
-          }, 0) || 0;
-          return totalSeatsBooked * pricePerSeat;
-        })();
+      : calculateRideEarnings(item);
     
     // Calculate total distance including passenger pickups
     const totalDistance = calculateTotalDistance(item);
@@ -259,9 +254,7 @@ export default function PastRidesScreen(): React.JSX.Element {
           <Text style={styles.headerTitle}>Past Rides</Text>
           <View style={styles.backButton} />
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
+        <LoadingScreen message="Loading past rides..." />
       </SafeAreaView>
     );
   }

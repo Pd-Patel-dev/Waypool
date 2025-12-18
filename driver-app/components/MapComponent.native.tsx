@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Platform, Text, ActivityIndicator } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import { TIME } from '@/utils/constants';
 
 interface Location {
   latitude: number;
@@ -70,7 +71,7 @@ export default function MapComponent({
         loadingEnabled={true}
         loadingIndicatorColor="#FFFFFF"
         userLocationPriority="high"
-        userLocationUpdateInterval={5000}
+        userLocationUpdateInterval={TIME.LOCATION_UPDATE_INTERVAL}
         onMapReady={() => setMapReady(true)}>
       </MapView>
       {!mapReady && (

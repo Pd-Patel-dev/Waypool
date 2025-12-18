@@ -41,9 +41,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
     try {
       const userData = await AsyncStorage.getItem(USER_STORAGE_KEY);
       if (userData) {
-        setUserState(JSON.parse(userData));
+        const parsed = JSON.parse(userData);
+        // Ensure user.id is always a number
+        if (parsed && typeof parsed.id !== 'number') {
+          parsed.id = typeof parsed.id === 'string' ? parseInt(parsed.id, 10) : Number(parsed.id);
+          if (isNaN(parsed.id)) {
+            // If conversion fails, don't load invalid user data
+            await AsyncStorage.removeItem(USER_STORAGE_KEY);
+            setUserState(null);
+            setIsLoading(false);
+            return;
+          }
+        }
+        setUserState(parsed);
       }
     } catch (error) {
+      // On error, clear potentially corrupted data
+      await AsyncStorage.removeItem(USER_STORAGE_KEY);
+      setUserState(null);
     } finally {
       setIsLoading(false);
     }
@@ -52,13 +67,27 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const setUser = async (userData: User | null) => {
     try {
       if (userData) {
-        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
-        setUserState(userData);
+        // Ensure user.id is always a number before storing
+        const normalizedUser: User = {
+          ...userData,
+          id: typeof userData.id === 'string' ? parseInt(userData.id, 10) : Number(userData.id),
+        };
+        
+        // Validate that id is a valid number
+        if (isNaN(normalizedUser.id)) {
+          throw new Error('Invalid user ID');
+        }
+
+        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(normalizedUser));
+        setUserState(normalizedUser);
       } else {
         await AsyncStorage.removeItem(USER_STORAGE_KEY);
         setUserState(null);
       }
     } catch (error) {
+      // On error, clear potentially corrupted data
+      await AsyncStorage.removeItem(USER_STORAGE_KEY);
+      setUserState(null);
     }
   };
 

@@ -19,6 +19,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getRideById, updateRide, type Ride, type ApiError } from '@/services/api';
 import { useUser } from '@/context/UserContext';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { validateDate, validateNumberRange, validatePrice } from '@/utils/validation';
+import { getUserFriendlyErrorMessage } from '@/utils/errorHandler';
 
 export default function EditRideScreen(): React.JSX.Element {
   const { user } = useUser();
@@ -105,7 +108,9 @@ export default function EditRideScreen(): React.JSX.Element {
           setPricePerSeat(ride.pricePerSeat.toString());
         }
       } catch (error) {
-        Alert.alert('Error', 'Failed to load ride details. Please try again.');
+        const apiError = error as ApiError;
+        const errorMessage = getUserFriendlyErrorMessage(apiError);
+        Alert.alert('Error', errorMessage);
         router.back();
       } finally {
         setIsLoading(false);
@@ -166,28 +171,32 @@ export default function EditRideScreen(): React.JSX.Element {
   const validateForm = (): boolean => {
     const newErrors: typeof errors = {};
 
-    if (!departureDate.trim()) {
-      newErrors.departureDate = 'Departure date is required';
+    const dateValidation = validateDate(departureDate, 'Departure date');
+    if (!dateValidation.isValid) {
+      newErrors.departureDate = dateValidation.error || 'Departure date is required';
     }
 
     if (!departureTime.trim()) {
       newErrors.departureTime = 'Departure time is required';
     }
 
-    if (!availableSeats.trim()) {
+    const seatsNum = availableSeats.trim();
+    if (!seatsNum) {
       newErrors.availableSeats = 'Number of seats is required';
     } else {
-      const seats = parseInt(availableSeats);
-      if (isNaN(seats) || seats < 1 || seats > 8) {
-        newErrors.availableSeats = 'Seats must be between 1 and 8';
-      }
-      // Check if trying to reduce seats below booked seats
-      if (hasBookings && rideData && rideData.passengers) {
-        const bookedSeats = rideData.passengers.reduce((sum, p) => {
-          return sum + (p.numberOfSeats || 1);
-        }, 0);
-        if (seats < bookedSeats) {
-          newErrors.availableSeats = `Cannot reduce seats below ${bookedSeats} (already booked)`;
+      const seatsValidation = validateNumberRange(seatsNum, 1, 8, 'Number of seats');
+      if (!seatsValidation.isValid) {
+        newErrors.availableSeats = seatsValidation.error || 'Invalid number of seats';
+      } else {
+        // Check if trying to reduce seats below booked seats
+        if (hasBookings && rideData && rideData.passengers) {
+          const bookedSeats = rideData.passengers.reduce((sum, p) => {
+            return sum + (p.numberOfSeats || 1);
+          }, 0);
+          const seats = parseInt(seatsNum, 10);
+          if (seats < bookedSeats) {
+            newErrors.availableSeats = `Cannot reduce seats below ${bookedSeats} (already booked)`;
+          }
         }
       }
     }
@@ -195,9 +204,9 @@ export default function EditRideScreen(): React.JSX.Element {
     if (!pricePerSeat.trim()) {
       newErrors.pricePerSeat = 'Price per seat is required';
     } else {
-      const price = parseFloat(pricePerSeat);
-      if (isNaN(price) || price < 0) {
-        newErrors.pricePerSeat = 'Price must be a positive number';
+      const priceValidation = validatePrice(pricePerSeat, 'Price per seat');
+      if (!priceValidation.isValid) {
+        newErrors.pricePerSeat = priceValidation.error || 'Invalid price';
       }
     }
 
@@ -273,7 +282,7 @@ export default function EditRideScreen(): React.JSX.Element {
         return;
       }
 
-      const driverId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+      const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
       const response = await updateRide(rideId!, driverId, updateData);
 
       if (response.success) {
@@ -290,22 +299,19 @@ export default function EditRideScreen(): React.JSX.Element {
       }
     } catch (error) {
       const apiError = error as ApiError;
-      Alert.alert('Error', apiError.message || 'Failed to update ride. Please try again.');
+      const errorMessage = getUserFriendlyErrorMessage(apiError);
+      if (apiError.errors && apiError.errors.length > 0) {
+        Alert.alert('Validation Error', apiError.errors.join('\n'));
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
   if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <StatusBar style="light" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.loadingText}>Loading ride details...</Text>
-        </View>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Loading ride details..." />;
   }
 
   if (!rideData) {

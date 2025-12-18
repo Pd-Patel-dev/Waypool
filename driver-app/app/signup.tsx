@@ -1,4 +1,17 @@
-import SignupScreen from '@/screens/SignupScreen';
+import React, { Suspense } from 'react';
+import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
+import { LazyScreenLoader } from '@/components/LazyScreenLoader';
 
-export default SignupScreen;
+// Lazy load the screen component for code splitting
+const SignupScreen = React.lazy(() => import('@/screens/SignupScreen'));
+
+export default function SignupPage() {
+  return (
+    <ScreenErrorBoundary screenName="Signup">
+      <Suspense fallback={<LazyScreenLoader />}>
+        <SignupScreen />
+      </Suspense>
+    </ScreenErrorBoundary>
+  );
+}
 

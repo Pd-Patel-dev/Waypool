@@ -1,4 +1,30 @@
 import { API_BASE_URL, API_ENDPOINTS } from "@/config/api";
+import { getUserFriendlyErrorMessage } from "@/utils/errorHandler";
+import { fetchWithRetry, RetryOptions } from "@/utils/apiRetry";
+
+/**
+ * Internal helper function to make API calls with automatic retry logic
+ * All API functions should use this helper instead of direct fetch
+ */
+async function apiFetch(
+  url: string,
+  options: RequestInit = {},
+  retryOptions: RetryOptions = {}
+): Promise<Response> {
+  try {
+    return await fetchWithRetry(url, options, retryOptions);
+  } catch (error: unknown) {
+    // If fetchWithRetry throws, it means all retries failed
+    // Attach status code if available
+    if (error && typeof error === 'object' && 'response' in error) {
+      const err = error as Error & { response?: Response; status?: number };
+      if (err.response) {
+        err.status = err.response.status;
+      }
+    }
+    throw error;
+  }
+}
 
 export interface SignupRequest {
   fullName: string;
@@ -229,13 +255,17 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
   const url = `${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGIN}`;
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await fetchWithRetry(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    });
+      { maxRetries: 2 } // Login doesn't need as many retries
+    );
 
     const result = await response.json();
 
@@ -243,19 +273,21 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
       throw {
         success: false,
         message: result.message || "Login failed",
+        status: response.status,
       } as ApiError;
     }
 
     return result as LoginResponse;
-  } catch (error) {
-    if (error && typeof error === "object" && "message" in error) {
+  } catch (error: any) {
+    if (error && typeof error === "object" && "message" in error && "success" in error) {
       throw error;
     }
 
     // Network or other errors
     throw {
       success: false,
-      message: `Network error. Cannot reach ${API_BASE_URL}. Please check your connection and ensure backend is running.`,
+      message: getUserFriendlyErrorMessage(error),
+      status: error?.status,
     } as ApiError;
   }
 };
@@ -267,12 +299,16 @@ export const logout = async (): Promise<LogoutResponse> => {
   const url = `${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGOUT}`;
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await apiFetch(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
+      { maxRetries: 1 } // Logout is low priority, minimal retries
+    );
 
     const result = await response.json();
 
@@ -280,20 +316,21 @@ export const logout = async (): Promise<LogoutResponse> => {
       throw {
         success: false,
         message: result.message || "Logout failed",
+        status: response.status,
       } as ApiError;
     }
 
     return result as LogoutResponse;
-  } catch (error) {
-
-    if (error && typeof error === "object" && "message" in error) {
+  } catch (error: any) {
+    if (error && typeof error === "object" && "message" in error && "success" in error) {
       throw error;
     }
 
     // Network or other errors
     throw {
       success: false,
-      message: `Network error. Cannot reach ${API_BASE_URL}. Please check your connection and ensure backend is running.`,
+      message: getUserFriendlyErrorMessage(error),
+      status: error?.status,
     } as ApiError;
   }
 };
@@ -354,7 +391,7 @@ export const getEarnings = async (driverId: number): Promise<EarningsResponse> =
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to get earnings",
+        message: result.message || "Unable to retrieve earnings. Please try again.",
       } as ApiError;
     }
 
@@ -442,7 +479,7 @@ export const getRideById = async (
       const result = await response.json();
       throw {
         success: false,
-        message: result.message || "Failed to fetch ride",
+        message: result.message || "Unable to load ride details. Please try again.",
       } as ApiError;
     }
 
@@ -499,7 +536,7 @@ export const submitRating = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || 'Failed to submit rating',
+        message: result.message || 'Unable to submit rating. Please try again.',
       } as ApiError;
     }
 
@@ -536,7 +573,7 @@ export const getRideRatings = async (rideId: number, driverId?: number): Promise
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || 'Failed to fetch ratings',
+        message: result.message || 'Unable to load ratings. Please try again.',
       } as ApiError;
     }
 
@@ -574,7 +611,7 @@ export const getPastRides = async (driverId?: number): Promise<Ride[]> => {
       const result = await response.json();
       throw {
         success: false,
-        message: result.message || "Failed to fetch past rides",
+        message: result.message || "Unable to load past rides. Please try again.",
       } as ApiError;
     }
 
@@ -613,7 +650,7 @@ export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
       const result = await response.json();
       throw {
         success: false,
-        message: result.message || "Failed to fetch upcoming rides",
+        message: result.message || "Unable to load upcoming rides. Please try again.",
       } as ApiError;
     }
 
@@ -648,7 +685,7 @@ export const createRide = async (data: CreateRideRequest): Promise<CreateRideRes
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to create ride",
+        message: result.message || "Unable to create ride. Please check your input and try again.",
         errors: result.errors || [],
       } as ApiError;
     }
@@ -684,7 +721,7 @@ export const deleteRide = async (rideId: number, driverId: number): Promise<{ su
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to delete ride",
+        message: result.message || "Unable to delete ride. Please try again.",
       } as ApiError;
     }
 
@@ -724,7 +761,7 @@ export const updateRide = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to update ride",
+        message: result.message || "Unable to update ride. Please try again.",
         errors: result.errors || [],
       } as ApiError;
     }
@@ -761,7 +798,7 @@ export const cancelRide = async (rideId: number, driverId: number): Promise<{ su
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to cancel ride",
+        message: result.message || "Unable to cancel ride. Please try again.",
       } as ApiError;
     }
 
@@ -797,7 +834,7 @@ export const startRide = async (rideId: number, driverId: number): Promise<{ suc
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to start ride",
+        message: result.message || "Unable to start ride. Please ensure you have confirmed bookings.",
       } as ApiError;
     }
 
@@ -842,7 +879,7 @@ export const completeRide = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to complete ride",
+        message: result.message || "Unable to complete ride. Please try again.",
       } as ApiError;
     }
 
@@ -880,7 +917,7 @@ export const markPassengerPickedUp = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to mark passenger as picked up",
+        message: result.message || "Unable to mark passenger as picked up. Please verify the PIN and try again.",
       } as ApiError;
     }
 
@@ -922,7 +959,7 @@ export const updateDriverLocation = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to update location",
+        message: result.message || "Unable to update your location. Please check your GPS signal.",
       } as ApiError;
     }
 
@@ -1000,7 +1037,7 @@ export const getNotifications = async (driverId: number): Promise<{ success: boo
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to fetch notifications",
+        message: result.message || "Unable to load notifications. Please try again.",
       } as ApiError;
     }
 
@@ -1038,7 +1075,7 @@ export const markNotificationRead = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to mark notification as read",
+        message: result.message || "Unable to mark notification as read. Please try again.",
       } as ApiError;
     }
 
@@ -1075,7 +1112,7 @@ export const markAllNotificationsRead = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to mark notifications as read",
+        message: result.message || "Unable to mark notifications as read. Please try again.",
       } as ApiError;
     }
 
@@ -1113,7 +1150,7 @@ export const acceptBooking = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to accept booking",
+        message: result.message || "Unable to accept booking. The ride may be full or no longer available.",
       } as ApiError;
     }
 
@@ -1151,7 +1188,7 @@ export const rejectBooking = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to reject booking",
+        message: result.message || "Unable to reject booking. Please try again.",
       } as ApiError;
     }
 
@@ -1225,30 +1262,36 @@ export const getProfile = async (driverId: number): Promise<Profile> => {
   try {
     const url = `${API_BASE_URL}${API_ENDPOINTS.PROFILE.GET}?driverId=${driverId}`;
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await apiFetch(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
+      { maxRetries: 3 } // Important data, allow retries
+    );
 
     const result = await response.json();
 
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to fetch profile",
+        message: result.message || "Unable to load profile. Please try again.",
+        status: response.status,
       } as ApiError;
     }
 
     return result.user || result.profile;
   } catch (error: any) {
-    if (error && typeof error === "object" && "message" in error) {
+    if (error && typeof error === "object" && "message" in error && "success" in error) {
       throw error;
     }
     throw {
       success: false,
-      message: "Network error. Please check your connection.",
+      message: getUserFriendlyErrorMessage(error),
+      status: error?.status,
     } as ApiError;
   }
 };
@@ -1276,7 +1319,7 @@ export const updateProfile = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to update profile",
+        message: result.message || "Unable to update profile. Please check your input and try again.",
         errors: result.errors,
       } as ApiError;
     }
@@ -1316,7 +1359,7 @@ export const updatePassword = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to update password",
+        message: result.message || "Unable to update password. Please verify your current password and try again.",
       } as ApiError;
     }
 
@@ -1355,7 +1398,7 @@ export const updateProfilePhoto = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to update profile photo",
+        message: result.message || "Unable to update profile photo. Please try again.",
       } as ApiError;
     }
 
@@ -1392,7 +1435,7 @@ export const getPreferences = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to fetch preferences",
+        message: result.message || "Unable to load preferences. Please try again.",
       } as ApiError;
     }
 
@@ -1431,7 +1474,7 @@ export const updatePreferences = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to update preferences",
+        message: result.message || "Unable to update preferences. Please try again.",
       } as ApiError;
     }
 
@@ -1471,7 +1514,7 @@ export const deleteAccount = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to delete account",
+        message: result.message || "Unable to delete account. Please verify your password and try again.",
         activeRidesCount: result.activeRidesCount,
         pendingBookingsCount: result.pendingBookingsCount,
       } as ApiError & { activeRidesCount?: number; pendingBookingsCount?: number };
@@ -1508,7 +1551,7 @@ export const getVehicle = async (driverId: number): Promise<Vehicle> => {
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to fetch vehicle information",
+        message: result.message || "Unable to load vehicle information. Please try again.",
       } as ApiError;
     }
 
@@ -1554,7 +1597,7 @@ export const updateVehicle = async (
     if (!response.ok) {
       throw {
         success: false,
-        message: result.message || "Failed to update vehicle information",
+        message: result.message || "Unable to update vehicle information. Please check your input and try again.",
         errors: result.errors,
       } as ApiError;
     }

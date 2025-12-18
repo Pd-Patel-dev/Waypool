@@ -11,6 +11,8 @@ import {
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import * as Location from "expo-location";
+import { calculateDistance as calculateDistanceMiles } from '@/utils/distance';
+import { DISTANCE_CONVERSION, TIME, DISTANCE } from '@/utils/constants';
 
 interface NavigationStep {
   distance: string;
@@ -70,24 +72,19 @@ const decodePolyline = (encoded: string): { latitude: number; longitude: number 
   return points;
 };
 
-// Calculate distance between two coordinates
+/**
+ * Calculate distance between two coordinates in kilometers
+ * Uses the centralized distance utility and converts from miles to kilometers
+ */
 const calculateDistance = (
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
 ): number => {
-  const R = 6371; // Radius of the Earth in kilometers
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Distance in kilometers
+  // Use centralized calculateDistance (returns miles) and convert to kilometers
+  const distanceMiles = calculateDistanceMiles(lat1, lon1, lat2, lon2);
+  return distanceMiles * DISTANCE_CONVERSION.MILES_TO_METERS / 1000; // Convert miles to km
 };
 
 export default function NavigationComponent({
@@ -234,8 +231,8 @@ export default function NavigationComponent({
     locationSubscription.current = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High,
-        timeInterval: 3000, // Update every 3 seconds
-        distanceInterval: 10, // Update every 10 meters
+        timeInterval: TIME.NAVIGATION_UPDATE_INTERVAL,
+        distanceInterval: DISTANCE.NAVIGATION_STEP_DISTANCE,
       },
       (newLocation) => {
         const newCoords = {
@@ -268,11 +265,11 @@ export default function NavigationComponent({
 
           setDistanceToNextTurn(distance);
 
-          // If within 50 meters of step end, move to next step
-          if (distance < 0.05 && currentStepIndex < steps.length - 1) {
+          // If within threshold distance of step end, move to next step
+          if (distance < DISTANCE.NAVIGATION_STEP_COMPLETION_THRESHOLD * DISTANCE_CONVERSION.METERS_TO_MILES && currentStepIndex < steps.length - 1) {
             setCurrentStepIndex(currentStepIndex + 1);
           } else if (
-            distance < 0.05 &&
+            distance < DISTANCE.NAVIGATION_STEP_COMPLETION_THRESHOLD * DISTANCE_CONVERSION.METERS_TO_MILES &&
             currentStepIndex === steps.length - 1
           ) {
             // Reached destination

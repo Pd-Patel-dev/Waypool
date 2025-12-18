@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, AppState } from 'react-native';
 import { updateDriverLocation } from '@/services/api';
+import { showError, showWarning } from '@/utils/toast';
+import { getUserFriendlyErrorMessage } from '@/utils/errorHandler';
+import { TIME, DISTANCE } from '@/utils/constants';
 
 // Conditionally import Location
 let Location: any = null;
@@ -48,13 +51,20 @@ export function useRideLocation({
     const now = Date.now();
     const timeSinceLastUpdate = now - lastUpdateRef.current;
 
-    // Rate limit: only update backend every 5 seconds
-    if (timeSinceLastUpdate < 5000) return;
+    // Rate limit: only update backend at configured interval
+    if (timeSinceLastUpdate < TIME.LOCATION_BACKEND_UPDATE_INTERVAL) return;
 
     try {
       await updateDriverLocation(driverId, coords.latitude, coords.longitude);
       lastUpdateRef.current = now;
     } catch (error) {
+      // Location updates are critical but shouldn't block the UI
+      // Show a warning only if multiple consecutive failures occur
+      const consecutiveFailures = (lastUpdateRef.current === 0 ? 0 : Date.now() - lastUpdateRef.current);
+      if (consecutiveFailures > TIME.LOCATION_UPDATE_FAILURE_THRESHOLD) {
+        const errorMessage = getUserFriendlyErrorMessage(error);
+        showWarning(`Location update failed: ${errorMessage}. Your location may not be shared with passengers.`);
+      }
     }
   }, [driverId, rideId]);
 
@@ -77,8 +87,8 @@ export function useRideLocation({
       locationWatchSubscriptionRef.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 5000, // Update every 5 seconds
-          distanceInterval: 10, // Or every 10 meters
+          timeInterval: TIME.LOCATION_UPDATE_INTERVAL,
+          distanceInterval: DISTANCE.LOCATION_UPDATE_DISTANCE,
         },
         (newLocation: any) => {
           const coords = {
@@ -96,20 +106,22 @@ export function useRideLocation({
         }
       );
 
-    } catch (error) {
-      setLocationError('Failed to start location tracking');
+    } catch (error: unknown) {
+      const errorMessage = getUserFriendlyErrorMessage(error);
+      setLocationError(errorMessage);
       setIsWatching(false);
+      showError(`Unable to start location tracking: ${errorMessage}`);
     }
   }, [isActive, driverId]);
 
   // Stop watching location
-  const stopLocationWatch = () => {
+  const stopLocationWatch = useCallback(() => {
     if (locationWatchSubscriptionRef.current) {
       locationWatchSubscriptionRef.current.remove();
       locationWatchSubscriptionRef.current = null;
       setIsWatching(false);
     }
-  };
+  }, []);
 
   // Refresh location once
   const refreshLocation = useCallback(async () => {
@@ -138,8 +150,10 @@ export function useRideLocation({
       if (isActive && driverId) {
         updateBackendLocation(coords);
       }
-    } catch (error) {
-      setLocationError('Failed to get location');
+    } catch (error: unknown) {
+      const errorMessage = getUserFriendlyErrorMessage(error);
+      setLocationError(errorMessage);
+      showError(`Unable to get your location: ${errorMessage}`);
     }
   }, [isActive, driverId, updateBackendLocation]);
 
@@ -180,7 +194,7 @@ export function useRideLocation({
     return () => {
       stopLocationWatch();
     };
-  }, [isActive, driverId, rideId, startLocationWatch]);
+  }, [isActive, driverId, rideId, startLocationWatch, stopLocationWatch]);
 
   return {
     location,

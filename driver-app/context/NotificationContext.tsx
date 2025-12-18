@@ -9,6 +9,7 @@ import {
 } from '@/services/notificationService';
 import { useUser } from './UserContext';
 import { websocketService } from '@/services/websocket';
+import { TIME } from '@/utils/constants';
 
 interface NotificationContextType {
   badgeCount: number;
@@ -105,7 +106,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!user?.id || !isNotificationsEnabled) return;
 
-    const driverId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+    const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
     
     // Connect to WebSocket
     websocketService.connect(driverId);
@@ -123,12 +124,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     websocketService.on('notification:read', handleNotificationRead);
     websocketService.on('notification:badge_update', refreshBadgeCount);
 
-    // Fallback: Refresh badge count every 60 seconds (reduced from 30s since we have WebSocket)
+    // Fallback: Refresh badge count at configured interval (reduced from 30s since we have WebSocket)
     const interval = setInterval(() => {
       if (!websocketService.isConnected()) {
         refreshBadgeCount();
       }
-    }, 60000); // 60 seconds
+    }, TIME.NOTIFICATION_REFRESH_INTERVAL);
 
     return () => {
       websocketService.off('notification:new', handleNewNotification);

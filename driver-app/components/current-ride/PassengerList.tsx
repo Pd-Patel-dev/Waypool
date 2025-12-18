@@ -6,9 +6,12 @@ import {
   TouchableOpacity,
   Platform,
   Linking,
+  Alert,
 } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Passenger } from '@/services/api';
+import { validatePhoneNumber } from '@/utils/validation';
+import { DISTANCE, DISTANCE_CONVERSION } from '@/utils/constants';
 
 interface PassengerListProps {
   passengers: Passenger[];
@@ -24,20 +27,54 @@ export const PassengerList: React.FC<PassengerListProps> = ({
   calculateDistance,
 }) => {
   const handleCallPassenger = (phoneNumber: string) => {
-    if (!phoneNumber) return;
+    if (!phoneNumber) {
+      Alert.alert('Error', 'Phone number is not available');
+      return;
+    }
+
+    // Validate phone number format
+    const validation = validatePhoneNumber(phoneNumber);
+    if (!validation.isValid) {
+      Alert.alert('Invalid Phone Number', validation.error || 'Please check the phone number format');
+      return;
+    }
+
+    // Clean phone number (remove non-digits)
     const cleanPhone = phoneNumber.replace(/\D/g, '');
-    if (!cleanPhone) return;
+    if (!cleanPhone || cleanPhone.length < 10) {
+      Alert.alert('Error', 'Invalid phone number format');
+      return;
+    }
+
     const phoneUrl = Platform.OS === 'ios' ? `telprompt:${cleanPhone}` : `tel:${cleanPhone}`;
     Linking.openURL(phoneUrl).catch((err) => {
+      Alert.alert('Error', 'Unable to make phone call. Please check your device settings.');
     });
   };
 
   const handleMessagePassenger = (phoneNumber: string) => {
-    if (!phoneNumber) return;
+    if (!phoneNumber) {
+      Alert.alert('Error', 'Phone number is not available');
+      return;
+    }
+
+    // Validate phone number format
+    const validation = validatePhoneNumber(phoneNumber);
+    if (!validation.isValid) {
+      Alert.alert('Invalid Phone Number', validation.error || 'Please check the phone number format');
+      return;
+    }
+
+    // Clean phone number (remove non-digits)
     const cleanPhone = phoneNumber.replace(/\D/g, '');
-    if (!cleanPhone) return;
+    if (!cleanPhone || cleanPhone.length < 10) {
+      Alert.alert('Error', 'Invalid phone number format');
+      return;
+    }
+
     const smsUrl = Platform.OS === 'ios' ? `sms:${cleanPhone}` : `sms:${cleanPhone}`;
     Linking.openURL(smsUrl).catch((err) => {
+      Alert.alert('Error', 'Unable to send message. Please check your device settings.');
     });
   };
 
@@ -53,9 +90,9 @@ export const PassengerList: React.FC<PassengerListProps> = ({
       passenger.pickupLongitude
     );
 
-    if (distance < 0.05) { // < 50 meters
+    if (distance < DISTANCE.ARRIVAL_THRESHOLD * DISTANCE_CONVERSION.METERS_TO_MILES) {
       return { status: 'arrived', distance };
-    } else if (distance < 0.12) { // < 120 meters
+    } else if (distance < DISTANCE.NEAR_THRESHOLD * DISTANCE_CONVERSION.METERS_TO_MILES) {
       return { status: 'near', distance };
     } else {
       return { status: 'far', distance };

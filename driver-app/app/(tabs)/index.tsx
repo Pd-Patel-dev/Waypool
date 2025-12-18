@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { useUser } from '@/context/UserContext';
 import { getUpcomingRides, deleteRide, type Ride } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { calculateTotalDistance } from '@/utils/distance';
+import { LoadingScreen, InlineLoader } from '@/components/LoadingScreen';
 
 // Import Location - it will be null on web but that's handled in the code
 import * as ExpoLocation from 'expo-location';
@@ -30,16 +31,10 @@ interface LocationCoords {
 
 
 // Calculate earnings for a ride based on booked seats
-const calculateEarnings = (ride: Ride): number => {
-  const bookedSeats = ride.totalSeats - ride.availableSeats;
-  if (ride.price) {
-    // If price is per seat, multiply by booked seats
-    // If price is total ride price, use it directly
-    // Assuming price is per seat for now
-    return bookedSeats * ride.price;
-  }
-  return 0;
-};
+// Using centralized utility from utils/price.ts
+import { calculateRideEarnings } from '@/utils/price';
+import { formatDate, formatTime, safeParseDate } from '@/utils/date';
+const calculateEarnings = calculateRideEarnings;
 
 export default function HomeScreen(): React.JSX.Element {
   const { user } = useUser();
@@ -56,22 +51,27 @@ export default function HomeScreen(): React.JSX.Element {
   const [sortBy, setSortBy] = useState<'date' | 'distance' | 'earnings'>('date');
   const [showFilters, setShowFilters] = useState(false);
   
-  // Current active ride - automatically detected from rides
-  const currentRide = rides.find((ride) => ride.status === 'in-progress') || null;
-  
-  // Calculate progress for active ride (simplified - would need route data for accurate calculation)
-  // For now, we'll show a placeholder. Real progress calculation would require route coordinates
-  const activeRideProgress = currentRide ? 0 : 0; // Will be calculated when viewing ride details
-
-  const getGreeting = (): string => {
+  // Memoize greeting to avoid recalculating on every render
+  const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
-  };
+  }, []); // Empty deps - only calculate once per hour (refresh handled by app lifecycle)
 
-  // Reverse geocode coordinates to get city and state
-  const reverseGeocode = async (lat: number, lng: number) => {
+  // Current active ride - memoized to avoid recalculation
+  const currentRide = useMemo(() => {
+    return rides.find((ride) => ride.status === 'in-progress') || null;
+  }, [rides]);
+  
+  // Calculate progress for active ride (simplified - would need route data for accurate calculation)
+  // For now, we'll show a placeholder. Real progress calculation would require route coordinates
+  const activeRideProgress = useMemo(() => {
+    return currentRide ? 0 : 0; // Will be calculated when viewing ride details
+  }, [currentRide]);
+
+  // Reverse geocode coordinates to get city and state - memoized to prevent recreating on every render
+  const reverseGeocode = useCallback(async (lat: number, lng: number) => {
     try {
       const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
       if (!GOOGLE_API_KEY) {
@@ -102,10 +102,10 @@ export default function HomeScreen(): React.JSX.Element {
       }
     } catch (error) {
     }
-  };
+  }, []); // Empty deps - function doesn't depend on any props/state
 
-  // Show location error alert with actionable "Open Settings" button
-  const showLocationErrorAlert = (errorType: 'services' | 'permission' | 'timeout') => {
+  // Show location error alert with actionable "Open Settings" button - memoized
+  const showLocationErrorAlert = useCallback((errorType: 'services' | 'permission' | 'timeout') => {
     const messages = {
       services: {
         title: 'Location Services Disabled',
@@ -145,25 +145,32 @@ export default function HomeScreen(): React.JSX.Element {
         },
       ]);
     }
-  };
+  }, []); // Empty deps - function doesn't depend on any props/state
 
   // Request location permissions and get current location (native only)
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    let isMounted = true;
+
     (async () => {
       if (user && Location && Platform.OS !== 'web') {
         try {
           // Check if location services are enabled
           const servicesEnabled = await Location.hasServicesEnabledAsync();
           if (!servicesEnabled) {
-            setLocationError('Location services are disabled');
-            showLocationErrorAlert('services');
+            if (isMounted) {
+              setLocationError('Location services are disabled');
+              showLocationErrorAlert('services');
+            }
             return;
           }
 
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status !== 'granted') {
-            setLocationError('Location permission denied');
-            showLocationErrorAlert('permission');
+            if (isMounted) {
+              setLocationError('Location permission denied');
+              showLocationErrorAlert('permission');
+            }
             return;
           }
 
@@ -172,14 +179,26 @@ export default function HomeScreen(): React.JSX.Element {
             accuracy: Location.Accuracy.High,
           } as any);
           
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error("Location request timeout")), 15000)
-          );
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              if (isMounted) {
+                reject(new Error("Location request timeout"));
+              }
+            }, 15000);
+          });
           
           const currentLocation = await Promise.race([
             locationPromise,
             timeoutPromise,
           ]) as any;
+
+          // Clear timeout if location promise wins
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+
+          if (!isMounted) return;
 
           const coords = {
             latitude: currentLocation.coords.latitude,
@@ -195,32 +214,44 @@ export default function HomeScreen(): React.JSX.Element {
           } else {
             throw new Error("Invalid location coordinates received");
           }
-        } catch (error: any) {
-          let errorMessage = 'Failed to get location';
+        } catch (error: unknown) {
+          // Clear timeout on error
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+
+          if (!isMounted) return;
           
-          if (error?.message?.includes("timeout")) {
+          let errorMessage = 'Failed to get location';
+          const err = error instanceof Error ? error : new Error(String(error));
+          
+          if (err.message?.includes("timeout")) {
             errorMessage = 'Location request timed out';
             showLocationErrorAlert('timeout');
-          } else if (error?.message?.includes("permission")) {
+          } else if (err.message?.includes("permission")) {
             errorMessage = 'Location permission denied';
             showLocationErrorAlert('permission');
           }
           setLocationError(errorMessage);
           
           // Try to use last known location as fallback
-          try {
-            const lastKnownLocation = await Location.getLastKnownPositionAsync({} as any);
-            if (lastKnownLocation) {
-              const fallbackCoords = {
-                latitude: lastKnownLocation.coords.latitude,
-                longitude: lastKnownLocation.coords.longitude,
-              };
-              if (isFinite(fallbackCoords.latitude) && isFinite(fallbackCoords.longitude)) {
-                setLocation(fallbackCoords);
-                await reverseGeocode(fallbackCoords.latitude, fallbackCoords.longitude);
+          if (isMounted) {
+            try {
+              const lastKnownLocation = await Location.getLastKnownPositionAsync({} as any);
+              if (lastKnownLocation && isMounted) {
+                const fallbackCoords = {
+                  latitude: lastKnownLocation.coords.latitude,
+                  longitude: lastKnownLocation.coords.longitude,
+                };
+                if (isFinite(fallbackCoords.latitude) && isFinite(fallbackCoords.longitude)) {
+                  setLocation(fallbackCoords);
+                  await reverseGeocode(fallbackCoords.latitude, fallbackCoords.longitude);
+                }
               }
+            } catch (fallbackError) {
+              // Ignore fallback errors
             }
-          } catch (fallbackError) {
           }
         }
       } else if (Platform.OS === 'web') {
@@ -228,6 +259,7 @@ export default function HomeScreen(): React.JSX.Element {
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             async (position) => {
+              if (!isMounted) return;
               const coords = {
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
@@ -237,15 +269,28 @@ export default function HomeScreen(): React.JSX.Element {
               await reverseGeocode(coords.latitude, coords.longitude);
             },
             (error) => {
-              setLocationError('Location permission denied');
+              if (isMounted) {
+                setLocationError('Location permission denied');
+              }
             }
           );
         } else {
-          setLocationError('Geolocation not supported');
+          if (isMounted) {
+            setLocationError('Geolocation not supported');
+          }
         }
       }
     })();
-  }, [user]);
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+  }, [user, showLocationErrorAlert, reverseGeocode]);
 
   // Fetch upcoming rides
   const fetchRides = useCallback(async () => {
@@ -276,80 +321,49 @@ export default function HomeScreen(): React.JSX.Element {
     }, [user, fetchRides])
   );
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchRides();
     setRefreshing(false);
-  };
+  }, [fetchRides]);
 
-  const formatTime = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-  };
+  // Using centralized date formatting utilities from utils/date.ts
+  // Custom formatDate that includes "Today"/"Tomorrow" logic
+  const formatDateWithRelative = (dateString: string): string => {
+    const date = safeParseDate(dateString);
+    if (!date) return formatDate(dateString);
 
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateOnly = new Date(date);
+      dateOnly.setHours(0, 0, 0, 0);
 
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return 'Tomorrow';
-    } else {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-      });
+      if (dateOnly.getTime() === today.getTime()) {
+        return 'Today';
+      } else if (dateOnly.getTime() === tomorrow.getTime()) {
+        return 'Tomorrow';
+      } else {
+        return formatDate(dateString);
+      }
+    } catch (error) {
+      return formatDate(dateString);
     }
   };
 
-  // Check if a ride is scheduled for today
-  const isToday = (dateString: string): boolean => {
+  // Removed isToday - using memoized version below
+
+  // Memoize isToday helper to avoid recreating on every render
+  const isTodayMemo = useCallback((dateString: string): boolean => {
     const date = new Date(dateString);
     const today = new Date();
     return date.toDateString() === today.toDateString();
-  };
+  }, []);
 
-  // Filter rides based on selected filter
-  const filteredRides = rides.filter((ride) => {
-    if (filterStatus === 'all') return true;
-    if (filterStatus === 'scheduled') return ride.status === 'scheduled' || !ride.status;
-    if (filterStatus === 'in-progress') return ride.status === 'in-progress';
-    if (filterStatus === 'completed') return ride.status === 'completed';
-    return true;
-  });
-
-  // Sort rides
-  const sortedRides = [...filteredRides].sort((a, b) => {
-    if (sortBy === 'date') {
-      return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
-    }
-    if (sortBy === 'distance') {
-      const distA = calculateTotalDistance(a);
-      const distB = calculateTotalDistance(b);
-      return distB - distA; // Descending
-    }
-    if (sortBy === 'earnings') {
-      const earningsA = calculateEarnings(a);
-      const earningsB = calculateEarnings(b);
-      return earningsB - earningsA; // Descending
-    }
-    return 0;
-  });
-
-  // Separate rides into today's rides and upcoming rides (excluding active ride)
-  const ridesExcludingActive = sortedRides.filter((ride) => ride.status !== 'in-progress');
-  const todaysRides = ridesExcludingActive.filter((ride) => isToday(ride.departureTime));
-  const upcomingRides = ridesExcludingActive.filter((ride) => !isToday(ride.departureTime));
-
-  // Get status badge info
-  const getStatusBadge = (ride: Ride) => {
+  // Get status badge info - memoized function
+  const getStatusBadge = useCallback((ride: Ride) => {
     if (ride.status === 'in-progress') {
       return { text: 'IN PROGRESS', color: '#4285F4', bgColor: 'rgba(66, 133, 244, 0.15)' };
     }
@@ -360,27 +374,59 @@ export default function HomeScreen(): React.JSX.Element {
       return { text: 'CANCELLED', color: '#FF3B30', bgColor: 'rgba(255, 59, 48, 0.15)' };
     }
     return { text: 'SCHEDULED', color: '#FFD60A', bgColor: 'rgba(255, 214, 10, 0.15)' };
-  };
+  }, []);
 
-  // If user is not logged in, show nothing (should redirect)
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <StatusBar style="light" />
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000000' }}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={{ color: '#FFFFFF', marginTop: 16, fontSize: 16 }}>Loading...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // Memoize filtered rides - only recalculate when rides or filterStatus changes
+  const filteredRides = useMemo(() => {
+    return rides.filter((ride) => {
+      if (filterStatus === 'all') return true;
+      if (filterStatus === 'scheduled') return ride.status === 'scheduled' || !ride.status;
+      if (filterStatus === 'in-progress') return ride.status === 'in-progress';
+      if (filterStatus === 'completed') return ride.status === 'completed';
+      return true;
+    });
+  }, [rides, filterStatus]);
 
+  // Memoize sorted rides - only recalculate when filteredRides or sortBy changes
+  const sortedRides = useMemo(() => {
+    return [...filteredRides].sort((a, b) => {
+      if (sortBy === 'date') {
+        return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+      }
+      if (sortBy === 'distance') {
+        const distA = calculateTotalDistance(a);
+        const distB = calculateTotalDistance(b);
+        return distB - distA; // Descending
+      }
+      if (sortBy === 'earnings') {
+        const earningsA = calculateEarnings(a);
+        const earningsB = calculateEarnings(b);
+        return earningsB - earningsA; // Descending
+      }
+      return 0;
+    });
+  }, [filteredRides, sortBy]);
 
-  const handleAddRide = () => {
+  // Memoize separated rides - only recalculate when sortedRides changes
+  const ridesExcludingActive = useMemo(() => {
+    return sortedRides.filter((ride) => ride.status !== 'in-progress');
+  }, [sortedRides]);
+
+  const todaysRides = useMemo(() => {
+    return ridesExcludingActive.filter((ride) => isTodayMemo(ride.departureTime));
+  }, [ridesExcludingActive, isTodayMemo]);
+
+  const upcomingRides = useMemo(() => {
+    return ridesExcludingActive.filter((ride) => !isTodayMemo(ride.departureTime));
+  }, [ridesExcludingActive, isTodayMemo]);
+
+  // Memoize callbacks to prevent unnecessary re-renders
+  // IMPORTANT: All hooks must be called before any conditional returns
+  const handleAddRide = useCallback(() => {
     router.push('/add-ride');
-  };
+  }, []);
 
-  const handleRidePress = (rideId: number) => {
+  const handleRidePress = useCallback((rideId: number) => {
     // Find the ride from the rides array
     const ride = rides.find((r) => r.id === rideId);
     if (!ride) {
@@ -405,9 +451,9 @@ export default function HomeScreen(): React.JSX.Element {
         },
       });
     }
-  };
+  }, [rides]);
 
-  const handleStartRide = (ride: Ride) => {
+  const handleStartRide = useCallback((ride: Ride) => {
     // Navigate to current ride screen with ride ID and ride data
     router.push({
       pathname: '/current-ride',
@@ -416,9 +462,9 @@ export default function HomeScreen(): React.JSX.Element {
         ride: JSON.stringify(ride), // Keep for fallback
       },
     });
-  };
+  }, []);
 
-  const handleDeleteRide = (ride: Ride) => {
+  const handleDeleteRide = useCallback((ride: Ride) => {
     Alert.alert(
       'Delete Ride',
       'Are you sure you want to delete this ride? This action cannot be undone.',
@@ -440,17 +486,24 @@ export default function HomeScreen(): React.JSX.Element {
               await deleteRide(ride.id, user.id);
               // Refresh the rides list
               await fetchRides();
-            } catch (error: any) {
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : 'Failed to delete ride. Please try again.';
               Alert.alert(
                 'Error',
-                error.message || 'Failed to delete ride. Please try again.'
+                errorMessage
               );
             }
           },
         },
       ]
     );
-  };
+  }, [user?.id, fetchRides]);
+
+  // If user is not logged in, show nothing (should redirect)
+  // This must come AFTER all hooks are called (Rules of Hooks)
+  if (!user) {
+    return <LoadingScreen message="Loading..." safeArea={true} />;
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -463,7 +516,7 @@ export default function HomeScreen(): React.JSX.Element {
         }>
         {/* Greeting Section */}
         <View style={styles.greetingContainer}>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.greeting}>{greeting}</Text>
           <Text style={styles.name}>{user.fullName}</Text>
           {(currentCity || currentState) && (
             <View style={styles.locationContainer}>
@@ -647,7 +700,7 @@ export default function HomeScreen(): React.JSX.Element {
                   <View style={styles.rideHeader}>
                     <View style={styles.rideTimeContainer}>
                       <View style={styles.rideTimeRow}>
-                      <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
+                      <Text style={styles.rideDate}>{formatDateWithRelative(ride.departureTime)}</Text>
                         {(() => {
                           const statusBadge = getStatusBadge(ride);
                           return (
@@ -738,7 +791,7 @@ export default function HomeScreen(): React.JSX.Element {
                 </View>
                 {/* Action Buttons - Only for today's rides */}
                 {/* Only show Start Ride for scheduled rides that are today */}
-                {(ride.status === 'scheduled' || !ride.status) && isToday(ride.departureTime) ? (
+                {(ride.status === 'scheduled' || !ride.status) && isTodayMemo(ride.departureTime) ? (
                 <TouchableOpacity
                   style={styles.startRideButton}
                   onPress={() => handleStartRide(ride)}

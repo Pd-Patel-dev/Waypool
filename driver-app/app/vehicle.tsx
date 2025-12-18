@@ -17,6 +17,8 @@ import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getVehicle, updateVehicle, type ApiError } from '@/services/api';
 import { useUser } from '@/context/UserContext';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { useFormValidation } from '@/hooks/useFormValidation';
 
 export default function VehicleScreen(): React.JSX.Element {
   const { user, setUser } = useUser();
@@ -66,32 +68,13 @@ export default function VehicleScreen(): React.JSX.Element {
   }, [user?.id]);
 
   const validateForm = (): boolean => {
-    const newErrors: typeof errors = {};
-
-    if (!carMake.trim()) {
-      newErrors.carMake = 'Car make is required';
-    }
-
-    if (!carModel.trim()) {
-      newErrors.carModel = 'Car model is required';
-    }
-
-    if (!carYear.trim()) {
-      newErrors.carYear = 'Car year is required';
-    } else {
-      const year = parseInt(carYear, 10);
-      const currentYear = new Date().getFullYear();
-      if (isNaN(year) || year < 1900 || year > currentYear + 1) {
-        newErrors.carYear = `Car year must be between 1900 and ${currentYear + 1}`;
-      }
-    }
-
-    if (!carColor.trim()) {
-      newErrors.carColor = 'Car color is required';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    // Use the validation hook's validateAll function
+    return validateAll({
+      carMake,
+      carModel,
+      carYear,
+      carColor,
+    });
   };
 
   const handleSave = async () => {
@@ -136,10 +119,11 @@ export default function VehicleScreen(): React.JSX.Element {
       }
     } catch (error) {
       const apiError = error as ApiError;
+      const errorMessage = getUserFriendlyErrorMessage(apiError);
       if (apiError.errors && apiError.errors.length > 0) {
         Alert.alert('Validation Error', apiError.errors.join('\n'));
       } else {
-        Alert.alert('Error', apiError.message || 'Failed to update vehicle information. Please try again.');
+        Alert.alert('Error', errorMessage);
       }
     } finally {
       setIsSaving(false);
@@ -147,25 +131,7 @@ export default function VehicleScreen(): React.JSX.Element {
   };
 
   if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <StatusBar style="light" />
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Vehicle</Text>
-          <View style={styles.backButton} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Loading vehicle details..." />;
   }
 
   return (
@@ -226,12 +192,11 @@ export default function VehicleScreen(): React.JSX.Element {
               <TextInput
                 style={[styles.input, errors.carModel && styles.inputError]}
                 value={carModel}
-                onChangeText={(text) => {
-                  setCarModel(text);
-                  if (errors.carModel) {
-                    setErrors({ ...errors, carModel: undefined });
-                  }
-                }}
+                    onChangeText={(text) => {
+                      setCarModel(text);
+                      createFieldChangeHandler('carModel')(text);
+                    }}
+                    onBlur={createFieldBlurHandler('carModel')}
                 placeholder="e.g., Camry, Civic, F-150"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"
@@ -250,10 +215,9 @@ export default function VehicleScreen(): React.JSX.Element {
                   // Only allow numbers
                   const numericText = text.replace(/[^0-9]/g, '');
                   setCarYear(numericText);
-                  if (errors.carYear) {
-                    setErrors({ ...errors, carYear: undefined });
-                  }
+                  createFieldChangeHandler('carYear')(numericText);
                 }}
+                onBlur={createFieldBlurHandler('carYear')}
                 placeholder="e.g., 2020"
                 placeholderTextColor="#666666"
                 keyboardType="number-pad"
@@ -269,12 +233,11 @@ export default function VehicleScreen(): React.JSX.Element {
               <TextInput
                 style={[styles.input, errors.carColor && styles.inputError]}
                 value={carColor}
-                onChangeText={(text) => {
-                  setCarColor(text);
-                  if (errors.carColor) {
-                    setErrors({ ...errors, carColor: undefined });
-                  }
-                }}
+                    onChangeText={(text) => {
+                      setCarColor(text);
+                      createFieldChangeHandler('carColor')(text);
+                    }}
+                    onBlur={createFieldBlurHandler('carColor')}
                 placeholder="e.g., Black, White, Red"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"

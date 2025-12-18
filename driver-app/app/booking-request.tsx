@@ -21,6 +21,7 @@ import {
   type Notification,
 } from "@/services/api";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 export default function BookingRequestScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
@@ -37,7 +38,7 @@ export default function BookingRequestScreen(): React.JSX.Element {
         
         // Mark as read when opened
         if (notificationData.unread && user?.id) {
-          const driverId = typeof user.id === "string" ? parseInt(user.id) : user.id;
+          const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
           markNotificationRead(notificationData.id, driverId).catch((error) => {
           });
         }
@@ -180,7 +181,7 @@ export default function BookingRequestScreen(): React.JSX.Element {
           onPress: async () => {
             setIsProcessing(true);
             try {
-              const driverId = typeof user.id === "string" ? parseInt(user.id) : user.id;
+              const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
               await acceptBooking(notification.booking!.id, driverId);
               
               Alert.alert(
@@ -193,8 +194,9 @@ export default function BookingRequestScreen(): React.JSX.Element {
                   },
                 ]
               );
-            } catch (error: any) {
-              Alert.alert("Error", error.message || "Failed to accept booking request");
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : "Failed to accept booking request";
+              Alert.alert("Error", errorMessage);
             } finally {
               setIsProcessing(false);
             }
@@ -233,7 +235,7 @@ export default function BookingRequestScreen(): React.JSX.Element {
           onPress: async () => {
             setIsProcessing(true);
             try {
-              const driverId = typeof user.id === "string" ? parseInt(user.id) : user.id;
+              const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
               await rejectBooking(notification.booking!.id, driverId);
               
               Alert.alert(
@@ -246,8 +248,9 @@ export default function BookingRequestScreen(): React.JSX.Element {
                   },
                 ]
               );
-            } catch (error: any) {
-              Alert.alert("Error", error.message || "Failed to reject booking request");
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : "Failed to reject booking request";
+              Alert.alert("Error", errorMessage);
             } finally {
               setIsProcessing(false);
             }
@@ -258,14 +261,7 @@ export default function BookingRequestScreen(): React.JSX.Element {
   };
 
   if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <StatusBar style="light" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Loading booking details..." />;
   }
 
   if (!notification || !notification.booking) {

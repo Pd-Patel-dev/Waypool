@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { LoadingScreen } from "@/components/LoadingScreen";
 import {
   getEarnings,
   type EarningsSummary,
@@ -37,12 +38,12 @@ export default function EarningsScreen(): React.JSX.Element {
 
     try {
       setError(null);
-      const driverId =
-        typeof user.id === "string" ? parseInt(user.id) : user.id;
+      const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
       const response = await getEarnings(driverId);
       setEarnings(response.earnings); // Extract earnings from response
-    } catch (error: any) {
-      setError(error.message || "Failed to load earnings. Please try again.");
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to load earnings. Please try again.";
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -132,15 +133,7 @@ export default function EarningsScreen(): React.JSX.Element {
   };
 
   if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <StatusBar style="light" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.loadingText}>Loading earnings...</Text>
-        </View>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Loading earnings..." />;
   }
 
   if (error) {

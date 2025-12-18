@@ -35,7 +35,7 @@ export default function BookingHistoryScreen(): React.JSX.Element {
 
     try {
       setIsLoading(true);
-      const driverId = typeof user.id === "string" ? parseInt(user.id) : user.id;
+      const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
       
       // Get all rides (upcoming and past)
       const [upcomingRides, pastRides] = await Promise.all([
@@ -167,9 +167,7 @@ export default function BookingHistoryScreen(): React.JSX.Element {
 
       {/* Content */}
       {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
+        <InlineLoader message="Loading bookings..." size="large" />
       ) : filteredBookings.length === 0 ? (
         <View style={styles.emptyContainer}>
           <IconSymbol name="person.2.fill" size={48} color="#666666" />

@@ -57,7 +57,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const driverId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+    const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
     realtimeService.initialize(driverId);
 
     return () => {

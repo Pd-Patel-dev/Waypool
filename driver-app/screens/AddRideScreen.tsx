@@ -279,7 +279,7 @@ export default function AddRideScreen(): React.JSX.Element {
       return;
     }
 
-    const driverId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+    const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
 
     setIsSubmitting(true);
 

@@ -42,8 +42,7 @@ export default function InboxScreen(): React.JSX.Element {
 
     try {
       setIsLoading(true);
-      const driverId =
-        typeof user.id === "string" ? parseInt(user.id) : user.id;
+      const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
       const response = await getNotifications(driverId);
       if (response.success) {
         setNotifications(response.notifications);
@@ -143,8 +142,9 @@ export default function InboxScreen(): React.JSX.Element {
       await acceptBooking(bookingId, driverId);
       Alert.alert("Success", "Booking accepted!");
       fetchNotifications();
-    } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to accept booking");
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to accept booking";
+      Alert.alert("Error", errorMessage);
     }
   };
 
@@ -156,8 +156,9 @@ export default function InboxScreen(): React.JSX.Element {
       await rejectBooking(bookingId, driverId);
       Alert.alert("Booking Rejected", "The booking has been declined.");
       fetchNotifications();
-    } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to reject booking");
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to reject booking";
+      Alert.alert("Error", errorMessage);
     }
   };
 

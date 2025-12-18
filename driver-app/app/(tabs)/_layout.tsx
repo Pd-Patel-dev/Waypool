@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useUser } from '@/context/UserContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { getNotifications } from '@/services/api';
+import { TIME } from '@/utils/constants';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -22,7 +24,7 @@ export default function TabLayout() {
       if (!user?.id) return;
       
       try {
-        const driverId = typeof user.id === "string" ? parseInt(user.id) : user.id;
+        const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
         const response = await getNotifications(driverId);
         if (response.success) {
           const unreadNotifications = response.notifications.filter((n) => n.unread).length;
@@ -33,7 +35,7 @@ export default function TabLayout() {
     };
 
     fetchBadgeCount();
-    const interval = setInterval(fetchBadgeCount, 30000); // Refresh every 30 seconds
+    const interval = setInterval(fetchBadgeCount, TIME.TAB_NOTIFICATION_REFRESH_INTERVAL);
 
     return () => clearInterval(interval);
   }, [user?.id]);

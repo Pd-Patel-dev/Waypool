@@ -128,7 +128,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
       // Build waypoints (pickups in order)
       const waypoints: { latitude: number; longitude: number }[] = [];
 
-      rideData.passengers?.forEach((passenger) => {
+      (rideData.passengers || []).forEach((passenger) => {
         if (passenger.pickupLatitude && passenger.pickupLongitude) {
           waypoints.push({
             latitude: passenger.pickupLatitude,
@@ -287,7 +287,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
     }
 
     // Add pickup locations
-    rideData.passengers?.forEach((p) => {
+    (rideData.passengers || []).forEach((p) => {
       if (p.pickupLatitude && p.pickupLongitude) {
         coordinates.push({
           latitude: p.pickupLatitude,
@@ -428,8 +428,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
 
     setIsVerifyingPin(true);
     try {
-      const driverId =
-        typeof user.id === "string" ? parseInt(user.id) : user.id;
+      const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
       await markPassengerPickedUp(selectedBookingId, driverId, pin);
       await refreshRide();
       setPinModalVisible(false);
@@ -560,7 +559,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
     }
 
     // Add all passenger pickup locations
-    rideData.passengers?.forEach((p) => {
+    (rideData.passengers || []).forEach((p) => {
       if (p.pickupLatitude && p.pickupLongitude) {
         coords.push({
           latitude: p.pickupLatitude,

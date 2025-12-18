@@ -15,6 +15,7 @@ import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useUser } from "@/context/UserContext";
+import { LoadingScreen } from "@/components/LoadingScreen";
 import { getRideById, submitRating, type Ride, type Passenger, type ApiError } from "@/services/api";
 
 interface RatingState {
@@ -123,8 +124,11 @@ export default function RideCompletionScreen(): React.JSX.Element {
           submitting: false,
         },
       }));
-    } catch (error: any) {
-      const apiError = error as ApiError;
+    } catch (error: unknown) {
+      const apiError: ApiError = 
+        error && typeof error === 'object' && 'message' in error
+          ? (error as ApiError)
+          : { message: "Failed to submit rating", success: false };
       Alert.alert("Error", apiError.message || "Failed to submit rating");
       setRatings((prev) => ({
         ...prev,
@@ -148,8 +152,9 @@ export default function RideCompletionScreen(): React.JSX.Element {
       if (result.action === Share.sharedAction) {
         // Shared successfully
       }
-    } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to share earnings");
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to share earnings";
+      Alert.alert("Error", errorMessage);
     }
   };
 
@@ -167,15 +172,7 @@ export default function RideCompletionScreen(): React.JSX.Element {
   };
 
   if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-        <StatusBar style="light" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.loadingText}>Loading ride details...</Text>
-        </View>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Loading ride details..." />;
   }
 
   return (

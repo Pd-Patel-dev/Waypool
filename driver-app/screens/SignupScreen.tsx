@@ -8,13 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Image,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { CachedImage } from '@/components/CachedImage';
 import { signup, checkEmail, type ApiError } from '@/services/api';
 import { getCitiesByState, getStateNames } from '@/data/usStatesCities';
 import CustomDropdown from '@/components/CustomDropdown';
@@ -99,7 +99,7 @@ export default function SignupScreen(): React.JSX.Element {
               return newErrors;
             });
           }
-        } catch (error) {
+        } catch {
         } finally {
           setIsCheckingEmail(false);
         }
@@ -205,8 +205,11 @@ export default function SignupScreen(): React.JSX.Element {
         'Your account has been created successfully!',
         [{ text: 'Login', onPress: () => router.replace('/login') }]
       );
-    } catch (error: any) {
-      const apiError = error as ApiError;
+    } catch (error: unknown) {
+      const apiError: ApiError = 
+        error && typeof error === 'object' && 'message' in error
+          ? (error as ApiError)
+          : { message: 'Failed to create account', success: false };
       Alert.alert('Error', apiError.message || 'Failed to create account');
     } finally {
       setIsLoading(false);
@@ -396,12 +399,17 @@ export default function SignupScreen(): React.JSX.Element {
 
               {photoUrl && (
                 <View style={styles.photoPreview}>
-                  <Image
-                    source={{ uri: photoUrl }}
+                  <CachedImage
+                    source={photoUrl}
                     style={styles.photoImage}
+                    contentFit="cover"
+                    placeholder="default"
+                    priority="normal"
+                    cachePolicy="disk"
                     onError={() => {
                       setErrors({ ...errors, photoUrl: 'Invalid photo URL' });
                     }}
+                    accessibilityLabel="Profile photo preview"
                   />
                 </View>
               )}

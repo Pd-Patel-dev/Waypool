@@ -11,12 +11,13 @@ import {
   ActivityIndicator,
   Alert,
   Switch,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { CachedImage } from '@/components/CachedImage';
+import { LoadingScreen } from '@/components/LoadingScreen';
 import { 
   getProfile, 
   updateProfile, 
@@ -28,6 +29,8 @@ import {
   type NotificationPreferences 
 } from '@/services/api';
 import { useUser } from '@/context/UserContext';
+import { useFormValidation } from '@/hooks/useFormValidation';
+import { validateRequired, validateEmail, validatePhoneNumber } from '@/utils/validation';
 
 export default function ProfileScreen(): React.JSX.Element {
   const { user, setUser, logout } = useUser();
@@ -57,18 +60,30 @@ export default function ProfileScreen(): React.JSX.Element {
     shareLocationEnabled: true,
   });
 
-  // Errors
-  const [errors, setErrors] = useState<{
-    fullName?: string;
-    email?: string;
-    phoneNumber?: string;
-    city?: string;
-    photoUrl?: string;
-    currentPassword?: string;
-    newPassword?: string;
-    confirmPassword?: string;
-    general?: string;
-  }>({});
+  // Form validation with real-time feedback
+  const {
+    errors,
+    setErrors,
+    clearErrors,
+    validateField,
+    validateAll,
+    handleFieldChange: createFieldChangeHandler,
+    handleFieldBlur: createFieldBlurHandler,
+  } = useFormValidation({
+    rules: {
+      fullName: { required: true },
+      email: { required: true, email: true },
+      phoneNumber: { required: true, phoneNumber: true },
+      city: { required: false },
+      photoUrl: { required: false },
+      currentPassword: { required: false },
+      newPassword: { required: false },
+      confirmPassword: { required: false },
+    },
+    validateOnChange: true,
+    validateOnBlur: true,
+    validateOnMount: false,
+  });
 
   // Fetch profile data and preferences
   useEffect(() => {
@@ -100,7 +115,8 @@ export default function ProfileScreen(): React.JSX.Element {
         }
       } catch (error) {
         const apiError = error as ApiError;
-        Alert.alert('Error', apiError.message || 'Failed to load profile. Please try again.');
+        const errorMessage = getUserFriendlyErrorMessage(apiError);
+        Alert.alert('Error', errorMessage);
       } finally {
         setIsLoading(false);
       }
@@ -110,32 +126,14 @@ export default function ProfileScreen(): React.JSX.Element {
   }, [user?.id]);
 
   const validateForm = (): boolean => {
-    const newErrors: typeof errors = {};
-
-    if (!fullName.trim()) {
-      newErrors.fullName = 'Full name is required';
-    }
-
-    if (!email.trim()) {
-      newErrors.email = 'Email is required';
-    } else {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email.trim())) {
-        newErrors.email = 'Invalid email format';
-      }
-    }
-
-    if (!phoneNumber.trim()) {
-      newErrors.phoneNumber = 'Phone number is required';
-    } else {
-      const phoneRegex = /^[\d\s\-\+\(\)]+$/;
-      if (!phoneRegex.test(phoneNumber.trim()) || phoneNumber.trim().length < 10) {
-        newErrors.phoneNumber = 'Invalid phone number format';
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    // Use the validation hook's validateAll function
+    return validateAll({
+      fullName,
+      email,
+      phoneNumber,
+      city,
+      photoUrl,
+    });
   };
 
   const handleSave = async () => {
@@ -182,10 +180,11 @@ export default function ProfileScreen(): React.JSX.Element {
       }
     } catch (error) {
       const apiError = error as ApiError;
+      const errorMessage = getUserFriendlyErrorMessage(apiError);
       if (apiError.errors && apiError.errors.length > 0) {
         Alert.alert('Validation Error', apiError.errors.join('\n'));
       } else {
-        Alert.alert('Error', apiError.message || 'Failed to update profile. Please try again.');
+        Alert.alert('Error', errorMessage);
       }
     } finally {
       setIsSaving(false);
@@ -341,8 +340,12 @@ export default function ProfileScreen(): React.JSX.Element {
           ]
         );
       }
-    } catch (error: any) {
-      const apiError = error as ApiError;
+    } catch (error: unknown) {
+      // Type guard to check if error is ApiError
+      const apiError: ApiError = 
+        error && typeof error === 'object' && 'message' in error
+          ? (error as ApiError)
+          : { message: 'Failed to delete account. Please try again.', success: false };
       
       if (apiError.message?.includes('active ride') || apiError.message?.includes('pending booking')) {
         Alert.alert(
@@ -361,25 +364,7 @@ export default function ProfileScreen(): React.JSX.Element {
   };
 
   if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <StatusBar style="light" />
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <View style={styles.backButton} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message="Loading profile..." />;
   }
 
   return (
@@ -414,7 +399,15 @@ export default function ProfileScreen(): React.JSX.Element {
             
             <View style={styles.photoContainer}>
               {photoUrl ? (
-                <Image source={{ uri: photoUrl }} style={styles.profileImage} />
+                <CachedImage
+                  source={photoUrl}
+                  style={styles.profileImage}
+                  contentFit="cover"
+                  placeholder="default"
+                  priority="high"
+                  cachePolicy="disk"
+                  accessibilityLabel="Profile photo"
+                />
               ) : (
                 <View style={styles.profileImagePlaceholder}>
                   <IconSymbol size={48} name="person.circle.fill" color="#666666" />
@@ -453,10 +446,9 @@ export default function ProfileScreen(): React.JSX.Element {
                 value={fullName}
                 onChangeText={(text) => {
                   setFullName(text);
-                  if (errors.fullName) {
-                    setErrors({ ...errors, fullName: undefined });
-                  }
+                  createFieldChangeHandler('fullName')(text);
                 }}
+                onBlur={createFieldBlurHandler('fullName')}
                 placeholder="Enter your full name"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"
@@ -473,10 +465,9 @@ export default function ProfileScreen(): React.JSX.Element {
                 value={email}
                 onChangeText={(text) => {
                   setEmail(text);
-                  if (errors.email) {
-                    setErrors({ ...errors, email: undefined });
-                  }
+                  createFieldChangeHandler('email')(text);
                 }}
+                onBlur={createFieldBlurHandler('email')}
                 placeholder="Enter your email"
                 placeholderTextColor="#666666"
                 keyboardType="email-address"
@@ -495,10 +486,9 @@ export default function ProfileScreen(): React.JSX.Element {
                 value={phoneNumber}
                 onChangeText={(text) => {
                   setPhoneNumber(text);
-                  if (errors.phoneNumber) {
-                    setErrors({ ...errors, phoneNumber: undefined });
-                  }
+                  createFieldChangeHandler('phoneNumber')(text);
                 }}
+                onBlur={createFieldBlurHandler('phoneNumber')}
                 placeholder="Enter your phone number"
                 placeholderTextColor="#666666"
                 keyboardType="phone-pad"
@@ -515,10 +505,9 @@ export default function ProfileScreen(): React.JSX.Element {
                 value={city}
                 onChangeText={(text) => {
                   setCity(text);
-                  if (errors.city) {
-                    setErrors({ ...errors, city: undefined });
-                  }
+                  createFieldChangeHandler('city')(text);
                 }}
+                onBlur={createFieldBlurHandler('city')}
                 placeholder="Enter your city"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"

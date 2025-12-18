@@ -1,5 +1,4 @@
 import { websocketService } from './websocket';
-import * as Notifications from 'expo-notifications';
 
 export interface BookingAcceptedEvent {
   bookingId: number;
@@ -271,7 +270,8 @@ class RealtimeService {
         this.callbacks.get(event)?.forEach((cb) => {
           try {
             cb(data);
-          } catch (error) {
+          } catch {
+            // Silently handle errors in callbacks
           }
         });
       });
@@ -290,15 +290,9 @@ class RealtimeService {
   }
 
   private setupEventListeners() {
-    // Handle connection events
-    websocketService.on('connect', () => {
-    });
-
-    websocketService.on('disconnect', (reason) => {
-    });
-
-    websocketService.on('error', (error) => {
-    });
+    // Handle connection events - these are internal handlers for the service
+    // Individual components should not need to listen to these directly
+    // Connection state is managed through isConnected() method
   }
 }
 

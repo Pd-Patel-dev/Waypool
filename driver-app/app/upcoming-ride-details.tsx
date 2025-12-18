@@ -225,10 +225,11 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
                   onPress: () => router.back(),
                 },
               ]);
-            } catch (error: any) {
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : "Failed to cancel ride";
               Alert.alert(
                 "Error",
-                error.message || "Failed to cancel ride. Please try again."
+                errorMessage
               );
             } finally {
               setIsCancelling(false);
