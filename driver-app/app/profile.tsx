@@ -103,7 +103,10 @@ export default function ProfileScreen(): React.JSX.Element {
         setEmail(profile.email || '');
         setPhoneNumber(profile.phoneNumber || '');
         setCity(profile.city || '');
-        setPhotoUrl(profile.photoUrl || '');
+        // Set photoUrl - use profile photoUrl or fallback to user context photoUrl
+        const profilePhotoUrl = profile.photoUrl && profile.photoUrl.trim() ? profile.photoUrl.trim() : '';
+        const userPhotoUrl = user?.photoUrl && user.photoUrl.trim() ? user.photoUrl.trim() : '';
+        setPhotoUrl(profilePhotoUrl || userPhotoUrl || '');
 
         // Fetch preferences
         try {
@@ -399,15 +402,19 @@ export default function ProfileScreen(): React.JSX.Element {
             <Text style={styles.sectionTitle}>Profile Photo</Text>
             
             <View style={styles.photoContainer}>
-              {photoUrl ? (
+              {(photoUrl && photoUrl.trim()) || (user?.photoUrl && user.photoUrl.trim()) ? (
                 <CachedImage
-                  source={photoUrl}
+                  source={(photoUrl && photoUrl.trim()) || (user?.photoUrl && user.photoUrl.trim()) || ''}
                   style={styles.profileImage}
                   contentFit="cover"
                   placeholder="default"
                   priority="high"
                   cachePolicy="disk"
                   accessibilityLabel="Profile photo"
+                  onError={() => {
+                    // If image fails to load, show placeholder
+                    console.log('Failed to load profile image');
+                  }}
                 />
               ) : (
                 <View style={styles.profileImagePlaceholder}>
@@ -862,11 +869,11 @@ const styles = StyleSheet.create({
     borderColor: '#2A2A2A',
   },
   profileImagePlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     backgroundColor: '#1A1A1A',
-    borderWidth: 3,
+    borderWidth: 4,
     borderColor: '#2A2A2A',
     justifyContent: 'center',
     alignItems: 'center',

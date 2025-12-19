@@ -40,7 +40,9 @@ export default function RootLayout() {
                 <Stack.Screen name="settings" options={{ headerShown: false, presentation: 'card' }} />
                 <Stack.Screen name="booking-history" options={{ headerShown: false, presentation: 'card' }} />
                 <Stack.Screen name="payouts" options={{ headerShown: false, presentation: 'card' }} />
+                <Stack.Screen name="payout-onboarding" options={{ headerShown: false, presentation: 'card' }} />
                 <Stack.Screen name="payout-history" options={{ headerShown: false, presentation: 'card' }} />
+                <Stack.Screen name="onboarding/complete" options={{ headerShown: false, presentation: 'card' }} />
               </Stack>
               <StatusBar style="auto" />
             </ThemeProvider>

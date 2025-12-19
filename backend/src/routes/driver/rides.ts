@@ -6,6 +6,7 @@ import { stripe } from '../../lib/stripe';
 import { sendRideStartedNotification } from '../../services/pushNotificationService';
 import { socketService } from '../../services/socketService';
 import { calculateRideEarnings } from '../../utils/earnings';
+import { shouldBypassAuth } from '../../utils/testMode';
 import {
   sendSuccess,
   sendError,
@@ -1612,18 +1613,13 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       });
     }
 
-    // Get driver info to check if it's a test user
-    const driver = await prisma.users.findUnique({
-      where: { id: driverId },
-      select: { email: true },
-    });
-
-    // Check if user is a test user (by email pattern)
-    const isTestUser = driver?.email && (
-      driver.email.toLowerCase().includes('test') ||
-      driver.email.toLowerCase().endsWith('@waypool.com') ||
-      driver.email.toLowerCase().includes('waypool.com')
-    );
+    // Check if test mode is enabled (from environment variable)
+    const isTestMode = shouldBypassAuth();
+    
+    // Debug: Log test mode status
+    if (isTestMode) {
+      console.log(`🧪 TEST MODE DETECTED: ENABLE_TEST_MODE=true is set. Bypassing all location validations.`);
+    }
 
     // Check if ride is already completed or cancelled
     if (ride.status === 'completed') {
@@ -1648,50 +1644,55 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
       });
     }
 
-    // Verify driver location - must be within 100 meters of destination
-    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-      const R = 6371000; // Earth's radius in meters
-      const φ1 = lat1 * Math.PI / 180;
-      const φ2 = lat2 * Math.PI / 180;
-      const Δφ = (lat2 - lat1) * Math.PI / 180;
-      const Δλ = (lon2 - lon1) * Math.PI / 180;
+    // Skip distance validation in test mode
+    if (!isTestMode) {
+      // Verify driver location - must be within 50 meters of destination (only in production)
+      const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+        const R = 6371000; // Earth's radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
 
-      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-      return R * c; // Distance in meters
-    };
+        return R * c; // Distance in meters
+      };
 
-    const distanceToDestination = calculateDistance(
-      parseFloat(driverLatitude),
-      parseFloat(driverLongitude),
-      ride.toLatitude,
-      ride.toLongitude
-    );
+      const distanceToDestination = calculateDistance(
+        parseFloat(driverLatitude),
+        parseFloat(driverLongitude),
+        ride.toLatitude,
+        ride.toLongitude
+      );
 
-    const MAX_DISTANCE_METERS = 50; // 50 meters radius (stricter validation)
-    
-    // Validate coordinates are valid numbers
-    if (isNaN(distanceToDestination) || !isFinite(distanceToDestination)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid location coordinates. Please ensure location services are enabled and try again.',
-        distanceToDestination: null,
-      });
-    }
-    
-    // Skip distance validation for test users
-    if (isTestUser) {
-    } else if (distanceToDestination > MAX_DISTANCE_METERS) {
-      const distanceInFeet = Math.round(distanceToDestination * 3.28084);
-      const maxDistanceInFeet = Math.round(MAX_DISTANCE_METERS * 3.28084);
-      return res.status(400).json({
-        success: false,
-        message: `You must be within ${MAX_DISTANCE_METERS} meters (${maxDistanceInFeet} feet) of the destination to complete the ride. You are currently ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) away.`,
-        distanceToDestination: Math.round(distanceToDestination),
-      });
+      const MAX_DISTANCE_METERS = 50; // 50 meters radius (stricter validation)
+      
+      // Validate coordinates are valid numbers
+      if (isNaN(distanceToDestination) || !isFinite(distanceToDestination)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid location coordinates. Please ensure location services are enabled and try again.',
+          distanceToDestination: null,
+        });
+      }
+      
+      // Check distance to destination
+      if (distanceToDestination > MAX_DISTANCE_METERS) {
+        const distanceInFeet = Math.round(distanceToDestination * 3.28084);
+        const maxDistanceInFeet = Math.round(MAX_DISTANCE_METERS * 3.28084);
+        return res.status(400).json({
+          success: false,
+          message: `You must be within ${MAX_DISTANCE_METERS} meters (${maxDistanceInFeet} feet) of the destination to complete the ride. You are currently ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) away.`,
+          distanceToDestination: Math.round(distanceToDestination),
+        });
+      }
+    } else {
+      // Test mode: Log that validation is being bypassed
+      console.log(`🧪 TEST MODE IS ON: Destination verification bypassed. Driver ${driverId} can complete the ride regardless of location.`);
     }
 
 

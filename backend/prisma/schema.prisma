@@ -132,6 +132,8 @@ model users {
   // Stripe Connect fields for driver payouts
   stripeAccountId                             String?         @unique
   stripeAccountStatus                         String?         // 'pending', 'restricted', 'enabled', 'disabled'
+  stripeOnboardingStatus                      String?         @default("not_started") // 'not_started' | 'pending' | 'verified' | 'restricted'
+  stripeRequirementsDue                        Json?          // Cache for UI (currently_due, eventually_due, past_due)
   bankAccountId                               String?         // Stripe bank account ID
   bankAccountLast4                            String?         // Last 4 digits of bank account
   bankAccountType                             String?         // 'checking' or 'savings'

@@ -35,31 +35,8 @@ class SocketService {
 
     // Authentication middleware (with test mode support)
     this.io.use((socket: Socket, next) => {
-      const { isTestModeEnabled, getTestUserId, logTestModeUsage } = require('../utils/testMode');
+      const { isTestModeEnabled, logTestModeUsage } = require('../utils/testMode');
       
-      // Check if test mode is enabled
-      if (isTestModeEnabled()) {
-        const role = (socket.handshake.query.role as string) || 'driver';
-        const testUserId = getTestUserId(role as 'driver' | 'rider');
-        
-        logTestModeUsage('Socket connection', { 
-          role, 
-          testUserId,
-          socketId: socket.id 
-        });
-        
-        // Store test user info in Map (type-safe, no assertions needed)
-        this.socketToUser.set(socket.id, {
-          userId: testUserId,
-          role: role as 'driver' | 'rider',
-          socketId: socket.id,
-          testMode: true,
-        });
-        
-        return next();
-      }
-      
-      // Normal authentication
       const driverId = socket.handshake.query.driverId;
       const riderId = socket.handshake.query.riderId;
       const role = socket.handshake.query.role;
@@ -77,11 +54,21 @@ class SocketService {
         return next(new Error('User ID is required'));
       }
 
+      // In test mode, bypass authentication but still use the actual user ID
+      if (isTestModeEnabled()) {
+        logTestModeUsage('Socket connection (test mode)', { 
+          role, 
+          userId,
+          socketId: socket.id 
+        });
+      }
+
       // Store user info in Map (type-safe, no assertions needed)
       this.socketToUser.set(socket.id, {
         userId,
         role: role as 'driver' | 'rider',
         socketId: socket.id,
+        testMode: isTestModeEnabled(),
       });
 
       next();

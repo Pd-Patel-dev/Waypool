@@ -39,13 +39,18 @@ router.get('/check-email', async (req: Request, res: Response) => {
       return sendBadRequest(res, 'Invalid email format');
     }
 
-    // Check if user already exists
+    // Check if user already exists and is already a driver
+    // If user exists but is only a rider, email is still available for driver signup
     const existingUser = await prisma.users.findUnique({
       where: { email: email.trim().toLowerCase() },
+      select: { isDriver: true },
     });
 
-    return sendSuccess(res, existingUser ? 'Email is already registered' : 'Email is available', {
-      available: !existingUser,
+    // Email is only unavailable if user exists AND is already a driver
+    const isAlreadyDriver = existingUser?.isDriver ?? false;
+
+    return sendSuccess(res, isAlreadyDriver ? 'Email is already registered as a driver' : 'Email is available', {
+      available: !isAlreadyDriver,
     });
   } catch (error) {
     return sendInternalError(res, error, 'Failed to check email availability');

@@ -85,7 +85,9 @@ export default function SignupScreen(): React.JSX.Element {
         setIsCheckingEmail(true);
         try {
           const response = await checkEmail(email.trim());
-          if (!response.available) {
+          // Handle both wrapped (data.available) and direct (available) response formats
+          const isAvailable = response.data?.available ?? response.available ?? false;
+          if (!isAvailable) {
             setErrors((prev) => ({
               ...prev,
               email: 'This email is already registered.',
@@ -122,6 +124,9 @@ export default function SignupScreen(): React.JSX.Element {
       newErrors.email = 'Email is required';
     } else if (!validateEmail(email)) {
       newErrors.email = 'Please enter a valid email address';
+    } else if (errors.email?.includes('already registered')) {
+      // Don't allow proceeding if email is already registered as a driver
+      newErrors.email = errors.email;
     }
     if (!phoneNumber.trim()) {
       newErrors.phoneNumber = 'Phone number is required';
@@ -130,8 +135,8 @@ export default function SignupScreen(): React.JSX.Element {
     }
     if (!password) {
       newErrors.password = 'Password is required';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
     }
     if (!confirmPassword) {
       newErrors.confirmPassword = 'Please confirm your password';
@@ -191,7 +196,6 @@ export default function SignupScreen(): React.JSX.Element {
         password,
         photoUrl: photoUrl.trim(),
         city: selectedCity,
-        state: selectedState,
         carMake: carMake.trim(),
         carModel: carModel.trim(),
         carYear: parseInt(carYear.trim(), 10),
@@ -206,11 +210,17 @@ export default function SignupScreen(): React.JSX.Element {
         [{ text: 'Login', onPress: () => router.replace('/login') }]
       );
     } catch (error: unknown) {
-      const apiError: ApiError = 
-        error && typeof error === 'object' && 'message' in error
-          ? (error as ApiError)
-          : { message: 'Failed to create account', success: false };
-      Alert.alert('Error', apiError.message || 'Failed to create account');
+      let errorMessage = 'Failed to create account';
+      
+      if (error && typeof error === 'object') {
+        if ('message' in error) {
+          errorMessage = String(error.message);
+        } else if ('errors' in error && Array.isArray(error.errors) && error.errors.length > 0) {
+          errorMessage = error.errors.join('\n');
+        }
+      }
+      
+      Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -289,7 +299,7 @@ export default function SignupScreen(): React.JSX.Element {
                 label="Password"
                 value={password}
                 onChangeText={setPassword}
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
                 secureTextEntry
                 icon="lock.fill"
                 required

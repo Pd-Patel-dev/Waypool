@@ -80,7 +80,8 @@ export const API_ENDPOINTS = {
   BOOKINGS: {
     ACCEPT: (id: number) => `/api/driver/bookings/${id}/accept`,
     REJECT: (id: number) => `/api/driver/bookings/${id}/reject`,
-    PICKUP_COMPLETE: (id: number) => `/api/driver/bookings/${id}/pickup-complete`,
+    PICKUP_COMPLETE: (id: number) =>
+      `/api/driver/bookings/${id}/pickup-complete`,
   },
   RATINGS: {
     SUBMIT: "/api/driver/ratings",
@@ -115,8 +116,24 @@ export const API_ENDPOINTS = {
     CONNECT_ACCOUNT: "/api/driver/payouts/connect-account",
     ACCOUNT_STATUS: "/api/driver/payouts/account-status",
     CREATE_ACCOUNT_LINK: "/api/driver/payouts/create-account-link",
+    UPDATE_ACCOUNT: "/api/driver/payouts/update-account",
+    CREATE_BANK_TOKEN: "/api/driver/payouts/create-bank-account-token",
+    ACCOUNT_REQUIREMENTS: "/api/driver/payouts/account-requirements",
+    DELETE_ACCOUNT: "/api/driver/payouts/delete-account",
+    RESET_STRIPE_STATUS: "/api/driver/payouts/reset-stripe-status",
     INITIATE: "/api/driver/payouts/initiate",
     HISTORY: "/api/driver/payouts/history",
     BALANCE: "/api/driver/payouts/balance",
+  },
+  CONNECT: {
+    ACCOUNT_SESSION: "/api/driver/connect/account-session",
+    STATUS: "/api/driver/connect/status",
+    // Custom Connect endpoints
+    CUSTOM_CREATE: "/api/driver/connect/custom/create",
+    REQUIREMENTS: "/api/driver/connect/requirements",
+    UPDATE_INDIVIDUAL: "/api/driver/connect/custom/update-individual",
+    BANK_TOKEN: "/api/driver/connect/custom/bank-token",
+    ATTACH_BANK: "/api/driver/connect/custom/attach-bank",
+    UPLOAD_DOCUMENT: "/api/driver/connect/custom/upload-document",
   },
 } as const;

@@ -7,6 +7,7 @@ import { getDatabaseStatus, disconnectDatabase } from "./utils/database";
 import { validateAndLogEnvironment } from "./utils/envValidation";
 import driverRoutes from "./routes/driver";
 import riderRoutes from "./routes/rider";
+import stripeWebhookRoutes from "./routes/stripeWebhook.routes";
 import { socketService } from "./services/socketService";
 import { testModeMiddleware } from "./middleware/testModeAuth";
 import { isTestModeEnabled } from "./utils/testMode";
@@ -33,6 +34,11 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// IMPORTANT: Stripe webhook must be mounted BEFORE express.json()
+// to receive raw body for signature verification
+app.use("/api/webhooks", stripeWebhookRoutes);
+
 app.use(express.json());
 
 // Test Mode Middleware (only active in development when enabled)

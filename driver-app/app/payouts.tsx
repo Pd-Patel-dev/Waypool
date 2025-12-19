@@ -11,9 +11,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Linking,
   ActivityIndicator,
   RefreshControl,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -27,6 +27,8 @@ import {
   getPayoutBalance,
   initiatePayout,
   getPayoutHistory,
+  deletePayoutAccount,
+  resetStripeStatus,
   type PayoutAccountStatus,
   type PayoutBalance,
   type PayoutHistoryItem,
@@ -74,31 +76,88 @@ export default function PayoutsScreen(): React.JSX.Element {
 
     try {
       setLoading(true);
-      const result = await createConnectAccount(user.id);
+      
+      // Ensure account exists (will be created if needed)
+      await createConnectAccount(user.id);
 
-      if (result.onboardingUrl) {
-        // Open Stripe onboarding in browser
-        const canOpen = await Linking.canOpenURL(result.onboardingUrl);
-        if (canOpen) {
-          await Linking.openURL(result.onboardingUrl);
-        } else {
-          Alert.alert('Error', 'Unable to open onboarding link');
-        }
+      // Open embedded onboarding web page in external browser
+      // Replace with your actual web app URL
+      const webAppUrl = process.env.EXPO_PUBLIC_WEB_APP_URL || 'http://localhost:3002';
+      const onboardingUrl = `${webAppUrl}/driver/onboarding?driverId=${user.id}`;
+      
+      const canOpen = await Linking.canOpenURL(onboardingUrl);
+      if (canOpen) {
+        await Linking.openURL(onboardingUrl);
       } else {
-        // Account already exists, create update link
-        const linkResult = await createAccountLink(user.id, 'account_update');
-        if (linkResult.url) {
-          const canOpen = await Linking.canOpenURL(linkResult.url);
-          if (canOpen) {
-            await Linking.openURL(linkResult.url);
-          }
-        }
+        Alert.alert('Error', 'Unable to open onboarding page');
       }
     } catch (error) {
       Alert.alert('Error', getUserFriendlyErrorMessage(error));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user?.id) return;
+
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your Stripe Connect account? This will unlink your bank account and you will not be able to receive payouts until you set up a new account.\n\nNote: You cannot delete your account if you have pending payouts.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await deletePayoutAccount(user.id);
+              Alert.alert('Success', 'Account deleted successfully');
+              await loadData();
+            } catch (error) {
+              Alert.alert('Error', getUserFriendlyErrorMessage(error));
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleResetStripeStatus = async () => {
+    if (!user?.id) return;
+
+    Alert.alert(
+      'Reset Stripe Status',
+      'This will clear all Stripe-related data from your account in the app (for testing).\n\nThe Stripe account will still exist in Stripe, but the app will treat it as if you haven\'t set up payouts yet.\n\nThis is useful for testing the onboarding flow again.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await resetStripeStatus(user.id);
+              Alert.alert('Success', 'Stripe status reset successfully. You can now set up payouts again.');
+              await loadData();
+            } catch (error) {
+              Alert.alert('Error', getUserFriendlyErrorMessage(error));
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleInitiatePayout = async () => {
@@ -179,23 +238,37 @@ export default function PayoutsScreen(): React.JSX.Element {
             <Text style={styles.cardTitle}>Bank Account</Text>
           </View>
 
-          {!hasAccount ? (
+          {!hasAccount || !payoutsEnabled ? (
             <View style={styles.setupSection}>
               <Text style={styles.setupText}>
-                Link your bank account to receive payouts from your weekly earnings.
+                {!hasAccount 
+                  ? 'Link your bank account to receive payouts from your weekly earnings.'
+                  : 'Complete your account setup to enable payouts.'}
               </Text>
-              <TouchableOpacity style={styles.setupButton} onPress={handleSetupAccount}>
-                <Text style={styles.setupButtonText}>Set Up Bank Account</Text>
+              <TouchableOpacity 
+                style={[styles.setupButton, loading && styles.setupButtonDisabled]} 
+                onPress={handleSetupAccount}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.setupButtonText}>Setup Payouts</Text>
+                )}
               </TouchableOpacity>
-            </View>
-          ) : !payoutsEnabled ? (
-            <View style={styles.setupSection}>
-              <Text style={styles.setupText}>
-                Complete your account setup to enable payouts.
-              </Text>
-              <TouchableOpacity style={styles.setupButton} onPress={handleSetupAccount}>
-                <Text style={styles.setupButtonText}>Complete Setup</Text>
-              </TouchableOpacity>
+              {hasAccount && accountStatus && (
+                <View style={styles.statusContainer}>
+                  <Text style={styles.statusLabel}>Status:</Text>
+                  <View style={[
+                    styles.statusBadge,
+                    accountStatus.payoutsEnabled ? styles.statusBadgeEnabled : styles.statusBadgePending
+                  ]}>
+                    <Text style={styles.statusText}>
+                      {accountStatus.payoutsEnabled ? 'Enabled' : 'Pending'}
+                    </Text>
+                  </View>
+                </View>
+              )}
             </View>
           ) : bankAccount ? (
             <View style={styles.bankAccountInfo}>
@@ -208,12 +281,28 @@ export default function PayoutsScreen(): React.JSX.Element {
               <Text style={styles.bankAccountType}>
                 {bankAccount.accountType === 'checking' ? 'Checking' : 'Savings'} Account
               </Text>
-              <TouchableOpacity
-                style={styles.updateButton}
-                onPress={handleSetupAccount}
-              >
-                <Text style={styles.updateButtonText}>Update Account</Text>
-              </TouchableOpacity>
+              <View style={styles.accountActions}>
+                <TouchableOpacity
+                  style={styles.updateButton}
+                  onPress={handleSetupAccount}
+                >
+                  <Text style={styles.updateButtonText}>Update Account</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.resetButton}
+                  onPress={handleResetStripeStatus}
+                >
+                  <IconSymbol name="arrow.counterclockwise" size={16} color="#FF9500" />
+                  <Text style={styles.resetButtonText}>Reset</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={handleDeleteAccount}
+                >
+                  <IconSymbol name="trash.fill" size={16} color="#FF3B30" />
+                  <Text style={styles.deleteButtonText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <View style={styles.setupSection}>
@@ -375,10 +464,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
+    minWidth: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  setupButtonDisabled: {
+    opacity: 0.6,
   },
   setupButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  statusLabel: {
+    fontSize: 14,
+    color: '#999999',
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#2C2C2E',
+  },
+  statusBadgeEnabled: {
+    backgroundColor: '#34C759',
+  },
+  statusBadgePending: {
+    backgroundColor: '#FF9500',
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
   bankAccountInfo: {
@@ -399,12 +521,46 @@ const styles = StyleSheet.create({
     color: '#999999',
     marginLeft: 28,
   },
-  updateButton: {
+  accountActions: {
+    flexDirection: 'row',
+    gap: 12,
     marginTop: 8,
-    alignSelf: 'flex-start',
+  },
+  updateButton: {
+    flex: 1,
   },
   updateButtonText: {
     color: '#4285F4',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FF9500',
+  },
+  resetButtonText: {
+    color: '#FF9500',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+  },
+  deleteButtonText: {
+    color: '#FF3B30',
     fontSize: 14,
     fontWeight: '500',
   },
@@ -521,6 +677,19 @@ const styles = StyleSheet.create({
   viewAllButtonText: {
     color: '#4285F4',
     fontSize: 14,
+    fontWeight: '500',
+  },
+  statusBadge: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#2C2C2E',
+    alignSelf: 'center',
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#999999',
     fontWeight: '500',
   },
 });

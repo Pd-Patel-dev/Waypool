@@ -55,9 +55,46 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
     const transferCanceled = event.data.object as any;
     await updatePayoutStatus(transferCanceled.id, 'canceled');
   } else if (eventType === 'account.updated') {
-    // Update driver's Stripe account status
+    // Update driver's Stripe account status when account is updated
     const account = event.data.object as any;
-    // You can add logic here to update the driver's account status in the database
+    try {
+      const { prisma } = await import('../../lib/prisma');
+      
+      // Find driver by Stripe account ID
+      const driver = await prisma.users.findUnique({
+        where: { stripeAccountId: account.id },
+        select: { id: true },
+      });
+
+      if (driver) {
+        // Get external accounts (bank accounts)
+        const externalAccounts = await stripe.accounts.listExternalAccounts(
+          account.id,
+          { object: 'bank_account', limit: 1 }
+        );
+        
+        const bankAccount = externalAccounts.data[0] as any;
+
+        // Update driver's account status and bank account info
+        await prisma.users.update({
+          where: { id: driver.id },
+          data: {
+            stripeAccountStatus: account.details_submitted ? 'enabled' : 'pending',
+            payoutsEnabled: account.payouts_enabled || false,
+            ...(bankAccount && {
+              bankAccountId: bankAccount.id,
+              bankAccountLast4: bankAccount.last4,
+              bankAccountType: bankAccount.account_type,
+              bankAccountStatus: bankAccount.status,
+            }),
+          },
+        });
+
+        console.log(`✅ Updated Stripe account status for driver ${driver.id}: payouts_enabled=${account.payouts_enabled}`);
+      }
+    } catch (error) {
+      console.error('Error updating account status from webhook:', error);
+    }
   } else {
     console.log(`Unhandled event type: ${eventType}`);
   }

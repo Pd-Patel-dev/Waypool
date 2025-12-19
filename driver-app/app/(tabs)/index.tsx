@@ -302,8 +302,9 @@ export default function HomeScreen(): React.JSX.Element {
     try {
       setIsLoadingRides(true);
       const data = await getUpcomingRides(user.id);
-      setRides(data);
+      setRides(Array.isArray(data) ? data : []);
     } catch (error) {
+      console.error('Error fetching rides:', error);
       // Set empty array on error instead of leaving it undefined
       setRides([]);
     } finally {

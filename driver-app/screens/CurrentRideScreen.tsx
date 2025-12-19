@@ -371,13 +371,6 @@ export default function CurrentRideScreen(): React.JSX.Element {
       return;
     }
 
-    // Check if user is a test user (by email pattern)
-    const isTestUser = user?.email && (
-      user.email.toLowerCase().includes('test') ||
-      user.email.toLowerCase().endsWith('@waypool.com') ||
-      user.email.toLowerCase().includes('waypool.com')
-    );
-
     // Calculate distance from destination (in meters)
     const distanceToDestination = calculateDistanceMeters(
       location.latitude,
@@ -386,24 +379,12 @@ export default function CurrentRideScreen(): React.JSX.Element {
       rideData.toLongitude
     );
 
-    const MAX_DISTANCE_METERS = 50; // 50 meters radius (stricter than backend)
-
-    // Frontend validation: Check if driver is close enough to destination (skip for test users)
-    if (!isTestUser && distanceToDestination > MAX_DISTANCE_METERS) {
-      const distanceInFeet = Math.round(distanceToDestination * 3.28084);
-      Alert.alert(
-        "Too Far From Destination",
-        `You must be within ${MAX_DISTANCE_METERS} meters (${Math.round(MAX_DISTANCE_METERS * 3.28084)} feet) of the destination to complete the ride.\n\nYou are currently ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) away.\n\nPlease navigate to the destination first.`,
-        [{ text: "OK" }]
-      );
-      return;
-    }
+    // Note: Frontend validation removed - backend handles validation and test mode bypass
+    // In test mode, backend will bypass location validation automatically
 
     // Show confirmation with distance info
     const distanceInFeet = Math.round(distanceToDestination * 3.28084);
-    const distanceMessage = isTestUser 
-      ? `🧪 Test Mode: Bypassing distance validation.\n\nYou are ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) from the destination.\n\nMark this ride as completed?`
-      : `You are ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) from the destination.\n\nMark this ride as completed?`;
+    const distanceMessage = `You are ${Math.round(distanceToDestination)} meters (${distanceInFeet} feet) from the destination.\n\nMark this ride as completed?`;
     
     Alert.alert(
       "Complete Ride",

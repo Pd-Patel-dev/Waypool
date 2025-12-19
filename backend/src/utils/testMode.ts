@@ -22,27 +22,14 @@ export function isTestModeEnabled(): boolean {
 }
 
 /**
- * Get test user ID for bypassing authentication
- * Returns a default test user ID when test mode is enabled
- * 
- * @throws Error if test user ID is invalid (NaN)
+ * @deprecated Test user IDs are no longer used in test mode.
+ * Test mode now works with any normal user.
+ * This function is kept for backwards compatibility but should not be used.
  */
 export function getTestUserId(role: 'driver' | 'rider' = 'driver'): number {
-  // Default test user IDs (you can customize these)
-  const testDriverId = parseInt(process.env.TEST_DRIVER_ID || '1', 10);
-  const testRiderId = parseInt(process.env.TEST_RIDER_ID || '1', 10);
-  
-  const testId = role === 'driver' ? testDriverId : testRiderId;
-  
-  if (isNaN(testId)) {
-    throw new Error(
-      `Invalid TEST_${role.toUpperCase()}_ID in .env file. ` +
-      `Expected a number, got: ${process.env[`TEST_${role.toUpperCase()}_ID`] || 'undefined'}. ` +
-      `Please set a valid user ID in your .env file.`
-    );
-  }
-  
-  return testId;
+  console.warn('⚠️  getTestUserId() is deprecated. Test mode now works with any user.');
+  // Return a default value but this should not be used
+  return 1;
 }
 
 /**
@@ -54,19 +41,29 @@ export function shouldBypassAuth(): boolean {
 }
 
 /**
- * Validate and return user ID, bypassing in test mode if enabled
+ * Validate and return user ID, bypassing validation in test mode if enabled
  * @param userId - User ID from request (can be null/undefined)
  * @param role - User role (driver or rider)
- * @returns Valid user ID (either from request or test mode default)
+ * @returns Valid user ID from request (validation bypassed in test mode)
  */
 export function getValidatedUserId(
   userId: number | string | null | undefined,
   role: 'driver' | 'rider' = 'driver'
 ): number {
-  // If test mode is enabled, return test user ID
+  // If test mode is enabled, bypass validation but still use the provided userId
   if (shouldBypassAuth()) {
-    const testId = getTestUserId(role);
-    return testId;
+    if (!userId) {
+      throw new Error(`${role} ID is required (even in test mode)`);
+    }
+    
+    const parsedId = typeof userId === 'string' ? parseInt(userId, 10) : userId;
+    
+    if (isNaN(parsedId)) {
+      throw new Error(`Invalid ${role} ID`);
+    }
+    
+    logTestModeUsage(`Bypassing ${role} ID validation`, { userId: parsedId });
+    return parsedId;
   }
   
   // Normal validation

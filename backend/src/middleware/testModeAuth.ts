@@ -6,24 +6,23 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import { isTestModeEnabled, getTestUserId, logTestModeUsage } from '../utils/testMode';
+import { isTestModeEnabled, logTestModeUsage } from '../utils/testMode';
 
 /**
- * Extend Express Request to include test mode user info
+ * Extend Express Request to include test mode info
  */
 declare global {
   namespace Express {
     interface Request {
       testMode?: boolean;
-      testUserId?: number;
       testUserRole?: 'driver' | 'rider';
     }
   }
 }
 
 /**
- * Middleware to inject test user info when test mode is enabled
- * This should be applied before authentication checks
+ * Middleware to mark test mode when enabled
+ * In test mode, we bypass authentication but still use the actual user ID from the request
  */
 export function testModeMiddleware(
   req: Request,
@@ -31,33 +30,20 @@ export function testModeMiddleware(
   next: NextFunction
 ): void {
   if (isTestModeEnabled()) {
-    try {
-      // Determine role from route path
-      const isDriverRoute = req.path.startsWith('/api/driver');
-      const isRiderRoute = req.path.startsWith('/api/rider');
-      
-      const role = isDriverRoute ? 'driver' : isRiderRoute ? 'rider' : 'driver';
-      
-      req.testMode = true;
-      req.testUserId = getTestUserId(role);
-      req.testUserRole = role;
-      
-      logTestModeUsage('Request received', {
-        path: req.path,
-        method: req.method,
-        role,
-        testUserId: req.testUserId,
-      });
-    } catch (error) {
-      // If test user ID is invalid, log error but don't crash
-      console.error('❌ TEST MODE ERROR:', error instanceof Error ? error.message : String(error));
-      console.error('   Please check your .env file:');
-      console.error('   - TEST_DRIVER_ID must be a valid number');
-      console.error('   - TEST_RIDER_ID must be a valid number');
-      console.error('   - Run: npx ts-node scripts/check-test-users.ts to validate');
-      // Don't set test mode if ID is invalid
-      req.testMode = false;
-    }
+    // Determine role from route path
+    const isDriverRoute = req.path.startsWith('/api/driver');
+    const isRiderRoute = req.path.startsWith('/api/rider');
+    
+    const role = isDriverRoute ? 'driver' : isRiderRoute ? 'rider' : 'driver';
+    
+    req.testMode = true;
+    req.testUserRole = role;
+    
+    logTestModeUsage('Request received (test mode enabled)', {
+      path: req.path,
+      method: req.method,
+      role,
+    });
   }
   
   next();
@@ -65,17 +51,13 @@ export function testModeMiddleware(
 
 /**
  * Helper to get user ID from request (with test mode support)
+ * In test mode, we bypass validation but still use the actual user ID from the request
  */
 export function getUserIdFromRequest(
   req: Request,
   role: 'driver' | 'rider' = 'driver'
 ): number {
-  // If test mode is enabled, use test user ID
-  if (req.testMode && req.testUserId) {
-    return req.testUserId;
-  }
-  
-  // Normal extraction from body or query
+  // Extract user ID from body or query (works in both test mode and normal mode)
   const userId = req.body[`${role}Id`] || req.query[`${role}Id`] || req.body.userId || req.query.userId;
   
   if (!userId) {
@@ -86,6 +68,11 @@ export function getUserIdFromRequest(
   
   if (isNaN(parsedId)) {
     throw new Error(`Invalid ${role} ID`);
+  }
+  
+  // In test mode, log that we're bypassing authentication but using the actual user ID
+  if (req.testMode) {
+    logTestModeUsage(`Using ${role} ID from request (bypassing auth)`, { userId: parsedId });
   }
   
   return parsedId;
