@@ -8,25 +8,25 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		13BEA6035E10DC9BB047A8D2 /* libPods-driverapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = ABEFA27E0E873DE5B91A2ECA /* libPods-driverapp.a */; };
-		208D99CCF8E7A3F07100FE08 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B942F0829BF9A4D85D1AA903 /* ExpoModulesProvider.swift */; };
-		28A019EC03BD380D6B8A518D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 986FA07D189A860A41B297CE /* PrivacyInfo.xcprivacy */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		4E79B5F448E059C785CCD591 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0843D06FD39DDB57E4E529EA /* PrivacyInfo.xcprivacy */; };
+		565CF2EA37675B83832E8FCF /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A439152E6B71BB24195F3D /* ExpoModulesProvider.swift */; };
+		666FDA370FCE07AB5FE627AA /* libPods-driverapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 78A92BBC9E45AA2C392C8F46 /* libPods-driverapp.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0843D06FD39DDB57E4E529EA /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = driverapp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* driverapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = driverapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = driverapp/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = driverapp/Info.plist; sourceTree = "<group>"; };
-		986FA07D189A860A41B297CE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = driverapp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		A43FD45606383A439DFC9965 /* Pods-driverapp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-driverapp.debug.xcconfig"; path = "Target Support Files/Pods-driverapp/Pods-driverapp.debug.xcconfig"; sourceTree = "<group>"; };
+		3F3CDF8C2174608230979ECA /* Pods-driverapp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-driverapp.release.xcconfig"; path = "Target Support Files/Pods-driverapp/Pods-driverapp.release.xcconfig"; sourceTree = "<group>"; };
+		77A439152E6B71BB24195F3D /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-driverapp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		78A92BBC9E45AA2C392C8F46 /* libPods-driverapp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-driverapp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = driverapp/SplashScreen.storyboard; sourceTree = "<group>"; };
-		ABEFA27E0E873DE5B91A2ECA /* libPods-driverapp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-driverapp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		B942F0829BF9A4D85D1AA903 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-driverapp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		D86DA3C175C2B9B990A64ACA /* Pods-driverapp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-driverapp.release.xcconfig"; path = "Target Support Files/Pods-driverapp/Pods-driverapp.release.xcconfig"; sourceTree = "<group>"; };
+		DB80BD72D3DBABB05E4C70D6 /* Pods-driverapp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-driverapp.debug.xcconfig"; path = "Target Support Files/Pods-driverapp/Pods-driverapp.debug.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = driverapp/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* driverapp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "driverapp-Bridging-Header.h"; path = "driverapp/driverapp-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -37,13 +37,23 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				13BEA6035E10DC9BB047A8D2 /* libPods-driverapp.a in Frameworks */,
+				666FDA370FCE07AB5FE627AA /* libPods-driverapp.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		00E2B0621C718BD2ECAB7F87 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				DB80BD72D3DBABB05E4C70D6 /* Pods-driverapp.debug.xcconfig */,
+				3F3CDF8C2174608230979ECA /* Pods-driverapp.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
 		13B07FAE1A68108700A75B9A /* driverapp */ = {
 			isa = PBXGroup;
 			children = (
@@ -53,15 +63,7 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				986FA07D189A860A41B297CE /* PrivacyInfo.xcprivacy */,
-			);
-			name = driverapp;
-			sourceTree = "<group>";
-		};
-		28DCFC3276D627577F99D2CC /* driverapp */ = {
-			isa = PBXGroup;
-			children = (
-				B942F0829BF9A4D85D1AA903 /* ExpoModulesProvider.swift */,
+				0843D06FD39DDB57E4E529EA /* PrivacyInfo.xcprivacy */,
 			);
 			name = driverapp;
 			sourceTree = "<group>";
@@ -70,9 +72,17 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				ABEFA27E0E873DE5B91A2ECA /* libPods-driverapp.a */,
+				78A92BBC9E45AA2C392C8F46 /* libPods-driverapp.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		80810500E730810ED4876DD6 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				88406AB2C9CD8BA9A1C7BB77 /* driverapp */,
+			);
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -89,8 +99,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				FEB82B461CDACAAADB63B9DF /* Pods */,
-				992B99A057A30AD61A3A7FFF /* ExpoModulesProviders */,
+				00E2B0621C718BD2ECAB7F87 /* Pods */,
+				80810500E730810ED4876DD6 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -105,12 +115,12 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		992B99A057A30AD61A3A7FFF /* ExpoModulesProviders */ = {
+		88406AB2C9CD8BA9A1C7BB77 /* driverapp */ = {
 			isa = PBXGroup;
 			children = (
-				28DCFC3276D627577F99D2CC /* driverapp */,
+				77A439152E6B71BB24195F3D /* ExpoModulesProvider.swift */,
 			);
-			name = ExpoModulesProviders;
+			name = driverapp;
 			sourceTree = "<group>";
 		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
@@ -122,16 +132,6 @@
 			path = driverapp/Supporting;
 			sourceTree = "<group>";
 		};
-		FEB82B461CDACAAADB63B9DF /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				A43FD45606383A439DFC9965 /* Pods-driverapp.debug.xcconfig */,
-				D86DA3C175C2B9B990A64ACA /* Pods-driverapp.release.xcconfig */,
-			);
-			name = Pods;
-			path = Pods;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -140,13 +140,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "driverapp" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				D642ACE963380D74C0CD3284 /* [Expo] Configure project */,
+				08C5B46CEE6EA87C4E6EFC12 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				36A450D0E43B76993178113E /* [CP] Embed Pods Frameworks */,
+				EA7642832FB304D2CB788C52 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -166,8 +166,8 @@
 				LastUpgradeCheck = 1130;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
-						DevelopmentTeam = NN8L8PX5V4;
 						LastSwiftMigration = 1250;
+						DevelopmentTeam = "NN8L8PX5V4";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -198,7 +198,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				28A019EC03BD380D6B8A518D /* PrivacyInfo.xcprivacy in Resources */,
+				4E79B5F448E059C785CCD591 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,27 +244,29 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		36A450D0E43B76993178113E /* [CP] Embed Pods Frameworks */ = {
+		08C5B46CEE6EA87C4E6EFC12 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-driverapp/Pods-driverapp-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/React-Core-prebuilt/React.framework/React",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ReactNativeDependencies/ReactNativeDependencies.framework/ReactNativeDependencies",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			inputFileListPaths = (
 			);
-			name = "[CP] Embed Pods Frameworks";
+			inputPaths = (
+				"$(SRCROOT)/.xcode.env",
+				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/driverapp/driverapp.entitlements",
+				"$(SRCROOT)/Pods/Target Support Files/Pods-driverapp/expo-configure-project.sh",
+			);
+			name = "[Expo] Configure project";
+			outputFileListPaths = (
+			);
 			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactNativeDependencies.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+				"$(SRCROOT)/Pods/Target Support Files/Pods-driverapp/ExpoModulesProvider.swift",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-driverapp/Pods-driverapp-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-driverapp/expo-configure-project.sh\"\n";
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -312,29 +314,27 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-driverapp/Pods-driverapp-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		D642ACE963380D74C0CD3284 /* [Expo] Configure project */ = {
+		EA7642832FB304D2CB788C52 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
-			inputFileListPaths = (
-			);
 			inputPaths = (
-				"$(SRCROOT)/.xcode.env",
-				"$(SRCROOT)/.xcode.env.local",
-				"$(SRCROOT)/driverapp/driverapp.entitlements",
-				"$(SRCROOT)/Pods/Target Support Files/Pods-driverapp/expo-configure-project.sh",
+				"${PODS_ROOT}/Target Support Files/Pods-driverapp/Pods-driverapp-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/React-Core-prebuilt/React.framework/React",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ReactNativeDependencies/ReactNativeDependencies.framework/ReactNativeDependencies",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
 			);
-			name = "[Expo] Configure project";
-			outputFileListPaths = (
-			);
+			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
-				"$(SRCROOT)/Pods/Target Support Files/Pods-driverapp/ExpoModulesProvider.swift",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactNativeDependencies.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-driverapp/expo-configure-project.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-driverapp/Pods-driverapp-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -344,7 +344,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				208D99CCF8E7A3F07100FE08 /* ExpoModulesProvider.swift in Sources */,
+				565CF2EA37675B83832E8FCF /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -353,15 +353,12 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = A43FD45606383A439DFC9965 /* Pods-driverapp.debug.xcconfig */;
+			baseConfigurationReference = DB80BD72D3DBABB05E4C70D6 /* Pods-driverapp.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = driverapp/driverapp.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = NN8L8PX5V4;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -387,20 +384,20 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				DEVELOPMENT_TEAM = "NN8L8PX5V4";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 			};
 			name = Debug;
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = D86DA3C175C2B9B990A64ACA /* Pods-driverapp.release.xcconfig */;
+			baseConfigurationReference = 3F3CDF8C2174608230979ECA /* Pods-driverapp.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = driverapp/driverapp.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = NN8L8PX5V4;
 				INFOPLIST_FILE = driverapp/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -420,6 +417,9 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				DEVELOPMENT_TEAM = "NN8L8PX5V4";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 			};
 			name = Release;
 		};

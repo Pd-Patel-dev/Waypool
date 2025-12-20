@@ -32,21 +32,36 @@ export type UnknownError =
  * Type guard to check if error has message property
  */
 function hasMessage(error: unknown): error is { message: string } {
-  return typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as Record<string, unknown>).message === 'string'
+  );
 }
 
 /**
  * Type guard to check if error has status property
  */
 function hasStatus(error: unknown): error is { status: number } {
-  return typeof error === 'object' && error !== null && 'status' in error && typeof (error as any).status === 'number';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    typeof (error as Record<string, unknown>).status === 'number'
+  );
 }
 
 /**
  * Type guard to check if error has errors array
  */
 function hasErrors(error: unknown): error is { errors: string[] } {
-  return typeof error === 'object' && error !== null && 'errors' in error && Array.isArray((error as any).errors);
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'errors' in error &&
+    Array.isArray((error as Record<string, unknown>).errors)
+  );
 }
 
 /**

@@ -12,16 +12,21 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { useRouter } from "expo-router";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { SkeletonRideList } from "@/components/SkeletonLoader";
 import {
   getEarnings,
   type EarningsSummary,
   type RideEarning,
 } from "@/services/api";
 import { useUser } from "@/context/UserContext";
+import { HapticFeedback } from "@/utils/haptics";
+import { getUserFriendlyErrorMessage } from "@/utils/errorHandler";
 
 export default function EarningsScreen(): React.JSX.Element {
+  const router = useRouter();
   const { user } = useUser();
   const [earnings, setEarnings] = useState<EarningsSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,8 +54,9 @@ export default function EarningsScreen(): React.JSX.Element {
       }
     } catch (error: unknown) {
       console.error('❌ Error fetching earnings:', error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to load earnings. Please try again.";
+      const errorMessage = getUserFriendlyErrorMessage(error);
       setError(errorMessage);
+      HapticFeedback.error(); // Haptic feedback on error
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -63,7 +69,10 @@ export default function EarningsScreen(): React.JSX.Element {
 
   const onRefresh = () => {
     setIsRefreshing(true);
-    fetchEarnings();
+    HapticFeedback.selection(); // Haptic feedback on pull-to-refresh
+    fetchEarnings().finally(() => {
+      HapticFeedback.success(); // Success feedback when refresh completes
+    });
   };
 
   // Use real data or fallback to 0
@@ -140,7 +149,20 @@ export default function EarningsScreen(): React.JSX.Element {
   };
 
   if (isLoading) {
-    return <LoadingScreen message="Loading earnings..." />;
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>Your Earnings</Text>
+            <Text style={styles.subtitle}>Loading...</Text>
+          </View>
+        </View>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <SkeletonRideList count={3} />
+        </ScrollView>
+      </SafeAreaView>
+    );
   }
 
   if (error) {
@@ -157,7 +179,10 @@ export default function EarningsScreen(): React.JSX.Element {
           <Text style={styles.errorMessage}>{error}</Text>
           <TouchableOpacity
             style={styles.retryButton}
-            onPress={fetchEarnings}
+            onPress={() => {
+              HapticFeedback.action();
+              fetchEarnings();
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.retryButtonText}>Try Again</Text>
@@ -179,6 +204,8 @@ export default function EarningsScreen(): React.JSX.Element {
             refreshing={isRefreshing}
             onRefresh={onRefresh}
             tintColor="#4285F4"
+            colors={['#4285F4']}
+            progressBackgroundColor="#1C1C1E"
           />
         }
       >

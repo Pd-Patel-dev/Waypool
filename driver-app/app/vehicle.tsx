@@ -187,7 +187,7 @@ export default function VehicleScreen(): React.JSX.Element {
                   setCarMake(text);
                   createFieldChangeHandler('carMake')(text);
                 }}
-                onBlur={createFieldBlurHandler('carMake')}
+                onBlur={() => createFieldBlurHandler('carMake')(carMake)}
                 placeholder="e.g., Toyota, Honda, Ford"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"
@@ -206,7 +206,7 @@ export default function VehicleScreen(): React.JSX.Element {
                   setCarModel(text);
                   createFieldChangeHandler('carModel')(text);
                 }}
-                onBlur={createFieldBlurHandler('carModel')}
+                onBlur={() => createFieldBlurHandler('carModel')(carModel)}
                 placeholder="e.g., Camry, Civic, F-150"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"
@@ -227,7 +227,7 @@ export default function VehicleScreen(): React.JSX.Element {
                   setCarYear(numericText);
                   createFieldChangeHandler('carYear')(numericText);
                 }}
-                onBlur={createFieldBlurHandler('carYear')}
+                onBlur={() => createFieldBlurHandler('carYear')(carYear)}
                 placeholder="e.g., 2020"
                 placeholderTextColor="#666666"
                 keyboardType="number-pad"
@@ -247,7 +247,7 @@ export default function VehicleScreen(): React.JSX.Element {
                   setCarColor(text);
                   createFieldChangeHandler('carColor')(text);
                 }}
-                onBlur={createFieldBlurHandler('carColor')}
+                onBlur={() => createFieldBlurHandler('carColor')(carColor)}
                 placeholder="e.g., Black, White, Red"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"

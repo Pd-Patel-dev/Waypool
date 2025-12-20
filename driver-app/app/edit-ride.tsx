@@ -282,8 +282,8 @@ export default function EditRideScreen(): React.JSX.Element {
         return;
       }
 
-      const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
-      const response = await updateRide(rideId!, driverId, updateData);
+      // updateRide expects (rideId, data) - driverId is handled by backend auth
+      const response = await updateRide(rideId!, updateData);
 
       if (response.success) {
         Alert.alert(

@@ -22,6 +22,7 @@ import {
 } from "@/services/api";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { HapticFeedback } from "@/utils/haptics";
 
 export default function BookingRequestScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
@@ -180,10 +181,24 @@ export default function BookingRequestScreen(): React.JSX.Element {
           text: "Accept",
           onPress: async () => {
             setIsProcessing(true);
+            HapticFeedback.action();
+            
+            // Optimistic update: Update UI immediately
+            if (notification) {
+              setNotification({
+                ...notification,
+                booking: notification.booking ? {
+                  ...notification.booking,
+                  status: 'confirmed',
+                } : null,
+              });
+            }
+            
             try {
               const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
               await acceptBooking(notification.booking!.id, driverId);
               
+              HapticFeedback.success();
               Alert.alert(
                 "Success",
                 "Booking request accepted!",
@@ -195,7 +210,19 @@ export default function BookingRequestScreen(): React.JSX.Element {
                 ]
               );
             } catch (error: unknown) {
+              // Revert optimistic update on error
+              if (notification) {
+                setNotification({
+                  ...notification,
+                  booking: notification.booking ? {
+                    ...notification.booking,
+                    status: 'pending',
+                  } : null,
+                });
+              }
+              
               const errorMessage = error instanceof Error ? error.message : "Failed to accept booking request";
+              HapticFeedback.error();
               Alert.alert("Error", errorMessage);
             } finally {
               setIsProcessing(false);
@@ -234,10 +261,24 @@ export default function BookingRequestScreen(): React.JSX.Element {
           style: "destructive",
           onPress: async () => {
             setIsProcessing(true);
+            HapticFeedback.action();
+            
+            // Optimistic update: Update UI immediately
+            if (notification) {
+              setNotification({
+                ...notification,
+                booking: notification.booking ? {
+                  ...notification.booking,
+                  status: 'rejected',
+                } : null,
+              });
+            }
+            
             try {
               const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
               await rejectBooking(notification.booking!.id, driverId);
               
+              HapticFeedback.tap();
               Alert.alert(
                 "Request Rejected",
                 "The booking request has been rejected.",
@@ -249,7 +290,19 @@ export default function BookingRequestScreen(): React.JSX.Element {
                 ]
               );
             } catch (error: unknown) {
+              // Revert optimistic update on error
+              if (notification) {
+                setNotification({
+                  ...notification,
+                  booking: notification.booking ? {
+                    ...notification.booking,
+                    status: 'pending',
+                  } : null,
+                });
+              }
+              
               const errorMessage = error instanceof Error ? error.message : "Failed to reject booking request";
+              HapticFeedback.error();
               Alert.alert("Error", errorMessage);
             } finally {
               setIsProcessing(false);

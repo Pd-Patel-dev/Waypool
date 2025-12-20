@@ -13,7 +13,6 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
-  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -21,9 +20,7 @@ import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useUser } from '@/context/UserContext';
 import {
-  createConnectAccount,
   getAccountStatus,
-  createAccountLink,
   getPayoutBalance,
   initiatePayout,
   getPayoutHistory,
@@ -74,28 +71,8 @@ export default function PayoutsScreen(): React.JSX.Element {
   const handleSetupAccount = async () => {
     if (!user?.id) return;
 
-    try {
-      setLoading(true);
-      
-      // Ensure account exists (will be created if needed)
-      await createConnectAccount(user.id);
-
-      // Open embedded onboarding web page in external browser
-      // Replace with your actual web app URL
-      const webAppUrl = process.env.EXPO_PUBLIC_WEB_APP_URL || 'http://localhost:3002';
-      const onboardingUrl = `${webAppUrl}/driver/onboarding?driverId=${user.id}`;
-      
-      const canOpen = await Linking.canOpenURL(onboardingUrl);
-      if (canOpen) {
-        await Linking.openURL(onboardingUrl);
-      } else {
-        Alert.alert('Error', 'Unable to open onboarding page');
-      }
-    } catch (error) {
-      Alert.alert('Error', getUserFriendlyErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
+    // Navigate to in-app onboarding screen
+    router.push('/payouts/setup');
   };
 
   const handleDeleteAccount = async () => {
@@ -147,7 +124,19 @@ export default function PayoutsScreen(): React.JSX.Element {
             try {
               setLoading(true);
               await resetStripeStatus(user.id);
-              Alert.alert('Success', 'Stripe status reset successfully. You can now set up payouts again.');
+              Alert.alert(
+                'Success',
+                'Stripe status reset successfully. You can now set up payouts again.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Navigate to setup screen to start fresh
+                      router.push('/payouts/setup');
+                    },
+                  },
+                ]
+              );
               await loadData();
             } catch (error) {
               Alert.alert('Error', getUserFriendlyErrorMessage(error));
@@ -206,7 +195,7 @@ export default function PayoutsScreen(): React.JSX.Element {
   const bankAccount = accountStatus?.bankAccount;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
       
       {/* Header */}
@@ -220,6 +209,7 @@ export default function PayoutsScreen(): React.JSX.Element {
             }
           }} 
           style={styles.backButton}
+          activeOpacity={0.7}
         >
           <IconSymbol name="chevron.left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -417,6 +407,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#1C1C1E',
+    backgroundColor: '#000000',
   },
   backButton: {
     width: 40,
@@ -641,26 +632,11 @@ const styles = StyleSheet.create({
   payoutItemRight: {
     alignItems: 'flex-end',
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: '#2C2C2E',
-    marginBottom: 4,
-  },
   statusBadgeSuccess: {
     backgroundColor: '#34C759',
   },
-  statusBadgePending: {
-    backgroundColor: '#FF9500',
-  },
   statusBadgeFailed: {
     backgroundColor: '#FF3B30',
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
   arrivalDate: {
     fontSize: 12,
@@ -677,19 +653,6 @@ const styles = StyleSheet.create({
   viewAllButtonText: {
     color: '#4285F4',
     fontSize: 14,
-    fontWeight: '500',
-  },
-  statusBadge: {
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#2C2C2E',
-    alignSelf: 'center',
-  },
-  statusText: {
-    fontSize: 12,
-    color: '#999999',
     fontWeight: '500',
   },
 });

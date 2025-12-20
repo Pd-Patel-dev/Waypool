@@ -1,45 +1,69 @@
 /**
  * Weekly Payout Service
- * Automatically processes weekly payouts for drivers based on their net earnings
+ * Automatically processes weekly payouts for all drivers with available earnings
  */
 
 import { prisma } from '../lib/prisma';
 import { stripe } from '../lib/stripe';
 import { calculateRideEarnings } from '../utils/earnings';
 
-interface WeeklyEarnings {
+interface WeeklyPayoutResult {
   driverId: number;
-  netEarnings: number;
-  rideCount: number;
+  success: boolean;
+  amount?: number;
+  transferId?: string;
+  payoutId?: string;
+  error?: string;
 }
 
 /**
- * Calculate weekly net earnings for all drivers
+ * Process weekly payout for a single driver
  */
-export async function calculateWeeklyEarningsForAllDrivers(): Promise<WeeklyEarnings[]> {
-  const oneWeekAgo = new Date();
-  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+async function processDriverWeeklyPayout(driverId: number): Promise<WeeklyPayoutResult> {
+  try {
+    // Get driver with Stripe account
+    const driver = await prisma.users.findUnique({
+      where: { id: driverId },
+      select: {
+        stripeAccountId: true,
+        isDriver: true,
+      },
+    });
 
-  // Get all drivers
-  const drivers = await prisma.users.findMany({
-    where: {
-      isDriver: true,
-      stripeAccountId: { not: null },
-      payoutsEnabled: true,
-    },
-    select: {
-      id: true,
-      stripeAccountId: true,
-    },
-  });
+    if (!driver || !driver.isDriver || !driver.stripeAccountId) {
+      return {
+        driverId,
+        success: false,
+        error: 'Driver does not have a Stripe Connect account',
+      };
+    }
 
-  const weeklyEarnings: WeeklyEarnings[] = [];
+    // Verify Stripe is configured
+    if (!stripe) {
+      return {
+        driverId,
+        success: false,
+        error: 'Stripe is not configured',
+      };
+    }
 
-  for (const driver of drivers) {
-    // Get completed rides from the last week
+    // Check if payouts are enabled
+    const account = await stripe.accounts.retrieve(driver.stripeAccountId);
+    if (!account.payouts_enabled) {
+      return {
+        driverId,
+        success: false,
+        error: 'Payouts are not enabled for this account',
+      };
+    }
+
+    // Calculate weekly net earnings (last 7 days)
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
     const completedRides = await prisma.rides.findMany({
       where: {
-        driverId: driver.id,
+        driverId: driverId,
         status: 'completed',
         updatedAt: {
           gte: oneWeekAgo,
@@ -66,112 +90,96 @@ export async function calculateWeeklyEarningsForAllDrivers(): Promise<WeeklyEarn
       totalNetEarnings += earnings.netEarnings;
     }
 
-    // Only include drivers with earnings > $0
-    if (totalNetEarnings > 0) {
-      weeklyEarnings.push({
-        driverId: driver.id,
-        netEarnings: parseFloat(totalNetEarnings.toFixed(2)),
-        rideCount: completedRides.length,
-      });
-    }
-  }
-
-  return weeklyEarnings;
-}
-
-/**
- * Process weekly payout for a single driver
- */
-export async function processWeeklyPayoutForDriver(
-  driverId: number,
-  amount: number
-): Promise<{ success: boolean; payoutId?: string; error?: string }> {
-  try {
-    if (!stripe) {
-      throw new Error('Stripe is not configured');
-    }
-
-    const driver = await prisma.users.findUnique({
-      where: { id: driverId },
-      select: {
-        stripeAccountId: true,
-        payoutsEnabled: true,
-      },
-    });
-
-    if (!driver || !driver.stripeAccountId) {
-      return {
-        success: false,
-        error: 'Driver Stripe account not found',
-      };
-    }
-
-    if (!driver.payoutsEnabled) {
-      return {
-        success: false,
-        error: 'Payouts are not enabled for this driver',
-      };
-    }
-
-    // Check account status
-    const account = await stripe.accounts.retrieve(driver.stripeAccountId);
-    if (!account.payouts_enabled) {
-      return {
-        success: false,
-        error: 'Payouts are not enabled on Stripe account',
-      };
-    }
-
-    // Check for pending payouts (avoid duplicate payouts)
-    const existingPayout = await prisma.payouts.findFirst({
+    // Check for pending payouts that haven't been processed yet
+    const pendingPayouts = await prisma.payouts.aggregate({
       where: {
         driverId: driverId,
         status: {
           in: ['pending', 'processing'],
         },
         createdAt: {
-          gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Last 7 days
+          gte: oneWeekAgo,
         },
+      },
+      _sum: {
+        amount: true,
       },
     });
 
-    if (existingPayout) {
+    const pendingAmount = pendingPayouts._sum.amount || 0;
+    const availableBalance = Math.max(0, totalNetEarnings - pendingAmount);
+
+    // Skip if no earnings available
+    if (availableBalance <= 0) {
       return {
-        success: false,
-        error: 'A payout is already pending for this driver',
+        driverId,
+        success: true,
+        amount: 0,
+        error: 'No earnings available for payout',
       };
     }
 
-    // Create payout
-    const payout = await stripe.transfers.create({
-      amount: Math.round(amount * 100), // Convert to cents
+    // Step 1: Create Transfer FROM platform account TO driver's connected account balance
+    const transfer = await stripe.transfers.create({
+      amount: Math.round(availableBalance * 100), // Convert to cents
       currency: 'usd',
       destination: driver.stripeAccountId,
       description: `Weekly payout for driver ${driverId}`,
+      metadata: {
+        driverId: driverId.toString(),
+        type: 'weekly_payout',
+        period: `week_${oneWeekAgo.toISOString()}_${new Date().toISOString()}`,
+      },
     });
 
-    // Save payout record
-    const payoutRecord = await prisma.payouts.create({
+    console.log(`✅ Weekly transfer created for driver ${driverId}: ${transfer.id} - $${availableBalance}`);
+
+    // Step 2: Create Payout FROM driver's connected account TO their bank account
+    const payout = await stripe.payouts.create(
+      {
+        amount: Math.round(availableBalance * 100), // Convert to cents
+        currency: 'usd',
+        description: `Weekly payout to bank account for driver ${driverId}`,
+        metadata: {
+          driverId: driverId.toString(),
+          transferId: transfer.id,
+          type: 'weekly_payout',
+        },
+      },
+      {
+        stripeAccount: driver.stripeAccountId, // Create payout in connected account context
+      }
+    );
+
+    console.log(`✅ Weekly payout created for driver ${driverId}: ${payout.id} - $${availableBalance} (arrival: ${payout.arrival_date ? new Date(payout.arrival_date * 1000).toISOString() : 'pending'})`);
+
+    // Save payout record in database
+    await prisma.payouts.create({
       data: {
         driverId: driverId,
         stripePayoutId: payout.id,
-        amount: amount,
+        amount: availableBalance,
         currency: 'usd',
-        status: 'pending',
+        status: payout.status === 'paid' ? 'completed' : payout.status === 'pending' ? 'pending' : 'pending',
         payoutMethod: 'bank_account',
-        description: `Weekly payout for driver ${driverId}`,
+        description: `Weekly automatic payout for driver ${driverId}`,
+        arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000) : null,
       },
     });
 
     return {
+      driverId,
       success: true,
-      payoutId: payoutRecord.id.toString(),
+      amount: availableBalance,
+      transferId: transfer.id,
+      payoutId: payout.id,
     };
   } catch (error: any) {
-    console.error(`Error processing payout for driver ${driverId}:`, error);
+    console.error(`❌ Error processing weekly payout for driver ${driverId}:`, error);
     return {
+      driverId,
       success: false,
-      error: error.message || 'Failed to process payout',
+      error: error.message || 'Unknown error',
     };
   }
 }
@@ -179,64 +187,129 @@ export async function processWeeklyPayoutForDriver(
 /**
  * Process weekly payouts for all eligible drivers
  */
-export async function processWeeklyPayoutsForAllDrivers(): Promise<{
-  totalProcessed: number;
-  totalAmount: number;
-  successes: number;
-  failures: number;
-  results: Array<{ driverId: number; success: boolean; amount: number; error?: string }>;
+export async function processWeeklyPayouts(): Promise<{
+  total: number;
+  successful: number;
+  failed: number;
+  results: WeeklyPayoutResult[];
 }> {
-  const weeklyEarnings = await calculateWeeklyEarningsForAllDrivers();
+  console.log('🔄 Starting weekly payout process...');
 
-  const results: Array<{ driverId: number; success: boolean; amount: number; error?: string }> = [];
-  let successes = 0;
-  let failures = 0;
-  let totalAmount = 0;
-
-  for (const earnings of weeklyEarnings) {
-    const result = await processWeeklyPayoutForDriver(earnings.driverId, earnings.netEarnings);
-    
-    results.push({
-      driverId: earnings.driverId,
-      success: result.success,
-      amount: earnings.netEarnings,
-      ...(result.error && { error: result.error }),
+  try {
+    // Get all drivers with Stripe Connect accounts
+    const drivers = await prisma.users.findMany({
+      where: {
+        isDriver: true,
+        stripeAccountId: {
+          not: null,
+        },
+      },
+      select: {
+        id: true,
+      },
     });
 
-    if (result.success) {
-      successes++;
-      totalAmount += earnings.netEarnings;
-    } else {
-      failures++;
-    }
-  }
+    console.log(`📊 Found ${drivers.length} drivers with Stripe accounts`);
 
-  return {
-    totalProcessed: weeklyEarnings.length,
-    totalAmount: parseFloat(totalAmount.toFixed(2)),
-    successes,
-    failures,
-    results,
-  };
+    // Process payouts for all drivers
+    const results = await Promise.all(
+      drivers.map((driver) => processDriverWeeklyPayout(driver.id))
+    );
+
+    const successful = results.filter((r) => r.success && (r.amount || 0) > 0).length;
+    const failed = results.filter((r) => !r.success || (r.amount || 0) === 0).length;
+
+    console.log(`✅ Weekly payout process completed: ${successful} successful, ${failed} skipped/failed`);
+
+    return {
+      total: drivers.length,
+      successful,
+      failed,
+      results,
+    };
+  } catch (error: any) {
+    console.error('❌ Error in weekly payout process:', error);
+    throw error;
+  }
 }
 
 /**
- * Update payout status from Stripe webhook
+ * Initialize weekly payout scheduler
+ * This should be called from the main server file
+ */
+export function initializeWeeklyPayoutScheduler() {
+  // Run weekly payouts every Monday at 9:00 AM
+  const scheduleWeeklyPayouts = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const hour = now.getHours();
+
+    // If it's Monday and 9 AM, run payouts
+    if (dayOfWeek === 1 && hour === 9) {
+      processWeeklyPayouts().catch((error) => {
+        console.error('❌ Scheduled weekly payout failed:', error);
+      });
+    }
+  };
+
+  // Check every hour if it's time to run payouts
+  setInterval(scheduleWeeklyPayouts, 60 * 60 * 1000); // Check every hour
+
+  // Also run immediately if it's the right time
+  scheduleWeeklyPayouts();
+
+  console.log('📅 Weekly payout scheduler initialized (runs every Monday at 9:00 AM)');
+}
+
+/**
+ * Update payout status in database based on Stripe webhook events
+ * @param stripePayoutId - Stripe payout ID
+ * @param status - New status ('paid', 'pending', 'failed', 'canceled', 'in_transit')
+ * @param failureCode - Optional failure code
+ * @param failureMessage - Optional failure message
  */
 export async function updatePayoutStatus(
   stripePayoutId: string,
-  status: string,
-  failureCode?: string,
-  failureMessage?: string
+  status: 'paid' | 'pending' | 'failed' | 'canceled' | 'in_transit' | 'completed',
+  failureCode?: string | null,
+  failureMessage?: string | null
 ): Promise<void> {
-  await prisma.payouts.updateMany({
-    where: { stripePayoutId: stripePayoutId },
-    data: {
-      status: status,
-      failureCode: failureCode || null,
-      failureMessage: failureMessage || null,
-      updatedAt: new Date(),
-    },
-  });
-}
+  try {
+    // Map Stripe status to our database status
+    let dbStatus: string;
+    switch (status) {
+      case 'paid':
+        dbStatus = 'completed';
+        break;
+      case 'pending':
+      case 'in_transit':
+        dbStatus = 'pending';
+        break;
+      case 'failed':
+        dbStatus = 'failed';
+        break;
+      case 'canceled':
+        dbStatus = 'canceled';
+        break;
+      default:
+        dbStatus = status;
+    }
 
+    // Update payout record in database
+    await prisma.payouts.updateMany({
+      where: {
+        stripePayoutId: stripePayoutId,
+      },
+      data: {
+        status: dbStatus,
+        ...(failureCode && { failureCode }),
+        ...(failureMessage && { failureMessage }),
+      },
+    });
+
+    console.log(`✅ Updated payout status: ${stripePayoutId} -> ${dbStatus}`);
+  } catch (error: any) {
+    console.error(`❌ Error updating payout status for ${stripePayoutId}:`, error);
+    throw error;
+  }
+}

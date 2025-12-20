@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, StyleSheet, ViewStyle, ImageStyle, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ViewStyle, ImageStyle, ActivityIndicator, Animated } from 'react-native';
 import { Image, ImageSource, ImageContentFit, ImageTransition, ImageErrorEventData } from 'expo-image';
 import { IconSymbol } from './ui/icon-symbol';
 
@@ -107,6 +107,7 @@ const DefaultPlaceholder: React.FC<{ size?: number }> = ({ size = 120 }) => (
  * - Placeholder support
  * - Loading indicators
  * - Error handling
+ * - Progressive loading support (when progressive prop is true)
  */
 export const CachedImage: React.FC<CachedImageProps> = ({
   source,
@@ -125,19 +126,28 @@ export const CachedImage: React.FC<CachedImageProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [imageOpacity] = useState(new Animated.Value(0));
 
   // Convert string source to ImageSource format
   const imageSource: ImageSource | ImageSource[] | number = typeof source === 'string'
-    ? ({ uri: source, priority, cachePolicy } as ImageSource)
+    ? { uri: source }
     : source;
 
   // Determine if we should show placeholder
   const showPlaceholder = (isLoading || hasError) && placeholder !== undefined;
 
-  // Handle image load
+  // Handle image load with fade-in animation
   const handleLoad = () => {
     setIsLoading(false);
     setHasError(false);
+    
+    // Animate fade-in
+    Animated.timing(imageOpacity, {
+      toValue: 1,
+      duration: transition,
+      useNativeDriver: true,
+    }).start();
+    
     onLoad?.();
   };
 
@@ -149,16 +159,20 @@ export const CachedImage: React.FC<CachedImageProps> = ({
   };
 
   // Render placeholder
-  const renderPlaceholder = () => {
+  const renderPlaceholder = (): React.ReactNode => {
     if (!showPlaceholder) return null;
 
     if (placeholder === 'default') {
-      const size = (style && 'width' in style && typeof style.width === 'number')
-        ? style.width
-        : (style && 'height' in style && typeof style.height === 'number')
-        ? style.height
-        : 120;
-      return <DefaultPlaceholder size={size as number} />;
+      let size = 120;
+      if (style && typeof style === 'object' && !Array.isArray(style)) {
+        const styleObj = style as ViewStyle | ImageStyle;
+        if ('width' in styleObj && typeof styleObj.width === 'number') {
+          size = styleObj.width;
+        } else if ('height' in styleObj && typeof styleObj.height === 'number') {
+          size = styleObj.height;
+        }
+      }
+      return <DefaultPlaceholder size={size} />;
     }
 
     return <>{placeholder}</>;
@@ -169,22 +183,31 @@ export const CachedImage: React.FC<CachedImageProps> = ({
       {showPlaceholder && renderPlaceholder()}
       
       {!hasError && (
-        <Image
-          source={imageSource}
+        <Animated.View
           style={[
-            styles.image,
-            imageStyle,
-            showPlaceholder && styles.imageHidden,
-            !isLoading && !hasError && styles.imageVisible,
+            styles.imageContainer,
+            {
+              opacity: imageOpacity,
+            },
           ]}
-          contentFit={contentFit}
-          transition={transition}
-          priority={priority}
-          cachePolicy={cachePolicy}
-          onLoad={handleLoad}
-          onError={handleError}
-          accessibilityLabel={accessibilityLabel}
-        />
+        >
+          <Image
+            source={imageSource}
+            style={[
+              styles.image,
+              imageStyle,
+              showPlaceholder && styles.imageHidden,
+              !isLoading && !hasError && styles.imageVisible,
+            ]}
+            contentFit={contentFit}
+            transition={transition}
+            priority={priority}
+            cachePolicy={cachePolicy}
+            onLoad={handleLoad}
+            onError={handleError}
+            accessibilityLabel={accessibilityLabel}
+          />
+        </Animated.View>
       )}
 
       {isLoading && showLoadingIndicator && !showPlaceholder && (
@@ -200,6 +223,10 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     overflow: 'hidden',
+  },
+  imageContainer: {
+    width: '100%',
+    height: '100%',
   },
   image: {
     width: '100%',

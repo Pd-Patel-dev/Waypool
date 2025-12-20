@@ -78,12 +78,27 @@ router.get('/', async (req: Request, res: Response) => {
       const distance = ride.distance || 0;
       const pricePerSeat = ride.pricePerSeat || 0;
       
+      // Check if ride has bookings - if not, earnings should be 0
+      if (ride.bookings.length === 0) {
+        console.warn(`[Earnings] Ride ${ride.id} has no bookings - earnings will be $0`);
+      }
+      
+      // Check if pricePerSeat is valid
+      if (pricePerSeat <= 0) {
+        console.warn(`[Earnings] Ride ${ride.id} has invalid pricePerSeat (${pricePerSeat}) - earnings will be $0`);
+      }
+      
       // Calculate gross earnings (before fees)
       const grossRideEarnings = seatsBooked * pricePerSeat;
       
       // Calculate driver earnings after fees (processing fee + $2 commission)
       const earningsBreakdown = calculateRideEarnings(pricePerSeat, ride.bookings);
       const rideEarnings = earningsBreakdown.netEarnings; // Net earnings for driver
+      
+      // Debug logging for troubleshooting
+      if (rideEarnings === 0 && grossRideEarnings > 0) {
+        console.log(`[Earnings] Ride ${ride.id}: Gross=${grossRideEarnings}, Net=${rideEarnings}, Fees=${earningsBreakdown.totalFees}`);
+      }
 
       totalEarnings += rideEarnings;
       totalRides += 1;

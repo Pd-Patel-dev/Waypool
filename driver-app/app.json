@@ -20,6 +20,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Allow Waypool Driver to use your location to show your position on the map and match you with riders.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Waypool Driver to use your location to show your position on the map and match you with riders.",
+        "NSCameraUsageDescription": "We need camera access to capture your ID for Stripe verification.",
+        "NSPhotoLibraryUsageDescription": "We need photo access to upload your ID for Stripe verification.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSExceptionDomains": {
@@ -51,7 +53,12 @@
         "ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
       ],
       "googleServicesFile": "./google-services.json",
       "package": "com.anonymous.driverapp"
@@ -84,13 +91,17 @@
         "expo-notifications",
         {
           "icon": "./assets/images/notification-icon.png",
-          "color": "#4285F4",
-          "sounds": [
-            "./assets/sounds/notification.wav"
-          ]
+          "color": "#4285F4"
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "We need photo access to upload your ID for Stripe verification.",
+          "cameraPermission": "We need camera access to capture your ID for Stripe verification."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

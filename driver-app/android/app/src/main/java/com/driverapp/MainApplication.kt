@@ -1,4 +1,4 @@
-package com.anonymous.driverapp
+package com.driverapp
 
 import android.app.Application
 import android.content.res.Configuration

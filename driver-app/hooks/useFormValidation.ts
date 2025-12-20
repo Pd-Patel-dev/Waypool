@@ -188,10 +188,13 @@ export function useFormValidation(
 
       // Year validation
       if (fieldRules.year) {
-        const result = validateYear(value);
-        if (!result.isValid) {
-          isValid = false;
-          errorMessage = result.error;
+        const yearValue = typeof value === 'string' ? value : (typeof value === 'number' ? value : '');
+        if (yearValue !== '') {
+          const result = validateYear(yearValue);
+          if (!result.isValid) {
+            isValid = false;
+            errorMessage = result.error;
+          }
         }
       }
 
@@ -289,14 +292,15 @@ export function useFormValidation(
 
   // Handle field blur
   const handleFieldBlur = useCallback(
-    (field: string) => (_e: any) => {
+    (field: string) => (value: string | number | null | undefined) => {
       // Mark field as touched
       setTouchedFields((prev) => new Set(prev).add(field));
 
       // Validate on blur if enabled
       if (validateOnBlur) {
-        const value = fieldValues[field];
-        validateField(field, value);
+        // Use provided value or fallback to current field value
+        const fieldValue = value ?? fieldValues[field] ?? '';
+        validateField(field, fieldValue);
       }
     },
     [validateOnBlur, validateField, fieldValues]

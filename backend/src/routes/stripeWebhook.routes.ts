@@ -110,7 +110,7 @@ async function handleAccountUpdated(account: any) {
           pastDue,
           disabledReason,
         },
-      } as any, // Will be properly typed after migration
+      },
     });
 
     console.log(`✅ Updated user ${user.id} from account.updated webhook`);

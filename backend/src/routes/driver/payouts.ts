@@ -4,6 +4,7 @@
  */
 
 import express, { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { stripe } from '../../lib/stripe';
 import {
@@ -16,6 +17,7 @@ import {
 import { getUserIdFromRequest } from '../../middleware/testModeAuth';
 import { getValidatedUserId } from '../../utils/testMode';
 import { formatPhoneToE164 } from '../../utils/phone';
+import { processWeeklyPayouts } from '../../services/weeklyPayoutService';
 
 const router = express.Router();
 
@@ -379,33 +381,91 @@ router.post('/initiate', async (req: Request, res: Response) => {
       return sendBadRequest(res, 'Payouts are not enabled for your account. Please complete account setup.');
     }
 
-    // Create payout
-    const payout = await stripe.transfers.create({
+    // Step 1: Create Transfer FROM platform account TO driver's connected account balance
+    // This moves money into the driver's Stripe balance
+    const transfer = await stripe.transfers.create({
       amount: Math.round(amount * 100), // Convert to cents
       currency: 'usd',
       destination: driver.stripeAccountId,
-      description: description || `Weekly payout for driver ${driverId}`,
+      description: description || `Earnings payout for driver ${driverId}`,
+      metadata: {
+        driverId: driverId.toString(),
+        type: 'driver_earnings',
+      },
     });
 
-    // Save payout record
+    console.log(`✅ Transfer created: ${transfer.id} - $${amount} to connected account ${driver.stripeAccountId}`);
+
+    // Step 2: Create Payout FROM driver's connected account TO their bank account
+    // This moves money from the connected account's balance to the driver's actual bank account
+    // We need to use the connected account context (stripeAccount header)
+    let payout;
+    try {
+      payout = await stripe.payouts.create(
+        {
+          amount: Math.round(amount * 100), // Convert to cents
+          currency: 'usd',
+          description: description || `Payout to bank account for driver ${driverId}`,
+          metadata: {
+            driverId: driverId.toString(),
+            transferId: transfer.id,
+            type: 'driver_earnings',
+          },
+        },
+        {
+          stripeAccount: driver.stripeAccountId, // Create payout in connected account context
+        }
+      );
+
+      const arrivalInfo = payout.arrival_date 
+        ? new Date(payout.arrival_date * 1000).toISOString() 
+        : 'pending (check Stripe dashboard)';
+      console.log(`✅ Payout created: ${payout.id} - $${amount} to bank account`);
+      console.log(`   Status: ${payout.status}, Arrival: ${arrivalInfo}`);
+      console.log(`   Note: Payouts typically take 2-5 business days to reach bank account`);
+    } catch (payoutError: any) {
+      console.error(`❌ Error creating payout for connected account ${driver.stripeAccountId}:`, payoutError);
+      
+      // If payout creation fails, the transfer still succeeded, so we should still save the record
+      // But warn the user that they need to manually create a payout or wait for automatic payout
+      return sendBadRequest(
+        res,
+        `Transfer created successfully, but payout to bank account failed: ${payoutError.message}. ` +
+        `The funds are in your Stripe account balance and will be paid out automatically based on your payout schedule, ` +
+        `or you can create a payout manually from the Stripe dashboard.`
+      );
+    }
+
+    // Save payout record in database
     const payoutRecord = await prisma.payouts.create({
       data: {
         driverId: driverId,
-        stripePayoutId: payout.id,
+        stripePayoutId: payout.id, // Store the actual payout ID (not transfer ID)
         amount: amount,
         currency: 'usd',
-        status: 'pending',
+        status: payout.status === 'paid' ? 'completed' : payout.status === 'pending' ? 'pending' : 'pending',
         payoutMethod: 'bank_account',
-        description: description || `Weekly payout for driver ${driverId}`,
+        description: description || `Payout to bank account for driver ${driverId}`,
+        arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000) : null,
       },
     });
+
+    // Provide status explanation
+    const statusExplanation = payout.status === 'pending' 
+      ? 'Payout is pending - this is normal. Stripe payouts typically take 2-5 business days to reach your bank account.'
+      : payout.status === 'paid'
+      ? 'Payout completed - funds should be in your bank account.'
+      : `Payout status: ${payout.status}`;
 
     return sendSuccess(res, 'Payout initiated successfully', {
       payoutId: payoutRecord.id,
       stripePayoutId: payout.id,
+      transferId: transfer.id,
       amount: amount,
-      status: 'pending',
-      arrivalDate: null, // Stripe Transfer doesn't have arrival_date, only Payouts do
+      status: payout.status,
+      arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000) : null,
+      statusExplanation: statusExplanation,
+      message: 'Funds transferred to your connected account and payout created to your bank account. ' + statusExplanation,
     });
   } catch (error: any) {
     console.error('Error initiating payout:', error);
@@ -421,7 +481,8 @@ router.post('/initiate', async (req: Request, res: Response) => {
 
 /**
  * GET /api/driver/payouts/history
- * Get payout history for driver
+ * Get recent payout history for driver
+ * Shows only actual Stripe payouts (not transfers) with status and availability dates
  */
 router.get('/history', async (req: Request, res: Response) => {
   try {
@@ -438,34 +499,119 @@ router.get('/history', async (req: Request, res: Response) => {
       return sendUnauthorized(res, 'Driver authentication required');
     }
 
-    const payouts = await prisma.payouts.findMany({
-      where: { driverId: driverId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
+    // Get driver's Stripe account ID
+    const driver = await prisma.users.findUnique({
+      where: { id: driverId },
+      select: { stripeAccountId: true },
     });
 
-    const total = await prisma.payouts.count({
-      where: { driverId: driverId },
-    });
+    if (!driver?.stripeAccountId || !stripe) {
+      return sendSuccess(res, 'No payout history available', {
+        payouts: [],
+        total: 0,
+        limit,
+        offset,
+        message: 'No Stripe account found. Complete payout setup to receive payouts.',
+      });
+    }
+
+    // Fetch actual Stripe payouts from the connected account
+    // These are the real payouts that go to the driver's bank account
+    let stripePayouts: any[] = [];
+    let totalPayouts = 0;
+
+    try {
+      const payoutsList = await stripe.payouts.list(
+        {
+          limit: limit + offset, // Fetch more to account for offset
+        },
+        {
+          stripeAccount: driver.stripeAccountId, // View payouts in connected account context
+        }
+      );
+
+      totalPayouts = payoutsList.data.length;
+
+      // Map Stripe payouts with detailed status and availability information
+      stripePayouts = payoutsList.data
+        .slice(offset, offset + limit) // Apply offset and limit
+        .map((p) => {
+          const arrivalDate = p.arrival_date ? new Date(p.arrival_date * 1000) : null;
+          const now = new Date();
+          const isAvailable = arrivalDate && arrivalDate <= now;
+          const daysUntilAvailable = arrivalDate && arrivalDate > now
+            ? Math.ceil((arrivalDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            : null;
+
+          // Determine status display
+          let statusDisplay = p.status;
+          let statusMessage = '';
+          
+          switch (p.status) {
+            case 'paid':
+              statusDisplay = 'completed';
+              statusMessage = isAvailable 
+                ? 'Funds are available in your bank account'
+                : `Funds will be available on ${arrivalDate?.toLocaleDateString()}`;
+              break;
+            case 'pending':
+              statusDisplay = 'pending';
+              statusMessage = arrivalDate
+                ? `Funds will be available on ${arrivalDate.toLocaleDateString()} (${daysUntilAvailable} day${daysUntilAvailable !== 1 ? 's' : ''} away)`
+                : 'Payout is being processed by Stripe. This is normal - bank transfers typically take 2-5 business days.';
+              break;
+            case 'in_transit':
+              statusDisplay = 'in_transit';
+              statusMessage = arrivalDate
+                ? `Funds are in transit, will arrive on ${arrivalDate.toLocaleDateString()}`
+                : 'Funds are in transit to your bank account';
+              break;
+            case 'canceled':
+              statusDisplay = 'canceled';
+              statusMessage = 'Payout was canceled';
+              break;
+            case 'failed':
+              statusDisplay = 'failed';
+              statusMessage = p.failure_message || 'Payout failed';
+              break;
+            default:
+              statusDisplay = p.status;
+              statusMessage = 'Processing payout';
+          }
+
+          return {
+            id: p.id,
+            stripePayoutId: p.id,
+            amount: p.amount / 100, // Convert from cents
+            currency: p.currency,
+            status: statusDisplay,
+            statusMessage: statusMessage,
+            stripeStatus: p.status, // Original Stripe status
+            payoutMethod: p.type || 'bank_account', // 'bank' or 'card'
+            description: p.description || `Payout to bank account`,
+            failureCode: p.failure_code || null,
+            failureMessage: p.failure_message || null,
+            arrivalDate: arrivalDate,
+            isAvailable: isAvailable,
+            daysUntilAvailable: daysUntilAvailable,
+            createdAt: new Date(p.created * 1000),
+            updatedAt: new Date(p.created * 1000), // Stripe payouts don't have an 'updated' field
+          };
+        });
+    } catch (stripeError: any) {
+      console.error('Error fetching Stripe payouts:', stripeError);
+      return sendBadRequest(
+        res,
+        `Unable to fetch payout history: ${stripeError.message || 'Stripe API error'}`
+      );
+    }
 
     return sendSuccess(res, 'Payout history retrieved', {
-      payouts: payouts.map((p) => ({
-        id: p.id,
-        amount: p.amount,
-        currency: p.currency,
-        status: p.status,
-        payoutMethod: p.payoutMethod,
-        description: p.description,
-        failureCode: p.failureCode,
-        failureMessage: p.failureMessage,
-        arrivalDate: p.arrivalDate,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-      })),
-      total,
+      payouts: stripePayouts,
+      total: totalPayouts,
       limit,
       offset,
+      message: 'Showing recent payouts to your bank account with status and availability dates.',
     });
   } catch (error) {
     console.error('Error retrieving payout history:', error);
@@ -970,12 +1116,14 @@ router.post('/reset-stripe-status', async (req: Request, res: Response) => {
       data: {
         stripeAccountId: null,
         stripeAccountStatus: null,
+        stripeOnboardingStatus: "not_started",
+        stripeRequirementsDue: Prisma.JsonNull, // Prisma Json field - use JsonNull
         bankAccountId: null,
         bankAccountLast4: null,
         bankAccountType: null,
         bankAccountStatus: null,
         payoutsEnabled: false,
-      },
+      } as any, // stripeCapabilities may not be in schema yet
     });
 
     console.log(`✅ Reset Stripe status for driver ${driverId} (account ${driver.stripeAccountId || 'none'} still exists in Stripe)`);
@@ -987,6 +1135,37 @@ router.post('/reset-stripe-status', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error resetting Stripe status:', error);
     return sendInternalError(res, error as Error, 'Failed to reset Stripe status');
+  }
+});
+
+/**
+ * POST /api/driver/payouts/process-weekly
+ * Manually trigger weekly payout process (for testing/admin use)
+ * This endpoint processes weekly payouts for all eligible drivers
+ */
+router.post('/process-weekly', async (req: Request, res: Response) => {
+  try {
+    // Optional: Add admin authentication here
+    // For now, allowing any authenticated driver to trigger (useful for testing)
+    
+    console.log('🔄 Manual weekly payout process triggered');
+
+    const result = await processWeeklyPayouts();
+
+    return sendSuccess(res, 'Weekly payout process completed', {
+      total: result.total,
+      successful: result.successful,
+      failed: result.failed,
+      results: result.results.map((r) => ({
+        driverId: r.driverId,
+        success: r.success,
+        amount: r.amount,
+        error: r.error,
+      })),
+    });
+  } catch (error) {
+    console.error('Error processing weekly payouts:', error);
+    return sendInternalError(res, error as Error, 'Failed to process weekly payouts');
   }
 });
 

@@ -19,6 +19,8 @@ import { getUpcomingRides, deleteRide, type Ride } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { calculateTotalDistance } from '@/utils/distance';
 import { LoadingScreen, InlineLoader } from '@/components/LoadingScreen';
+import { SkeletonRideList } from '@/components/SkeletonLoader';
+import { HapticFeedback } from '@/utils/haptics';
 
 // Import Location - it will be null on web but that's handled in the code
 import * as ExpoLocation from 'expo-location';
@@ -324,8 +326,10 @@ export default function HomeScreen(): React.JSX.Element {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    HapticFeedback.selection(); // Haptic feedback on pull-to-refresh
     await fetchRides();
     setRefreshing(false);
+    HapticFeedback.success(); // Success feedback when refresh completes
   }, [fetchRides]);
 
   // Using centralized date formatting utilities from utils/date.ts
@@ -513,7 +517,14 @@ export default function HomeScreen(): React.JSX.Element {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFFFFF" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#4285F4"
+            colors={['#4285F4']}
+            progressBackgroundColor="#1C1C1E"
+            size="default"
+          />
         }>
         {/* Greeting Section */}
         <View style={styles.greetingContainer}>
@@ -827,10 +838,7 @@ export default function HomeScreen(): React.JSX.Element {
           </View>
           
           {isLoadingRides ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#4285F4" />
-              <Text style={styles.loadingText}>Loading rides...</Text>
-            </View>
+            <SkeletonRideList count={3} />
           ) : rides.length === 0 ? (
             <View style={styles.emptyContainer}>
               <IconSymbol size={48} name="car" color="#333333" />

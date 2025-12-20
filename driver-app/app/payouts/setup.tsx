@@ -13,12 +13,12 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
+import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { router } from "expo-router";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useUser } from "@/context/UserContext";
-import { createCustomConnectAccount } from "@/services/api";
+import { createCustomConnectAccount, getConnectRequirements, clearBusinessProfile } from "@/services/api";
 import { getUserFriendlyErrorMessage } from "@/utils/errorHandler";
 
 export default function PayoutSetupIntroScreen(): React.JSX.Element {
@@ -38,8 +38,93 @@ export default function PayoutSetupIntroScreen(): React.JSX.Element {
       // Create Custom connected account
       await createCustomConnectAccount(user.id);
 
-      // Navigate to checklist
-      router.push("/payouts/checklist");
+      // Get requirements to find the first incomplete step
+      const requirements = await getConnectRequirements(user.id);
+      
+      // Clear business_profile if needed
+      if (
+        (requirements.currentlyDue || []).some((req: string) => req.includes("business_profile")) ||
+        (requirements.pastDue || []).some((req: string) => req.includes("business_profile"))
+      ) {
+        await clearBusinessProfile(user.id);
+      }
+
+      // If payouts are enabled, go to complete screen
+      if (requirements.payoutsEnabled) {
+        router.replace("/payouts/complete");
+        return;
+      }
+
+      // Find the first incomplete step and go directly to it
+      const steps = [
+        {
+          id: "personal-info",
+          route: "/payouts/personal-info",
+          requirements: [
+            "individual.first_name",
+            "individual.last_name",
+            "individual.dob",
+            "individual.phone",
+            "individual.address.line1",
+            "individual.address.city",
+            "individual.address.state",
+            "individual.address.postal_code",
+          ],
+        },
+        {
+          id: "identity",
+          route: "/payouts/identity",
+          requirements: ["individual.ssn_last_4", "individual.id_number"],
+        },
+        {
+          id: "bank-account",
+          route: "/payouts/bank-account",
+          requirements: ["external_account"],
+        },
+        {
+          id: "documents",
+          route: "/payouts/document-upload",
+          requirements: [
+            "individual.verification.document",
+            "individual.verification.document.front",
+            "individual.verification.document.back",
+          ],
+        },
+      ];
+
+      const allDue = [
+        ...(requirements.currentlyDue || []),
+        ...(requirements.pastDue || []),
+      ].filter((req: string) => !req.includes("business_profile"));
+
+      // Helper to check if requirement matches
+      const requirementMatches = (stepReq: string, dueReq: string): boolean => {
+        const stepNorm = stepReq.toLowerCase();
+        const dueNorm = dueReq.toLowerCase();
+        return dueNorm.includes(stepNorm) || stepNorm.includes(dueNorm.split(".")[0]);
+      };
+
+      // Helper to check if a step is complete
+      const isStepComplete = (step: typeof steps[0]): boolean => {
+        const hasRequirement = step.requirements.some((stepReq) =>
+          allDue.some((dueReq) => requirementMatches(stepReq, dueReq))
+        );
+        return !hasRequirement; // Step is complete if none of its requirements are due
+      };
+
+      // Go through steps in order - always show them sequentially
+      // Step 1: Personal Info
+      const personalInfoComplete = isStepComplete(steps[0]);
+      if (!personalInfoComplete) {
+        router.replace(steps[0].route as any);
+        return;
+      }
+
+      // Step 2: Identity (ALWAYS show after personal info in initial setup, regardless of Stripe requirements)
+      // Stripe may not require SSN immediately (especially in test mode), but we always collect it
+      // This is the initial setup flow, so we always show identity after personal info
+      router.replace(steps[1].route as any);
+      return;
     } catch (error) {
       Alert.alert("Error", getUserFriendlyErrorMessage(error));
     } finally {
@@ -48,8 +133,21 @@ export default function PayoutSetupIntroScreen(): React.JSX.Element {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="dark" />
+
+      {/* Header */}
+      <View style={styles.navHeader}>
+        <TouchableOpacity 
+          onPress={() => router.back()} 
+          style={styles.backButton}
+          activeOpacity={0.7}
+        >
+          <IconSymbol name="chevron.left" size={24} color="#1A1A1A" />
+        </TouchableOpacity>
+        <Text style={styles.navHeaderTitle}>Setup Payouts</Text>
+        <View style={styles.backButton} />
+      </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {testMode && (
@@ -59,47 +157,10 @@ export default function PayoutSetupIntroScreen(): React.JSX.Element {
         )}
 
         <View style={styles.header}>
-          <IconSymbol name="dollarsign.circle.fill" size={64} color="#4285F4" />
-          <Text style={styles.title}>Set Up Weekly Payouts</Text>
+          <IconSymbol name="dollarsign.circle.fill" size={56} color="#4285F4" />
+          <Text style={styles.title}>Link Your Bank Account</Text>
           <Text style={styles.subtitle}>
-            Complete your payout account setup to receive weekly payments from
-            your ride earnings.
-          </Text>
-        </View>
-
-        <View style={styles.infoSection}>
-          <View style={styles.infoItem}>
-            <IconSymbol
-              name="checkmark.circle.fill"
-              size={24}
-              color="#34C759"
-            />
-            <Text style={styles.infoText}>Secure bank account linking</Text>
-          </View>
-          <View style={styles.infoItem}>
-            <IconSymbol
-              name="checkmark.circle.fill"
-              size={24}
-              color="#34C759"
-            />
-            <Text style={styles.infoText}>Automatic weekly payouts</Text>
-          </View>
-          <View style={styles.infoItem}>
-            <IconSymbol
-              name="checkmark.circle.fill"
-              size={24}
-              color="#34C759"
-            />
-            <Text style={styles.infoText}>Protected by Stripe</Text>
-          </View>
-        </View>
-
-        <View style={styles.requirementsSection}>
-          <Text style={styles.requirementsTitle}>You'll need to provide:</Text>
-          <Text style={styles.requirementsText}>• Personal information</Text>
-          <Text style={styles.requirementsText}>• Bank account details</Text>
-          <Text style={styles.requirementsText}>
-            • Identity verification (if required)
+            Receive weekly payments directly to your bank account
           </Text>
         </View>
 
@@ -119,7 +180,7 @@ export default function PayoutSetupIntroScreen(): React.JSX.Element {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.backButton}
+          style={styles.cancelButton}
           onPress={() => router.back()}
         >
           <Text style={styles.backButtonText}>Cancel</Text>
@@ -133,6 +194,27 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
+  },
+  navHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+    backgroundColor: "#FFFFFF",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navHeaderTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1A1A1A",
   },
   content: {
     padding: 24,
@@ -154,7 +236,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#1A1A1A",
     marginTop: 16,
@@ -165,38 +247,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#666666",
     textAlign: "center",
-    lineHeight: 24,
-    paddingHorizontal: 16,
-  },
-  infoSection: {
-    marginBottom: 32,
-    gap: 16,
-  },
-  infoItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  infoText: {
-    fontSize: 16,
-    color: "#1A1A1A",
-  },
-  requirementsSection: {
-    backgroundColor: "#F5F5F5",
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 32,
-  },
-  requirementsTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1A1A1A",
-    marginBottom: 8,
-  },
-  requirementsText: {
-    fontSize: 14,
-    color: "#666666",
-    marginBottom: 4,
+    lineHeight: 22,
+    marginTop: 8,
   },
   button: {
     backgroundColor: "#4285F4",
@@ -216,7 +268,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  backButton: {
+  cancelButton: {
     padding: 16,
     alignItems: "center",
   },

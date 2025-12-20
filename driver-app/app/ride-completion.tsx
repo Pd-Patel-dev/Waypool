@@ -107,14 +107,14 @@ export default function RideCompletionScreen(): React.JSX.Element {
         },
       }));
 
-      await submitRating(
+      await submitRating({
         rideId,
-        passenger.id,
-        user.id,
-        passenger.riderId,
-        ratingState.rating,
-        ratingState.feedback.trim() || undefined
-      );
+        bookingId: passenger.id,
+        driverId: user.id,
+        riderId: passenger.riderId,
+        rating: ratingState.rating,
+        feedback: ratingState.feedback.trim() || undefined,
+      });
 
       setRatings((prev) => ({
         ...prev,

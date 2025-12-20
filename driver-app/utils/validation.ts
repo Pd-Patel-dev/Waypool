@@ -162,3 +162,19 @@ export function validateZipCode(zipCode: string): ValidationResult {
   return { isValid: true };
 }
 
+/**
+ * Validate time string (HH:MM format, 24-hour)
+ */
+export function validateTime(timeString: string): ValidationResult {
+  if (!timeString || timeString.trim().length === 0) {
+    return { isValid: false, error: 'Time is required' };
+  }
+
+  const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  if (!timeRegex.test(timeString.trim())) {
+    return { isValid: false, error: 'Please enter a valid time in HH:MM format (24-hour)' };
+  }
+
+  return { isValid: true };
+}
+

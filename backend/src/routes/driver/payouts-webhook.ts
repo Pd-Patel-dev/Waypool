@@ -40,20 +40,33 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
   // Handle the event
   const eventType = event.type as string;
   
-  if (eventType === 'transfer.paid') {
-    const transferPaid = event.data.object as any;
-    await updatePayoutStatus(transferPaid.id, 'paid');
-  } else if (eventType === 'transfer.failed') {
-    const transferFailed = event.data.object as any;
+  // Handle payout events (these are the actual payouts to bank accounts)
+  if (eventType === 'payout.paid') {
+    const payout = event.data.object as any;
+    await updatePayoutStatus(payout.id, 'paid');
+  } else if (eventType === 'payout.failed') {
+    const payout = event.data.object as any;
     await updatePayoutStatus(
-      transferFailed.id,
+      payout.id,
       'failed',
-      transferFailed.failure_code,
-      transferFailed.failure_message
+      payout.failure_code,
+      payout.failure_message
     );
-  } else if (eventType === 'transfer.canceled') {
-    const transferCanceled = event.data.object as any;
-    await updatePayoutStatus(transferCanceled.id, 'canceled');
+  } else if (eventType === 'payout.canceled') {
+    const payout = event.data.object as any;
+    await updatePayoutStatus(payout.id, 'canceled');
+  } else if (eventType === 'payout.pending') {
+    const payout = event.data.object as any;
+    await updatePayoutStatus(payout.id, 'pending');
+  } else if (eventType === 'payout.updated') {
+    const payout = event.data.object as any;
+    // Update status based on current payout status
+    await updatePayoutStatus(
+      payout.id,
+      payout.status,
+      payout.failure_code,
+      payout.failure_message
+    );
   } else if (eventType === 'account.updated') {
     // Update driver's Stripe account status when account is updated
     const account = event.data.object as any;

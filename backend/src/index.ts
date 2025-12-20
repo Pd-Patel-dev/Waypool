@@ -11,6 +11,7 @@ import stripeWebhookRoutes from "./routes/stripeWebhook.routes";
 import { socketService } from "./services/socketService";
 import { testModeMiddleware } from "./middleware/testModeAuth";
 import { isTestModeEnabled } from "./utils/testMode";
+import { initializeWeeklyPayoutScheduler } from "./services/weeklyPayoutService";
 
 // Validate environment variables at startup (before initializing services)
 validateAndLogEnvironment();
@@ -31,7 +32,13 @@ app.use(
     origin: true, // Allow all origins in development
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Accept",
+      "X-Requested-With",
+    ],
+    exposedHeaders: ["Content-Length", "Content-Type"],
   })
 );
 
@@ -111,6 +118,9 @@ httpServer.listen(PORT, "0.0.0.0", async () => {
 
   console.log(`🚀 Waypool Server is running on http://0.0.0.0:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
+
+  // Initialize weekly payout scheduler
+  initializeWeeklyPayoutScheduler();
 
   // Check database migration status
   try {

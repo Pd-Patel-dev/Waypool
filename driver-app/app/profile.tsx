@@ -411,6 +411,7 @@ export default function ProfileScreen(): React.JSX.Element {
                   priority="high"
                   cachePolicy="disk"
                   accessibilityLabel="Profile photo"
+                  transition={300}
                   onError={() => {
                     // If image fails to load, show placeholder
                     console.log('Failed to load profile image');
@@ -456,7 +457,7 @@ export default function ProfileScreen(): React.JSX.Element {
                   setFullName(text);
                   createFieldChangeHandler('fullName')(text);
                 }}
-                onBlur={createFieldBlurHandler('fullName')}
+                onBlur={() => createFieldBlurHandler('fullName')(fullName)}
                 placeholder="Enter your full name"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"
@@ -475,7 +476,7 @@ export default function ProfileScreen(): React.JSX.Element {
                   setEmail(text);
                   createFieldChangeHandler('email')(text);
                 }}
-                onBlur={createFieldBlurHandler('email')}
+                onBlur={() => createFieldBlurHandler('email')(email)}
                 placeholder="Enter your email"
                 placeholderTextColor="#666666"
                 keyboardType="email-address"
@@ -496,7 +497,7 @@ export default function ProfileScreen(): React.JSX.Element {
                   setPhoneNumber(text);
                   createFieldChangeHandler('phoneNumber')(text);
                 }}
-                onBlur={createFieldBlurHandler('phoneNumber')}
+                onBlur={() => createFieldBlurHandler('phoneNumber')(phoneNumber)}
                 placeholder="Enter your phone number"
                 placeholderTextColor="#666666"
                 keyboardType="phone-pad"
@@ -515,7 +516,7 @@ export default function ProfileScreen(): React.JSX.Element {
                   setCity(text);
                   createFieldChangeHandler('city')(text);
                 }}
-                onBlur={createFieldBlurHandler('city')}
+                onBlur={() => createFieldBlurHandler('city')(city)}
                 placeholder="Enter your city"
                 placeholderTextColor="#666666"
                 autoCapitalize="words"

@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 // Notifications is used in setNotificationHandler below
 import { API_BASE_URL } from '@/config/api';
 

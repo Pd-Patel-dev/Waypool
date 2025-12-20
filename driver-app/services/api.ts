@@ -444,12 +444,17 @@ export const getEarnings = async (
   const url = `${API_BASE_URL}${API_ENDPOINTS.EARNINGS.GET}?driverId=${driverId}`;
 
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
+    // Use apiFetch with retry logic for network errors
+    const response = await apiFetch(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
+      { maxRetries: 3, initialDelay: 1000 } // Retry up to 3 times with 1s initial delay
+    );
 
     const result = await response.json();
 
@@ -458,6 +463,7 @@ export const getEarnings = async (
         success: false,
         message:
           result.message || "Unable to retrieve earnings. Please try again.",
+        status: response.status,
       } as ApiError;
     }
 
@@ -472,14 +478,19 @@ export const getEarnings = async (
 
     // Fallback for direct earnings response (backwards compatibility)
     return result as EarningsResponse;
-  } catch (error) {
-    if (error && typeof error === "object" && "message" in error) {
-      throw error;
+  } catch (error: unknown) {
+    // Enhanced error handling with user-friendly messages
+    if (error && typeof error === "object" && "message" in error && "success" in error) {
+      throw error; // Already an ApiError
     }
 
+    const errorMessage = getUserFriendlyErrorMessage(error);
+    console.error('[getEarnings] Error fetching earnings:', error);
+    
     throw {
       success: false,
-      message: "Network error. Please check your connection.",
+      message: errorMessage,
+      status: (error as { status?: number })?.status,
     } as ApiError;
   }
 };
@@ -1376,6 +1387,7 @@ export interface Notification {
     pickupAddress: string;
     pickupCity: string;
     pickupState: string;
+    pickupZipCode?: string;
     rider: {
       id: number;
       fullName: string;
@@ -2668,6 +2680,34 @@ export const createCustomConnectAccount = async (
 /**
  * Get Connect requirements
  */
+/**
+ * Clear business_profile requirements for individual accounts
+ */
+export const clearBusinessProfile = async (driverId: number): Promise<ConnectRequirements> => {
+  try {
+    const response = await apiFetch(
+      `${API_BASE_URL}/api/driver/connect/custom/clear-business-profile`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ driverId }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Failed to clear business profile");
+    }
+
+    const data = await response.json();
+    return data.data;
+  } catch (error) {
+    throw new Error(getUserFriendlyErrorMessage(error));
+  }
+};
+
 export const getConnectRequirements = async (
   driverId: number
 ): Promise<ConnectRequirements> => {
@@ -2832,55 +2872,281 @@ export const attachBankAccount = async (
 export const uploadVerificationDocument = async (
   driverId: number,
   frontUri: string,
-  backUri?: string
+  backUri?: string,
+  onProgress?: (progress: number) => void
 ): Promise<ConnectRequirements> => {
   try {
     const url = `${API_BASE_URL}${API_ENDPOINTS.CONNECT.UPLOAD_DOCUMENT}`;
+    console.log("[uploadVerificationDocument] Starting upload for driver:", driverId);
+    console.log("[uploadVerificationDocument] Front URI:", frontUri.substring(0, 50) + "...");
+    if (backUri) {
+      console.log("[uploadVerificationDocument] Back URI:", backUri.substring(0, 50) + "...");
+    }
 
-    // Create FormData
+    // Build FormData - React Native FormData format
     const formData = new FormData();
+    
+    // Append driverId (needed for test mode and some auth setups)
     formData.append("driverId", driverId.toString());
 
-    // Add front image
-    const frontFile = {
+    // Extract filename from URI or use default
+    const getFilename = (uri: string, defaultName: string): string => {
+      const uriParts = uri.split("/");
+      const filename = uriParts[uriParts.length - 1];
+      // If filename has extension, use it; otherwise add .jpg
+      if (filename.includes(".")) {
+        return filename;
+      }
+      return `${defaultName}.jpg`;
+    };
+
+    // Append front (required)
+    const frontFilename = getFilename(frontUri, "front");
+    formData.append("front", {
       uri: frontUri,
       type: "image/jpeg",
-      name: "front.jpg",
-    } as any;
-    formData.append("front", frontFile);
+      name: frontFilename,
+    } as any);
 
-    // Add back image if provided
+    // Append back only if selected
     if (backUri) {
-      const backFile = {
+      const backFilename = getFilename(backUri, "back");
+      formData.append("back", {
         uri: backUri,
         type: "image/jpeg",
-        name: "back.jpg",
-      } as any;
-      formData.append("back", backFile);
+        name: backFilename,
+      } as any);
     }
 
-    const response = await apiFetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-      body: formData,
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw {
-        success: false,
-        message: result.message || getUserFriendlyErrorMessage(result),
-      } as ApiError;
+    console.log("[uploadVerificationDocument] Sending request to:", url);
+    console.log("[uploadVerificationDocument] API_BASE_URL:", API_BASE_URL);
+    console.log("[uploadVerificationDocument] Full URL:", url);
+    
+    // Test connection first (quick health check) - but don't fail if it times out
+    // Some networks may block health checks but allow the actual upload
+    try {
+      console.log("[uploadVerificationDocument] Testing backend connection...");
+      const healthController = new AbortController();
+      const healthTimeout = setTimeout(() => healthController.abort(), 10000); // 10 second timeout
+      
+      const healthCheck = await fetch(`${API_BASE_URL}/health`, {
+        method: "GET",
+        signal: healthController.signal,
+      });
+      clearTimeout(healthTimeout);
+      
+      console.log("[uploadVerificationDocument] Health check status:", healthCheck.status);
+      if (healthCheck.ok) {
+        console.log("[uploadVerificationDocument] ✅ Backend is reachable");
+      } else {
+        console.warn("[uploadVerificationDocument] ⚠️  Health check returned non-OK status, but continuing anyway");
+      }
+    } catch (healthError: any) {
+      // Don't fail the upload if health check fails - just log a warning
+      // The actual upload might still work
+      console.warn("[uploadVerificationDocument] ⚠️  Health check failed, but continuing with upload:", healthError?.message);
+      console.warn("[uploadVerificationDocument] This may be a network configuration issue, but upload will still be attempted");
     }
+    
+    // For file uploads, use a longer timeout and disable retries (file uploads shouldn't be retried)
+    // Use direct fetch instead of apiFetch to avoid retries and have better control
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.error("[uploadVerificationDocument] Request timeout after 5 minutes");
+      console.error("[uploadVerificationDocument] URL was:", url);
+      console.error("[uploadVerificationDocument] This usually means:");
+      console.error("  1. Backend is not responding");
+      console.error("  2. Network connectivity issue");
+      console.error("  3. Backend is processing but taking too long");
+      controller.abort();
+    }, 300000); // 5 minute timeout for file uploads (Stripe can be slow)
 
-    return result.data || result;
+    try {
+      console.log("[uploadVerificationDocument] ===== STARTING FETCH ===== ");
+      console.log("[uploadVerificationDocument] Method: POST");
+      console.log("[uploadVerificationDocument] URL:", url);
+      console.log("[uploadVerificationDocument] FormData entries:", {
+        hasDriverId: formData.has("driverId"),
+        hasFront: formData.has("front"),
+        hasBack: formData.has("back"),
+      });
+      
+      // Log file sizes if possible
+      try {
+        const formDataAny = formData as any;
+        const frontFile = formDataAny._parts?.find((p: any) => p[0] === "front")?.[1];
+        const backFile = formDataAny._parts?.find((p: any) => p[0] === "back")?.[1];
+        if (frontFile) {
+          console.log("[uploadVerificationDocument] Front file type:", typeof frontFile);
+          if (frontFile.uri) console.log("[uploadVerificationDocument] Front file URI:", frontFile.uri.substring(0, 50));
+        }
+        if (backFile) {
+          console.log("[uploadVerificationDocument] Back file type:", typeof backFile);
+          if (backFile.uri) console.log("[uploadVerificationDocument] Back file URI:", backFile.uri.substring(0, 50));
+        }
+      } catch (e) {
+        console.warn("[uploadVerificationDocument] Could not inspect FormData parts:", e);
+      }
+      
+      console.log("[uploadVerificationDocument] About to call fetch()...");
+      console.log("[uploadVerificationDocument] AbortController signal:", controller.signal.aborted ? "ABORTED" : "ACTIVE");
+      
+      const fetchStartTime = Date.now();
+      
+      // Add a heartbeat to see if we're stuck
+      const heartbeat = setInterval(() => {
+        const elapsed = Date.now() - fetchStartTime;
+        console.log(`[uploadVerificationDocument] ⏱️  Still waiting... ${elapsed}ms elapsed`);
+      }, 5000); // Log every 5 seconds
+      
+      let response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            // Do NOT manually set Content-Type - let FormData set it with boundary
+            // React Native will automatically set Content-Type with boundary for FormData
+            // Authorization header will be added by apiFetch wrapper if needed
+          },
+          body: formData,
+          signal: controller.signal,
+        });
+        clearInterval(heartbeat);
+        console.log("[uploadVerificationDocument] ✅ Fetch promise resolved!");
+      } catch (fetchError: any) {
+        clearInterval(heartbeat);
+        const elapsed = Date.now() - fetchStartTime;
+        console.error("[uploadVerificationDocument] ❌ Fetch promise rejected after", elapsed, "ms");
+        console.error("[uploadVerificationDocument] Error details:", {
+          name: fetchError?.name,
+          message: fetchError?.message,
+          code: fetchError?.code,
+          type: fetchError?.type,
+        });
+        
+        // Check if it's a network error
+        if (fetchError?.name === "AbortError" || fetchError?.message?.includes("aborted")) {
+          throw {
+            success: false,
+            message: `Upload timed out after ${Math.round(elapsed / 1000)} seconds. Please check your connection and try again.`,
+          } as ApiError;
+        }
+        
+        if (fetchError?.message?.includes("Network request failed") || fetchError?.message?.includes("Failed to fetch")) {
+          throw {
+            success: false,
+            message: `Network error: Could not connect to ${API_BASE_URL}. Please check your internet connection and API URL.`,
+          } as ApiError;
+        }
+        
+        throw fetchError;
+      }
+
+      const fetchTime = Date.now() - fetchStartTime;
+      clearTimeout(timeoutId);
+
+      console.log("[uploadVerificationDocument] ===== FETCH COMPLETED ===== ");
+      console.log("[uploadVerificationDocument] Fetch took:", fetchTime, "ms");
+      console.log("[uploadVerificationDocument] Response status:", response.status);
+      console.log("[uploadVerificationDocument] Response ok:", response.ok);
+      console.log("[uploadVerificationDocument] Response statusText:", response.statusText);
+      
+      try {
+        const headersObj: Record<string, string> = {};
+        response.headers.forEach((value, key) => {
+          headersObj[key] = value;
+        });
+        console.log("[uploadVerificationDocument] Response headers:", headersObj);
+      } catch (headerError) {
+        console.warn("[uploadVerificationDocument] Could not log headers:", headerError);
+      }
+
+      if (!response.ok) {
+        let errorMessage = `Upload failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          console.error("[uploadVerificationDocument] Error response:", errorData);
+        } catch (e) {
+          const errorText = await response.text();
+          console.error("[uploadVerificationDocument] Error text:", errorText);
+          errorMessage = errorText || errorMessage;
+        }
+        throw {
+          success: false,
+          message: errorMessage,
+          status: response.status,
+        } as ApiError;
+      }
+
+      const result = await response.json();
+      console.log("[uploadVerificationDocument] Upload successful:", result);
+      
+      // Backend returns: { success, message, frontFileId, backFileId?, payoutsEnabled, chargesEnabled, currentlyDue, eventuallyDue, pastDue, disabledReason? }
+      // Frontend expects: ConnectRequirements { hasAccount, stripeAccountId?, payoutsEnabled?, chargesEnabled?, currentlyDue?, eventuallyDue?, pastDue?, disabledReason? }
+      
+      if (result.success) {
+        // Transform backend response to ConnectRequirements format
+        const connectRequirements: ConnectRequirements = {
+          hasAccount: true, // We have an account if upload succeeded
+          payoutsEnabled: result.payoutsEnabled,
+          chargesEnabled: result.chargesEnabled,
+          currentlyDue: result.currentlyDue || [],
+          eventuallyDue: result.eventuallyDue || [],
+          pastDue: result.pastDue || [],
+          disabledReason: result.disabledReason || null,
+        };
+        
+        console.log("[uploadVerificationDocument] Transformed response:", connectRequirements);
+        return connectRequirements;
+      }
+      
+      // Fallback for old format
+      return result.data || result;
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      console.error("[uploadVerificationDocument] ===== FETCH ERROR ===== ");
+      console.error("[uploadVerificationDocument] Error name:", fetchError?.name);
+      console.error("[uploadVerificationDocument] Error message:", fetchError?.message);
+      console.error("[uploadVerificationDocument] Error type:", typeof fetchError);
+      console.error("[uploadVerificationDocument] Full error:", fetchError);
+      
+      if (fetchError.name === "AbortError" || fetchError.name === "TimeoutError") {
+        console.error("[uploadVerificationDocument] Upload timeout - request was aborted");
+        console.error("[uploadVerificationDocument] This means the request took longer than 5 minutes");
+        console.error("[uploadVerificationDocument] Possible causes:");
+        console.error("  1. Backend is not responding");
+        console.error("  2. Network is very slow");
+        console.error("  3. Backend is stuck processing");
+        console.error("[uploadVerificationDocument] URL was:", url);
+        throw {
+          success: false,
+          message: "Upload timed out after 5 minutes. Please check your connection and try again. If the problem persists, check backend logs.",
+        } as ApiError;
+      }
+      
+      if (fetchError.message?.includes("Network request failed") || 
+          fetchError.message?.includes("Failed to fetch") ||
+          fetchError.message?.includes("NetworkError")) {
+        console.error("[uploadVerificationDocument] Network error - cannot reach backend");
+        console.error("[uploadVerificationDocument] API_BASE_URL:", API_BASE_URL);
+        throw {
+          success: false,
+          message: `Network error: Cannot reach backend server at ${API_BASE_URL}. Please check your connection and API URL configuration.`,
+        } as ApiError;
+      }
+      
+      console.error("[uploadVerificationDocument] Unknown fetch error:", fetchError);
+      throw fetchError;
+    }
   } catch (error: unknown) {
+    console.error("[uploadVerificationDocument] Upload error:", error);
+    const errorMessage = getUserFriendlyErrorMessage(error);
+    console.error("[uploadVerificationDocument] Error message:", errorMessage);
     throw {
       success: false,
-      message: getUserFriendlyErrorMessage(error),
+      message: errorMessage,
     } as ApiError;
   }
 };

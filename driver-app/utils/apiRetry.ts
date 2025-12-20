@@ -57,14 +57,24 @@ function sleep(ms: number): Promise<void> {
  * Type guard to check if error has message property
  */
 function hasMessage(error: unknown): error is { message: string } {
-  return typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as Record<string, unknown>).message === 'string'
+  );
 }
 
 /**
  * Type guard to check if error has status property
  */
 function hasStatus(error: unknown): error is { status: number } {
-  return typeof error === 'object' && error !== null && 'status' in error && typeof (error as any).status === 'number';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    typeof (error as Record<string, unknown>).status === 'number'
+  );
 }
 
 /**
@@ -174,7 +184,7 @@ export async function retryApiCall<T>(
     retryableStatusCodes: options.retryableStatusCodes || DEFAULT_OPTIONS.retryableStatusCodes,
   };
 
-  let lastError: any;
+  let lastError: unknown;
   let delay = opts.initialDelay;
 
   // Try initial attempt + maxRetries

@@ -7,12 +7,14 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { SkeletonRideList } from "@/components/SkeletonLoader";
 import { getPastRides, type Ride } from "@/services/api";
 import { useUser } from "@/context/UserContext";
 import { calculateTotalDistance } from "@/utils/distance";
@@ -44,7 +46,10 @@ export default function PastRidesScreen(): React.JSX.Element {
 
   const onRefresh = () => {
     setIsRefreshing(true);
-    fetchPastRides();
+    HapticFeedback.selection();
+    fetchPastRides().finally(() => {
+      HapticFeedback.success();
+    });
   };
 
   const formatDate = (dateString: string, fallbackDate?: string, fallbackTime?: string): string => {
@@ -255,7 +260,9 @@ export default function PastRidesScreen(): React.JSX.Element {
           <Text style={styles.headerTitle}>Past Rides</Text>
           <View style={styles.backButton} />
         </View>
-        <LoadingScreen message="Loading past rides..." />
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <SkeletonRideList count={5} />
+        </ScrollView>
       </SafeAreaView>
     );
   }

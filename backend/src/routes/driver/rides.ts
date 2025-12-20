@@ -1718,8 +1718,15 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     if (ride.bookings.length > 0) {
       totalEarnings = ride.bookings.reduce((sum, booking) => {
         const seats = booking.numberOfSeats || 1;
-        return sum + (seats * ride.pricePerSeat);
+        return sum + (seats * (ride.pricePerSeat || 0));
       }, 0);
+    } else {
+      console.warn(`[CompleteRide] Ride ${rideId} has no bookings - totalEarnings will be $0`);
+    }
+    
+    // Validate pricePerSeat
+    if (!ride.pricePerSeat || ride.pricePerSeat <= 0) {
+      console.warn(`[CompleteRide] Ride ${rideId} has invalid pricePerSeat (${ride.pricePerSeat}) - totalEarnings will be $0`);
     }
 
     // Capture payments for all bookings before completing the ride
@@ -1743,6 +1750,11 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
 
       await Promise.all(capturePromises);
     }
+
+    // NOTE: Payouts are NOT automatic. Drivers must request payouts manually via:
+    // POST /api/driver/payouts/initiate
+    // Or set up weekly scheduled payouts (future feature)
+    // Earnings are tracked in totalEarnings and can be paid out later
 
     // Complete the ride and all associated bookings in a transaction
     await prisma.$transaction(async (tx) => {
