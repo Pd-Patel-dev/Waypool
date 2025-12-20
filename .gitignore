@@ -85,3 +85,6 @@ coverage/
 *.temp
 .cache/
 
+# Documentation files
+*.md
+
