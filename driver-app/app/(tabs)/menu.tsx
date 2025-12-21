@@ -74,7 +74,25 @@ export default function MenuScreen(): React.JSX.Element {
           {user && (
             <View style={styles.userInfo}>
               <Text style={styles.userName}>{user.fullName}</Text>
-              <Text style={styles.userEmail}>{user.email}</Text>
+              <View style={styles.emailRow}>
+                <Text style={styles.userEmail}>{user.email}</Text>
+                <View style={[
+                  styles.verificationBadge,
+                  user.emailVerified ? styles.verificationBadgeVerified : styles.verificationBadgeUnverified
+                ]}>
+                  <IconSymbol 
+                    size={12} 
+                    name={user.emailVerified ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"} 
+                    color={user.emailVerified ? "#34C759" : "#FF9500"} 
+                  />
+                  <Text style={[
+                    styles.verificationText,
+                    user.emailVerified ? styles.verificationTextVerified : styles.verificationTextUnverified
+                  ]}>
+                    {user.emailVerified ? "Verified" : "Unverified"}
+                  </Text>
+                </View>
+              </View>
               {user.carMake && user.carModel && (
                 <View style={styles.carInfo}>
                   <IconSymbol size={14} name="car" color="#999999" />
@@ -274,11 +292,43 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     letterSpacing: -0.3,
   },
+  emailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
   userEmail: {
     fontSize: 14,
     color: '#999999',
     fontWeight: '400',
-    marginBottom: 8,
+    flex: 1,
+  },
+  verificationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  verificationBadgeVerified: {
+    backgroundColor: 'rgba(52, 199, 89, 0.15)',
+  },
+  verificationBadgeUnverified: {
+    backgroundColor: 'rgba(255, 149, 0, 0.15)',
+  },
+  verificationText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  verificationTextVerified: {
+    color: '#34C759',
+  },
+  verificationTextUnverified: {
+    color: '#FF9500',
   },
   carInfo: {
     flexDirection: 'row',

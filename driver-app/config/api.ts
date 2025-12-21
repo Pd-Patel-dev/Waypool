@@ -59,6 +59,12 @@ export const API_ENDPOINTS = {
     LOGIN: "/api/driver/auth/login",
     LOGOUT: "/api/driver/auth/logout",
     CHECK_EMAIL: "/api/driver/auth/check-email",
+    REFRESH: "/api/driver/auth/refresh",
+  },
+  EMAIL_VERIFICATION: {
+    SEND_OTP: "/api/driver/email-verification/send",
+    VERIFY_OTP: "/api/driver/email-verification/verify",
+    RESEND_OTP: "/api/driver/email-verification/resend",
   },
   RIDES: {
     CREATE: "/api/driver/rides",

@@ -1,8 +1,7 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcrypt';
-import { getValidatedUserId, shouldBypassAuth, logTestModeUsage } from '../../utils/testMode';
-import { getUserIdFromRequest } from '../../middleware/testModeAuth';
+import { authenticate, requireDriver } from '../../middleware/auth';
 import {
   sendSuccess,
   sendBadRequest,
@@ -16,19 +15,12 @@ const router = express.Router();
 /**
  * GET /api/driver/profile
  * Get driver profile information
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    // Use test mode helper to get validated user ID (bypasses in test mode)
-    let driverId: number;
-    try {
-      driverId = getUserIdFromRequest(req, 'driver');
-    } catch (error) {
-      return sendBadRequest(res, error instanceof Error ? error.message : 'Driver ID is required');
-    }
-    
-    logTestModeUsage('Get profile', { driverId });
+    // Get user ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     const user = await prisma.users.findUnique({
       where: { id: driverId },
@@ -37,6 +29,7 @@ router.get('/', async (req: Request, res: Response) => {
         fullName: true,
         email: true,
         phoneNumber: true,
+        emailVerified: true,
         photoUrl: true,
         city: true,
         createdAt: true,
@@ -57,16 +50,13 @@ router.get('/', async (req: Request, res: Response) => {
 /**
  * PUT /api/driver/profile
  * Update driver profile information
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  * Body: fullName, email, phoneNumber, photoUrl, city (all optional)
  */
-router.put('/', async (req: Request, res: Response) => {
+router.put('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
-      return sendBadRequest(res, 'Driver ID is required');
-    }
+    // Get user ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Check if user exists
     const existingUser = await prisma.users.findUnique({
@@ -319,18 +309,12 @@ router.put('/photo', async (req: Request, res: Response) => {
 /**
  * GET /api/driver/profile/preferences
  * Get notification and privacy preferences
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  */
-router.get('/preferences', async (req: Request, res: Response) => {
+router.get('/preferences', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-      });
-    }
+    // Get user ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     const user = await prisma.users.findUnique({
       where: { id: driverId },
@@ -374,19 +358,13 @@ router.get('/preferences', async (req: Request, res: Response) => {
 /**
  * PUT /api/driver/profile/preferences
  * Update notification and privacy preferences
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  * Body: notifyBookings, notifyMessages, notifyRideUpdates, notifyPromotions, shareLocationEnabled (all optional booleans)
  */
-router.put('/preferences', async (req: Request, res: Response) => {
+router.put('/preferences', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-      });
-    }
+    // Get user ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     const { 
       notifyBookings, 
@@ -473,19 +451,13 @@ router.put('/preferences', async (req: Request, res: Response) => {
 /**
  * DELETE /api/driver/profile
  * Delete driver account permanently
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  * Body: password (required for confirmation), reason (optional)
  */
-router.delete('/', async (req: Request, res: Response) => {
+router.delete('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-      });
-    }
+    // Get user ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     const { password, reason } = req.body;
 

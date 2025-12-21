@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { calculateRideEarnings } from '../../utils/earnings';
+import { authenticate, requireDriver } from '../../middleware/auth';
 import {
   sendSuccess,
   sendBadRequest,
@@ -12,15 +13,12 @@ const router = express.Router();
 /**
  * GET /api/driver/earnings
  * Get earnings data for a driver
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
-      return sendBadRequest(res, 'Valid driver ID is required');
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Get all completed rides for this driver
     const completedRides = await prisma.rides.findMany({
@@ -188,13 +186,10 @@ router.get('/', async (req: Request, res: Response) => {
  * Get earnings summary (quick overview)
  * Query params: driverId (required)
  */
-router.get('/summary', async (req: Request, res: Response) => {
+router.get('/summary', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
-      return sendBadRequest(res, 'Valid driver ID is required');
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Quick count of completed rides
     const completedCount = await prisma.rides.count({

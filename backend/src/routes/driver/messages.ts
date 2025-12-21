@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { authenticate, requireDriver } from '../../middleware/auth';
 
 const router = express.Router();
 
@@ -115,16 +116,17 @@ router.get('/conversations', async (req: Request, res: Response) => {
  * Get messages with a specific partner
  * Query params: driverId (required), rideId (optional)
  */
-router.get('/:partnerId', async (req: Request, res: Response) => {
+router.get('/:partnerId', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
     const partnerId = req.params.partnerId ? parseInt(req.params.partnerId) : null;
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
     const rideId = req.query.rideId ? parseInt(req.query.rideId as string) : null;
 
-    if (!driverId || isNaN(driverId) || !partnerId || isNaN(partnerId)) {
+    if (!partnerId || isNaN(partnerId)) {
       return res.status(400).json({
         success: false,
-        message: 'Driver ID and Partner ID are required',
+        message: 'Partner ID is required',
         messages: [],
       });
     }
@@ -234,10 +236,10 @@ router.post('/', async (req: Request, res: Response) => {
     const newMessage = await prisma.messages.create({
       data: {
         senderId: driverId,
-        receiverId: parseInt(receiverId),
+        receiverId: typeof receiverId === 'number' ? receiverId : parseInt(String(receiverId)),
         message: message.trim(),
-        rideId: rideId ? parseInt(rideId) : null,
-        bookingId: bookingId ? parseInt(bookingId) : null,
+        rideId: rideId ? (typeof rideId === 'number' ? rideId : parseInt(String(rideId))) : null,
+        bookingId: bookingId ? (typeof bookingId === 'number' ? bookingId : parseInt(String(bookingId))) : null,
       },
       include: {
         sender: {
@@ -260,7 +262,7 @@ router.post('/', async (req: Request, res: Response) => {
     // Create notification for receiver
     await prisma.notifications.create({
       data: {
-        riderId: parseInt(receiverId),
+        riderId: typeof receiverId === 'number' ? receiverId : parseInt(String(receiverId)),
         type: 'message',
         title: 'New Message',
         message: `${newMessage.sender.fullName}: ${message.trim().substring(0, 50)}${message.length > 50 ? '...' : ''}`,

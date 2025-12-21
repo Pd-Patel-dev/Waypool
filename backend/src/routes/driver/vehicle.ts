@@ -1,23 +1,18 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { authenticate, requireDriver } from '../../middleware/auth';
 
 const router = express.Router();
 
 /**
  * GET /api/driver/vehicle
  * Get driver vehicle information
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     const user = await prisma.users.findUnique({
       where: { id: driverId },
@@ -59,19 +54,13 @@ router.get('/', async (req: Request, res: Response) => {
 /**
  * PUT /api/driver/vehicle
  * Update driver vehicle information
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  * Body: carMake, carModel, carYear, carColor (all optional)
  */
-router.put('/', async (req: Request, res: Response) => {
+router.put('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Check if user exists
     const existingUser = await prisma.users.findUnique({

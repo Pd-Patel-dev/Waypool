@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { sendBookingAcceptedNotification } from '../../services/pushNotificationService';
 import { socketService } from '../../services/socketService';
+import { authenticate, requireDriver } from '../../middleware/auth';
 
 const router = express.Router();
 
@@ -66,9 +67,9 @@ const decryptPIN = (encrypted: string): string => {
 /**
  * PUT /api/driver/bookings/:id/accept
  * Accept a booking request
- * Query params: driverId (required for security)
+ * Requires: JWT token in Authorization header
  */
-router.put('/:id/accept', async (req: Request, res: Response) => {
+router.put('/:id/accept', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
     const bookingIdParam = req.params.id;
     if (!bookingIdParam) {
@@ -79,21 +80,13 @@ router.put('/:id/accept', async (req: Request, res: Response) => {
     }
 
     const bookingId = parseInt(bookingIdParam);
-    const driverId = req.query.driverId && typeof req.query.driverId === 'string' 
-      ? parseInt(req.query.driverId) 
-      : null;
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     if (isNaN(bookingId)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid booking ID',
-      });
-    }
-
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
       });
     }
 
@@ -192,6 +185,7 @@ router.put('/:id/accept', async (req: Request, res: Response) => {
       await prisma.notifications.create({
         data: {
           driverId: booking.rides.driverId,
+          riderId: booking.riderId,
           type: 'message',
           title: 'Booking Accepted',
           message: `Your ride request has been accepted by ${booking.rides.driverName}`,
@@ -211,6 +205,32 @@ router.put('/:id/accept', async (req: Request, res: Response) => {
       });
     } catch (notificationError) {
       console.error('❌ Error creating acceptance notification:', notificationError);
+    }
+
+    // Send confirmation email to rider with pickup PIN
+    try {
+      const { sendBookingConfirmationEmail } = await import('../../services/emailService');
+      // Decrypt PIN for email (we generated it above, so we still have it in memory)
+      const pickupPINPlain = pickupPIN; // This is the plain PIN we generated
+      
+      await sendBookingConfirmationEmail({
+        riderEmail: booking.users.email,
+        riderName: booking.users.fullName,
+        driverName: booking.rides.driverName || 'Driver',
+        pickupPIN: pickupPINPlain,
+        rideDetails: {
+          fromAddress: booking.rides.fromAddress,
+          toAddress: booking.rides.toAddress,
+          departureDate: booking.rides.departureDate,
+          departureTime: booking.rides.departureTime,
+          numberOfSeats: booking.numberOfSeats,
+          pricePerSeat: booking.rides.pricePerSeat,
+          confirmationNumber: booking.confirmationNumber,
+        },
+      });
+    } catch (emailError) {
+      // Don't fail the booking acceptance if email sending fails
+      console.error('❌ Error sending booking confirmation email:', emailError);
     }
 
     // Emit real-time event to rider

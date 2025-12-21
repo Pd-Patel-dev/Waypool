@@ -304,8 +304,8 @@ router.post('/book', async (req: Request, res: Response) => {
     });
 
     // Create notification for the driver (as a request)
+    const bookingSeats = booking.numberOfSeats || seatsToBook;
     try {
-      const bookingSeats = booking.numberOfSeats || seatsToBook;
       await prisma.notifications.create({
         data: {
           driverId: booking.rides.driverId,
@@ -320,6 +320,28 @@ router.post('/book', async (req: Request, res: Response) => {
     } catch (notificationError) {
       // Don't fail the booking if notification creation fails
       console.error('❌ Error creating notification:', notificationError);
+    }
+
+    // Send email to driver about new booking request
+    try {
+      const { sendBookingRequestEmail } = await import('../../services/emailService');
+      await sendBookingRequestEmail({
+        driverEmail: booking.rides.users.email,
+        driverName: booking.rides.driverName || booking.rides.users.fullName,
+        riderName: booking.users.fullName,
+        rideDetails: {
+          fromAddress: booking.rides.fromAddress,
+          toAddress: booking.rides.toAddress,
+          departureDate: booking.rides.departureDate,
+          departureTime: booking.rides.departureTime,
+          numberOfSeats: bookingSeats,
+          pricePerSeat: booking.rides.pricePerSeat,
+          confirmationNumber: booking.confirmationNumber,
+        },
+      });
+    } catch (emailError) {
+      // Don't fail the booking if email sending fails
+      console.error('❌ Error sending booking request email:', emailError);
     }
 
     return res.json({

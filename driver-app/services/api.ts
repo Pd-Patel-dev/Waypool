@@ -1,18 +1,72 @@
 import { API_BASE_URL, API_ENDPOINTS } from "@/config/api";
 import { getUserFriendlyErrorMessage } from "@/utils/errorHandler";
 import { fetchWithRetry, RetryOptions } from "@/utils/apiRetry";
+import { getAccessToken, getRefreshToken, storeTokens, clearTokens } from "@/utils/tokenStorage";
 
 /**
- * Internal helper function to make API calls with automatic retry logic
+ * Internal helper function to make API calls with automatic retry logic and JWT authentication
  * All API functions should use this helper instead of direct fetch
  */
 async function apiFetch(
   url: string,
   options: RequestInit = {},
-  retryOptions: RetryOptions = {}
+  retryOptions: RetryOptions = {},
+  requireAuth: boolean = true
 ): Promise<Response> {
   try {
-    return await fetchWithRetry(url, options, retryOptions);
+    // Add JWT token to request if authentication is required
+    if (requireAuth) {
+      const token = await getAccessToken();
+      if (token) {
+        options.headers = {
+          ...options.headers,
+          Authorization: `Bearer ${token}`,
+        };
+      }
+    }
+
+    const response = await fetchWithRetry(url, options, retryOptions);
+
+    // If unauthorized, try refreshing token (only once to avoid loops)
+    if (response.status === 401 && requireAuth && !url.includes('/auth/refresh')) {
+      // Token might be expired, try to refresh
+      const refreshToken = await getRefreshToken();
+      if (refreshToken) {
+        try {
+          const refreshResponse = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.REFRESH}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+
+          if (refreshResponse.ok) {
+            const refreshResult = await refreshResponse.json();
+            const newAccessToken = refreshResult.data?.accessToken || refreshResult.accessToken;
+            const newRefreshToken = refreshResult.data?.refreshToken || refreshResult.refreshToken;
+            
+            if (newAccessToken && newRefreshToken) {
+              await storeTokens(newAccessToken, newRefreshToken);
+              
+              // Retry the original request with new token
+              const retryOptionsWithAuth = {
+                ...options,
+                headers: {
+                  ...options.headers,
+                  Authorization: `Bearer ${newAccessToken}`,
+                },
+              };
+              return await fetchWithRetry(url, retryOptionsWithAuth, retryOptions);
+            }
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+          // If refresh fails, clear tokens and let the 401 response through
+          await clearTokens();
+        }
+      }
+    }
+
+    return response;
   } catch (error: unknown) {
     // If fetchWithRetry throws, it means all retries failed
     // Attach status code if available
@@ -37,6 +91,7 @@ export interface SignupRequest {
   carModel: string;
   carYear: number;
   carColor: string;
+  verificationCode: string;
 }
 
 export interface SignupResponse {
@@ -81,6 +136,7 @@ export interface LoginResponse {
       phoneNumber: string;
       isDriver: boolean;
       isRider: boolean;
+      emailVerified?: boolean;
       photoUrl: string | null;
       city: string | null;
       carMake: string | null;
@@ -90,8 +146,12 @@ export interface LoginResponse {
       createdAt: string;
       updatedAt: string;
     };
+    tokens?: {
+      accessToken: string;
+      refreshToken: string;
+    };
   };
-  // For backwards compatibility, also allow direct user field
+  // For backwards compatibility, also allow direct user and tokens fields
   user?: {
     id: number;
     fullName: string;
@@ -99,6 +159,7 @@ export interface LoginResponse {
     phoneNumber: string;
     isDriver: boolean;
     isRider: boolean;
+    emailVerified?: boolean;
     photoUrl: string | null;
     city: string | null;
     carMake: string | null;
@@ -107,6 +168,10 @@ export interface LoginResponse {
     carColor: string | null;
     createdAt: string;
     updatedAt: string;
+  };
+  tokens?: {
+    accessToken: string;
+    refreshToken: string;
   };
 }
 
@@ -195,7 +260,7 @@ export interface Ride {
 }
 
 export interface CreateRideRequest {
-  driverId: number;
+  // driverId is now obtained from JWT token - removed from interface
   driverName: string;
   driverPhone: string;
   carMake?: string;
@@ -260,11 +325,18 @@ export const signup = async (data: SignupRequest): Promise<SignupResponse> => {
 
     // Handle both wrapped (data.user) and direct (user) response formats
     const user = result.data?.user ?? result.user;
+    const tokens = result.data?.tokens ?? result.tokens;
+
+    // Store tokens if provided
+    if (tokens?.accessToken && tokens?.refreshToken) {
+      await storeTokens(tokens.accessToken, tokens.refreshToken);
+    }
 
     return {
       success: result.success ?? true,
       message: result.message || "Signup successful",
       user: user,
+      tokens: tokens,
       errors: result.errors,
     } as SignupResponse;
   } catch (error) {
@@ -311,14 +383,26 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
     }
 
     // Handle both wrapped (data.user) and direct (user) response formats
-    // Backend wraps response in data field: { success: true, message: "...", data: { user: {...} } }
+    // Backend wraps response in data field: { success: true, message: "...", data: { user: {...}, tokens: {...} } }
     const user = result.data?.user ?? result.user;
+    const tokens = result.data?.tokens ?? result.tokens;
+    
+    // Normalize emailVerified to boolean (default to false if undefined)
+    if (user) {
+      user.emailVerified = user.emailVerified ?? false;
+    }
+
+    // Store tokens if provided
+    if (tokens?.accessToken && tokens?.refreshToken) {
+      await storeTokens(tokens.accessToken, tokens.refreshToken);
+    }
 
     const loginResponse: LoginResponse = {
       success: result.success ?? true,
       message: result.message,
       ...(result.data ? { data: result.data } : {}),
       user: user, // Extract user from either location
+      tokens: tokens, // Extract tokens from either location
     };
 
     return loginResponse;
@@ -344,6 +428,160 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
 /**
  * Logout API call
  */
+// Email Verification Interfaces
+export interface SendOTPRequest {
+  email: string;
+  fullName?: string;
+}
+
+export interface SendOTPResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    email: string;
+    expiresIn: number;
+  };
+}
+
+export interface VerifyOTPRequest {
+  email: string;
+  code: string;
+}
+
+export interface VerifyOTPResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    email: string;
+    verified: boolean;
+  };
+}
+
+export interface ResendOTPRequest {
+  email: string;
+  fullName?: string;
+}
+
+export interface ResendOTPResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    email: string;
+    expiresIn: number;
+  };
+}
+
+// Send OTP to email
+export const sendOTP = async (data: SendOTPRequest): Promise<SendOTPResponse> => {
+  try {
+    const response = await apiFetch(
+      `${API_BASE_URL}${API_ENDPOINTS.EMAIL_VERIFICATION.SEND_OTP}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || 'Failed to send verification code',
+      } as ApiError;
+    }
+
+    return {
+      success: result.success ?? true,
+      message: result.message || 'Verification code sent successfully',
+      data: result.data,
+    };
+  } catch (error) {
+    const errorMessage = getUserFriendlyErrorMessage(error);
+    throw {
+      success: false,
+      message: errorMessage,
+    } as ApiError;
+  }
+};
+
+// Verify OTP
+export const verifyOTP = async (data: VerifyOTPRequest): Promise<VerifyOTPResponse> => {
+  try {
+    const response = await apiFetch(
+      `${API_BASE_URL}${API_ENDPOINTS.EMAIL_VERIFICATION.VERIFY_OTP}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || 'Failed to verify code',
+      } as ApiError;
+    }
+
+    return {
+      success: result.success ?? true,
+      message: result.message || 'Email verified successfully',
+      data: result.data,
+    };
+  } catch (error) {
+    const errorMessage = getUserFriendlyErrorMessage(error);
+    throw {
+      success: false,
+      message: errorMessage,
+    } as ApiError;
+  }
+};
+
+// Resend OTP
+export const resendOTP = async (data: ResendOTPRequest): Promise<ResendOTPResponse> => {
+  try {
+    const response = await apiFetch(
+      `${API_BASE_URL}${API_ENDPOINTS.EMAIL_VERIFICATION.RESEND_OTP}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        success: false,
+        message: result.message || 'Failed to resend verification code',
+      } as ApiError;
+    }
+
+    return {
+      success: result.success ?? true,
+      message: result.message || 'Verification code resent successfully',
+      data: result.data,
+    };
+  } catch (error) {
+    const errorMessage = getUserFriendlyErrorMessage(error);
+    throw {
+      success: false,
+      message: errorMessage,
+    } as ApiError;
+  }
+};
+
 export const logout = async (): Promise<LogoutResponse> => {
   const url = `${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGOUT}`;
 
@@ -361,6 +599,9 @@ export const logout = async (): Promise<LogoutResponse> => {
 
     const result = await response.json();
 
+    // Clear tokens regardless of response (even if backend call fails)
+    await clearTokens();
+
     if (!response.ok) {
       throw {
         success: false,
@@ -371,6 +612,9 @@ export const logout = async (): Promise<LogoutResponse> => {
 
     return result as LogoutResponse;
   } catch (error: any) {
+    // Always clear tokens even if there was an error
+    await clearTokens();
+
     if (
       error &&
       typeof error === "object" &&
@@ -552,18 +796,25 @@ export const checkEmail = async (
  * Get upcoming rides for the driver
  * @param driverId - The ID of the driver to fetch rides for
  */
+/**
+ * Get upcoming rides for the authenticated driver
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
+ */
 export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
   try {
-    const url = driverId
-      ? `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}?driverId=${driverId}`
-      : `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}`;
+    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}`;
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await apiFetch(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
+      {},
+      true // requireAuth
+    );
 
     const result = await response.json();
 
@@ -592,16 +843,26 @@ export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
 
 /**
  * Get past rides for the driver
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
  */
-export const getPastRides = async (driverId: number): Promise<Ride[]> => {
+/**
+ * Get past rides for the authenticated driver
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
+ */
+export const getPastRides = async (driverId?: number): Promise<Ride[]> => {
   try {
-    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.PAST}?driverId=${driverId}`;
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
+    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.PAST}`;
+    const response = await apiFetch(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
+      {},
+      true // requireAuth
+    );
 
     const result = await response.json();
 
@@ -633,17 +894,32 @@ export const getPastRides = async (driverId: number): Promise<Ride[]> => {
 export const createRide = async (
   data: CreateRideRequest
 ): Promise<CreateRideResponse> => {
+  const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.CREATE}`;
+
   try {
-    const response = await fetch(
-      `${API_BASE_URL}${API_ENDPOINTS.RIDES.CREATE}`,
+    // Use apiFetch with retry logic for network errors
+    const response = await apiFetch(
+      url,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(data),
-      }
+      },
+      { maxRetries: 3, initialDelay: 1000 } // Retry up to 3 times with 1s initial delay
     );
+
+    // Check if response has content before parsing JSON
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      throw {
+        success: false,
+        message: text || "Invalid response from server",
+        status: response.status,
+      } as ApiError;
+    }
 
     const result = await response.json();
 
@@ -652,6 +928,7 @@ export const createRide = async (
         success: false,
         message: result.message || "Failed to create ride",
         errors: result.errors || [],
+        status: response.status,
       } as ApiError;
     }
 
@@ -663,13 +940,17 @@ export const createRide = async (
       message: result.message || "Ride created successfully",
       ride: ride,
     } as CreateRideResponse;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // If error is already an ApiError, re-throw it
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
+
+    // Use getUserFriendlyErrorMessage for consistent error messages
+    const errorMessage = getUserFriendlyErrorMessage(error);
     throw {
       success: false,
-      message: "Network error. Please check your connection.",
+      message: errorMessage,
     } as ApiError;
   }
 };
@@ -721,22 +1002,40 @@ export const deleteRide = async (
 
 /**
  * Update a ride
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
  */
 export const updateRide = async (
   rideId: number,
-  data: Partial<CreateRideRequest>
+  data: Partial<CreateRideRequest>,
+  driverId?: number
 ): Promise<CreateRideResponse> => {
   try {
-    const response = await fetch(
-      `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPDATE(rideId)}`,
+    const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPDATE(rideId)}`;
+
+    // Use apiFetch with retry logic for network errors
+    const response = await apiFetch(
+      url,
       {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(data),
-      }
+      },
+      { maxRetries: 3, initialDelay: 1000 }, // Retry up to 3 times with 1s initial delay
+      true // requireAuth
     );
+
+    // Check if response has content before parsing JSON
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      throw {
+        success: false,
+        message: text || "Invalid response from server",
+        status: response.status,
+      } as ApiError;
+    }
 
     const result = await response.json();
 
@@ -745,6 +1044,7 @@ export const updateRide = async (
         success: false,
         message: result.message || "Failed to update ride",
         errors: result.errors || [],
+        status: response.status,
       } as ApiError;
     }
 
@@ -756,13 +1056,17 @@ export const updateRide = async (
       message: result.message || "Ride updated successfully",
       ride: ride,
     } as CreateRideResponse;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // If error is already an ApiError, re-throw it
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
+
+    // Use getUserFriendlyErrorMessage for consistent error messages
+    const errorMessage = getUserFriendlyErrorMessage(error);
     throw {
       success: false,
-      message: "Network error. Please check your connection.",
+      message: errorMessage,
     } as ApiError;
   }
 };
@@ -908,24 +1212,38 @@ export const completeRide = async (
 
 /**
  * Get a ride by ID
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
  */
 export const getRideById = async (
   rideId: number,
   driverId?: number
 ): Promise<Ride> => {
-  try {
-    const url = driverId
-      ? `${API_BASE_URL}${API_ENDPOINTS.RIDES.GET_BY_ID(
-          rideId
-        )}?driverId=${driverId}`
-      : `${API_BASE_URL}${API_ENDPOINTS.RIDES.GET_BY_ID(rideId)}`;
+  const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.GET_BY_ID(rideId)}`;
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
+  try {
+    // Use apiFetch with retry logic for network errors
+    const response = await apiFetch(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
+      { maxRetries: 3, initialDelay: 1000 }, // Retry up to 3 times with 1s initial delay
+      true // requireAuth
+    );
+
+    // Check if response has content before parsing JSON
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      throw {
+        success: false,
+        message: text || "Invalid response from server",
+        status: response.status,
+      } as ApiError;
+    }
 
     const result = await response.json();
 
@@ -947,13 +1265,17 @@ export const getRideById = async (
     }
 
     return ride as Ride;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // If error is already an ApiError, re-throw it
     if (error && typeof error === "object" && "message" in error) {
       throw error;
     }
+
+    // Use getUserFriendlyErrorMessage for consistent error messages
+    const errorMessage = getUserFriendlyErrorMessage(error);
     throw {
       success: false,
-      message: "Network error. Please check your connection.",
+      message: errorMessage,
     } as ApiError;
   }
 };
@@ -985,16 +1307,22 @@ export interface ProfileData {
 
 /**
  * Get driver profile
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
  */
-export const getProfile = async (driverId: number): Promise<ProfileData> => {
+export const getProfile = async (driverId?: number): Promise<ProfileData> => {
   try {
-    const url = `${API_BASE_URL}${API_ENDPOINTS.PROFILE.GET}?driverId=${driverId}`;
-    const response = await apiFetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
+    const url = `${API_BASE_URL}${API_ENDPOINTS.PROFILE.GET}`;
+    const response = await apiFetch(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
+      {},
+      true // requireAuth
+    );
 
     const result = await response.json();
 
@@ -1030,6 +1358,7 @@ export const getProfile = async (driverId: number): Promise<ProfileData> => {
 
 /**
  * Update driver profile
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
  */
 export const updateProfile = async (
   driverId: number,
@@ -1043,13 +1372,18 @@ export const updateProfile = async (
 ): Promise<{ success: boolean; message: string; user?: ProfileData }> => {
   try {
     const url = `${API_BASE_URL}${API_ENDPOINTS.PROFILE.UPDATE}`;
-    const response = await apiFetch(url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await apiFetch(
+      url,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data), // Remove driverId from body
       },
-      body: JSON.stringify({ driverId, ...data }),
-    });
+      {},
+      true // requireAuth
+    );
 
     const result = await response.json();
 
@@ -1281,16 +1615,22 @@ export interface VehicleData {
 
 /**
  * Get vehicle information
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
  */
-export const getVehicle = async (driverId: number): Promise<VehicleData> => {
+export const getVehicle = async (driverId?: number): Promise<VehicleData> => {
   try {
-    const url = `${API_BASE_URL}${API_ENDPOINTS.VEHICLE.GET}?driverId=${driverId}`;
-    const response = await apiFetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
+    const url = `${API_BASE_URL}${API_ENDPOINTS.VEHICLE.GET}`;
+    const response = await apiFetch(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
+      {},
+      true // requireAuth
+    );
 
     const result = await response.json();
 
@@ -1325,20 +1665,26 @@ export const getVehicle = async (driverId: number): Promise<VehicleData> => {
 
 /**
  * Update vehicle information
+ * Note: driverId is now obtained from JWT token - parameter kept for backwards compatibility but not used
  */
 export const updateVehicle = async (
   driverId: number,
   data: Partial<VehicleData>
 ): Promise<{ success: boolean; message: string; vehicle: VehicleData }> => {
   try {
-    const url = `${API_BASE_URL}${API_ENDPOINTS.VEHICLE.UPDATE}?driverId=${driverId}`;
-    const response = await apiFetch(url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
+    const url = `${API_BASE_URL}${API_ENDPOINTS.VEHICLE.UPDATE}`;
+    const response = await apiFetch(
+      url,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
-      body: JSON.stringify(data),
-    });
+      {},
+      true // requireAuth
+    );
 
     const result = await response.json();
 

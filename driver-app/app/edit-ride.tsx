@@ -20,8 +20,65 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getRideById, updateRide, type Ride, type ApiError } from '@/services/api';
 import { useUser } from '@/context/UserContext';
 import { LoadingScreen } from '@/components/LoadingScreen';
-import { validateDate, validateNumberRange, validatePrice } from '@/utils/validation';
+import { validateNumberRange, validatePrice, type ValidationResult } from '@/utils/validation';
 import { getUserFriendlyErrorMessage } from '@/utils/errorHandler';
+import { formatDate, formatTime } from '@/utils/date';
+
+// Helper function to format date as MM/DD/YYYY for backend
+const formatDateForBackend = (date: Date): string => {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${month}/${day}/${year}`;
+};
+
+// Helper function to validate date in MM/DD/YYYY format
+const validateDateString = (dateString: string): ValidationResult => {
+  if (!dateString || dateString.trim().length === 0) {
+    return { isValid: false, error: 'Departure date is required' };
+  }
+
+  // Check if it's in MM/DD/YYYY format
+  const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  const match = dateString.match(dateRegex);
+  
+  if (!match) {
+    return { isValid: false, error: 'Please enter a valid date in MM/DD/YYYY format' };
+  }
+
+  const [, month, day, year] = match;
+  const monthNum = parseInt(month, 10);
+  const dayNum = parseInt(day, 10);
+  const yearNum = parseInt(year, 10);
+
+  // Validate month and day ranges
+  if (monthNum < 1 || monthNum > 12) {
+    return { isValid: false, error: 'Invalid month. Please enter a date in MM/DD/YYYY format' };
+  }
+
+  if (dayNum < 1 || dayNum > 31) {
+    return { isValid: false, error: 'Invalid day. Please enter a date in MM/DD/YYYY format' };
+  }
+
+  // Create date object to validate
+  const date = new Date(yearNum, monthNum - 1, dayNum);
+  
+  // Check if date is valid (handles invalid dates like Feb 30)
+  if (date.getMonth() !== monthNum - 1 || date.getDate() !== dayNum || date.getFullYear() !== yearNum) {
+    return { isValid: false, error: 'Invalid date. Please enter a valid date' };
+  }
+
+  // Check if date is in the past
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  
+  if (date < today) {
+    return { isValid: false, error: 'Departure date cannot be in the past' };
+  }
+
+  return { isValid: true };
+};
 
 export default function EditRideScreen(): React.JSX.Element {
   const { user } = useUser();
@@ -59,7 +116,10 @@ export default function EditRideScreen(): React.JSX.Element {
   // Fetch ride data
   useEffect(() => {
     const fetchRide = async () => {
+      console.log('[EditRide] Fetching ride:', { rideId, userId: user?.id });
+      
       if (!rideId || !user?.id) {
+        console.log('[EditRide] Missing rideId or userId:', { rideId, userId: user?.id });
         setIsLoading(false);
         return;
       }
@@ -71,7 +131,17 @@ export default function EditRideScreen(): React.JSX.Element {
           setIsLoading(false);
           return;
         }
+        
+        console.log('[EditRide] Calling getRideById with:', { rideId, driverId: user.id });
         const ride = await getRideById(rideId, user.id);
+        console.log('[EditRide] Received ride:', ride ? { id: ride.id, fromAddress: ride.fromAddress } : 'null');
+        
+        if (!ride) {
+          console.error('[EditRide] Ride is null after fetch');
+          setRideData(null);
+          return;
+        }
+        
         setRideData(ride);
 
         // Pre-fill form with existing data
@@ -108,10 +178,24 @@ export default function EditRideScreen(): React.JSX.Element {
           setPricePerSeat(ride.pricePerSeat.toString());
         }
       } catch (error) {
+        console.error('Error fetching ride:', error);
         const apiError = error as ApiError;
         const errorMessage = getUserFriendlyErrorMessage(apiError);
-        Alert.alert('Error', errorMessage);
-        router.back();
+        
+        // Set rideData to null so the "Ride not found" UI is shown
+        setRideData(null);
+        
+        // Show alert with error details
+        Alert.alert(
+          'Error Loading Ride',
+          errorMessage || 'Failed to load ride details. Please try again.',
+          [
+            {
+              text: 'Go Back',
+              onPress: () => router.back(),
+            },
+          ]
+        );
       } finally {
         setIsLoading(false);
       }
@@ -142,13 +226,13 @@ export default function EditRideScreen(): React.JSX.Element {
     if (Platform.OS === 'ios') {
       if (date) {
         setSelectedDate(date);
-        setDepartureDate(formatDate(date));
+        setDepartureDate(formatDateForBackend(date));
       }
     } else {
       setShowDatePicker(false);
       if (date) {
         setSelectedDate(date);
-        setDepartureDate(formatDate(date));
+        setDepartureDate(formatDateForBackend(date));
       }
     }
   };
@@ -171,7 +255,7 @@ export default function EditRideScreen(): React.JSX.Element {
   const validateForm = (): boolean => {
     const newErrors: typeof errors = {};
 
-    const dateValidation = validateDate(departureDate, 'Departure date');
+    const dateValidation = validateDateString(departureDate);
     if (!dateValidation.isValid) {
       newErrors.departureDate = dateValidation.error || 'Departure date is required';
     }
@@ -282,8 +366,8 @@ export default function EditRideScreen(): React.JSX.Element {
         return;
       }
 
-      // updateRide expects (rideId, data) - driverId is handled by backend auth
-      const response = await updateRide(rideId!, updateData);
+      // updateRide expects (rideId, data, driverId) - driverId is required as query param
+      const response = await updateRide(rideId!, updateData, user.id);
 
       if (response.success) {
         Alert.alert(
@@ -483,7 +567,7 @@ export default function EditRideScreen(): React.JSX.Element {
                 <Text style={styles.modalTitle}>Select Date</Text>
                 <TouchableOpacity
                   onPress={() => {
-                    setDepartureDate(formatDate(selectedDate));
+                    setDepartureDate(formatDateForBackend(selectedDate));
                     setShowDatePicker(false);
                   }}
                   style={styles.modalButton}>

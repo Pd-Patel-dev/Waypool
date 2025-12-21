@@ -1,24 +1,20 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { authenticate, requireDriver } from '../../middleware/auth';
 
 const router = express.Router();
 
 /**
  * POST /api/driver/push-token
  * Register or update push token for driver
- * Body: { userId, pushToken, tokenType, platform, deviceId }
+ * Requires: JWT token in Authorization header
+ * Body: { pushToken, tokenType, platform, deviceId }
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const { userId, pushToken, tokenType, platform, deviceId } = req.body;
-
-    // Validation
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID is required',
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const userId = req.user!.userId;
+    const { pushToken, tokenType, platform, deviceId } = req.body;
 
     if (!pushToken) {
       return res.status(400).json({
@@ -27,21 +23,9 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Check if user exists
-    const user = await prisma.users.findUnique({
-      where: { id: parseInt(userId) },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    // Update user with push token
+    // Update user with push token (user exists since JWT is valid)
     await prisma.users.update({
-      where: { id: parseInt(userId) },
+      where: { id: userId },
       data: {
         pushToken,
         pushTokenType: tokenType || 'expo',
@@ -69,18 +53,12 @@ router.post('/', async (req: Request, res: Response) => {
 /**
  * DELETE /api/driver/push-token
  * Remove push token for driver (on logout)
- * Query params: userId
+ * Requires: JWT token in Authorization header
  */
-router.delete('/', async (req: Request, res: Response) => {
+router.delete('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const userId = req.query.userId ? parseInt(req.query.userId as string) : null;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID is required',
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const userId = req.user!.userId;
 
     // Remove push token
     await prisma.users.update({

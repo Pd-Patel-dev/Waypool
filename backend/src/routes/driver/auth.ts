@@ -11,6 +11,7 @@ import {
   sendBadRequest,
   sendInternalError,
 } from '../../utils/apiResponse';
+import { generateTokenPair } from '../../utils/jwt';
 
 const router = express.Router();
 
@@ -68,6 +69,7 @@ interface SignupBody {
   carModel: string;
   carYear: number;
   carColor: string;
+  verificationCode: string;
 }
 
 interface LoginBody {
@@ -78,7 +80,7 @@ interface LoginBody {
 // POST /api/driver/auth/signup
 router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const { fullName, email, phoneNumber, password, photoUrl, city, carMake, carModel, carYear, carColor }: SignupBody = req.body;
+    const { fullName, email, phoneNumber, password, photoUrl, city, carMake, carModel, carYear, carColor, verificationCode }: SignupBody = req.body;
 
     // Validation
     const errors: string[] = [];
@@ -131,9 +133,41 @@ router.post('/signup', async (req: Request, res: Response) => {
       errors.push('Car color is required');
     }
 
+    if (!verificationCode || !verificationCode.trim()) {
+      errors.push('Verification code is required');
+    }
+
     if (errors.length > 0) {
       return sendValidationError(res, 'Validation failed', errors);
     }
+
+    // Verify email verification code
+    const normalizedEmail = email.trim().toLowerCase();
+    const verificationRecord = await prisma.emailVerificationCodes.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (!verificationRecord) {
+      return sendBadRequest(res, 'No verification code found for this email. Please verify your email first.');
+    }
+
+    // Check if code has expired
+    if (new Date() > verificationRecord.expiresAt) {
+      await prisma.emailVerificationCodes.delete({
+        where: { email: normalizedEmail },
+      });
+      return sendBadRequest(res, 'Verification code has expired. Please request a new code.');
+    }
+
+    // Verify code
+    if (verificationRecord.code !== verificationCode.trim()) {
+      return sendBadRequest(res, 'Invalid verification code. Please try again.');
+    }
+
+    // Code is valid - delete it (one-time use)
+    await prisma.emailVerificationCodes.delete({
+      where: { email: normalizedEmail },
+    });
 
     // Check if user already exists
     const existingUser = await prisma.users.findUnique({
@@ -159,6 +193,7 @@ router.post('/signup', async (req: Request, res: Response) => {
         where: { email: email.trim().toLowerCase() },
         data: {
           isDriver: true,
+          emailVerified: true,
           // Update driver-specific fields
           fullName: fullName.trim() !== existingUser.fullName ? fullName.trim() : existingUser.fullName,
           phoneNumber: phoneNumber.trim() !== existingUser.phoneNumber ? phoneNumber.trim() : existingUser.phoneNumber,
@@ -176,6 +211,7 @@ router.post('/signup', async (req: Request, res: Response) => {
           phoneNumber: true,
           isDriver: true,
           isRider: true,
+          emailVerified: true,
           photoUrl: true,
           city: true,
           carMake: true,
@@ -200,6 +236,7 @@ router.post('/signup', async (req: Request, res: Response) => {
           password: hashedPassword,
           isDriver: true,
           isRider: false,
+          emailVerified: true,
           photoUrl: photoUrl.trim(),
           city: city.trim(),
           carMake: carMake.trim(),
@@ -214,6 +251,7 @@ router.post('/signup', async (req: Request, res: Response) => {
           phoneNumber: true,
           isDriver: true,
           isRider: true,
+          emailVerified: true,
           photoUrl: true,
           city: true,
           carMake: true,
@@ -225,7 +263,15 @@ router.post('/signup', async (req: Request, res: Response) => {
       });
     }
 
-    return sendSuccess(res, 'User created successfully', { user }, 201);
+    // Generate JWT tokens for new/updated driver
+    const tokens = generateTokenPair({
+      userId: user.id,
+      email: user.email,
+      role: 'driver',
+      emailVerified: user.emailVerified || false,
+    });
+
+    return sendSuccess(res, 'User created successfully', { user, tokens }, 201);
   } catch (error) {
     return sendInternalError(res, error, 'Failed to create user account');
   }
@@ -261,7 +307,20 @@ router.post('/login', async (req: Request, res: Response) => {
       return sendUnauthorized(res, 'Invalid email or password');
     }
 
-    // Return user data (without password)
+    // Verify user is a driver
+    if (!user.isDriver) {
+      return sendUnauthorized(res, 'This account is not registered as a driver');
+    }
+
+    // Generate JWT tokens
+    const tokens = generateTokenPair({
+      userId: user.id,
+      email: user.email,
+      role: 'driver',
+      emailVerified: user.emailVerified || false,
+    });
+
+    // Return user data (without password) and tokens
     return sendSuccess(res, 'Login successful', {
       user: {
         id: user.id,
@@ -270,6 +329,7 @@ router.post('/login', async (req: Request, res: Response) => {
         phoneNumber: user.phoneNumber,
         isDriver: user.isDriver,
         isRider: user.isRider,
+        emailVerified: user.emailVerified,
         photoUrl: user.photoUrl,
         city: user.city,
         carMake: user.carMake,
@@ -279,6 +339,7 @@ router.post('/login', async (req: Request, res: Response) => {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
+      tokens,
     });
   } catch (error) {
     return sendInternalError(res, error, 'Failed to authenticate user');
@@ -290,9 +351,59 @@ router.post('/logout', async (req: Request, res: Response) => {
   try {
     // For now, just return success
     // In the future, this could invalidate tokens, clear sessions, etc.
+    // Note: JWT tokens are stateless, so we can't invalidate them server-side
+    // Frontend should delete tokens from storage
     return sendSuccess(res, 'Logout successful');
   } catch (error) {
     return sendInternalError(res, error, 'Failed to logout');
+  }
+});
+
+// POST /api/driver/auth/refresh
+router.post('/refresh', async (req: Request, res: Response) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      return sendBadRequest(res, 'Refresh token is required');
+    }
+
+    // Verify refresh token
+    try {
+      const { verifyRefreshToken, generateTokenPair } = await import('../../utils/jwt');
+      const payload = verifyRefreshToken(refreshToken);
+
+      // Get fresh user data from database
+      const user = await prisma.users.findUnique({
+        where: { id: payload.userId },
+        select: {
+          id: true,
+          email: true,
+          isDriver: true,
+          isRider: true,
+          emailVerified: true,
+        },
+      });
+
+      if (!user || !user.isDriver) {
+        return sendUnauthorized(res, 'Invalid refresh token');
+      }
+
+      // Generate new token pair
+      const tokens = generateTokenPair({
+        userId: user.id,
+        email: user.email,
+        role: 'driver',
+        emailVerified: user.emailVerified || false,
+      });
+
+      return sendSuccess(res, 'Token refreshed successfully', { tokens });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid refresh token';
+      return sendUnauthorized(res, message);
+    }
+  } catch (error) {
+    return sendInternalError(res, error, 'Failed to refresh token');
   }
 });
 

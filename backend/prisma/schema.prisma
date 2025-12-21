@@ -139,6 +139,7 @@ model users {
   bankAccountType                             String?         // 'checking' or 'savings'
   bankAccountStatus                            String?         // 'new', 'validated', 'verified', 'errored'
   payoutsEnabled                              Boolean         @default(false)
+  emailVerified                               Boolean         @default(false)
   bookings                                    bookings[]
   notifications_notifications_driverIdTousers notifications[] @relation("notifications_driverIdTousers")
   notifications_notifications_riderIdTousers  notifications[] @relation("notifications_riderIdTousers")
@@ -211,4 +212,17 @@ model payouts {
   @@index([status])
   @@index([createdAt])
   @@map("payouts")
+}
+
+model emailVerificationCodes {
+  id         Int      @id @default(autoincrement())
+  email      String   @unique
+  code       String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([email])
+  @@index([expiresAt])
+  @@map("emailVerificationCodes")
 }

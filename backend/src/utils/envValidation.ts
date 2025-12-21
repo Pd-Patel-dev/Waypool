@@ -157,6 +157,36 @@ export function validateEnvironmentVariables(options: {
     warnings.push(`PIN Encryption: ${pinValidation.warning}`);
   }
 
+  // Validate JWT_SECRET (required in production, should be strong)
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    if (isProduction || strict) {
+      errors.push('JWT_SECRET is required in production');
+    } else {
+      warnings.push('JWT_SECRET is not set. Using default (INSECURE - development only)');
+    }
+  } else if (jwtSecret.length < 32) {
+    errors.push('JWT_SECRET should be at least 32 characters long for security');
+  } else if (jwtSecret === 'your-secret-key-change-in-production') {
+    warnings.push('JWT_SECRET is using default value. Please change it in production!');
+  }
+
+  // Validate Gmail API credentials (optional but recommended for email functionality)
+  const gmailClientId = process.env.GMAIL_CLIENT_ID;
+  const gmailClientSecret = process.env.GMAIL_CLIENT_SECRET;
+  const gmailRefreshToken = process.env.GMAIL_REFRESH_TOKEN;
+  const gmailSenderEmail = process.env.GMAIL_SENDER_EMAIL;
+
+  if (!gmailClientId || !gmailClientSecret || !gmailRefreshToken || !gmailSenderEmail) {
+    warnings.push('Gmail API credentials not configured. Email sending will be disabled. Set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, and GMAIL_SENDER_EMAIL to enable email notifications.');
+  } else {
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(gmailSenderEmail)) {
+      warnings.push(`GMAIL_SENDER_EMAIL appears to be invalid: ${gmailSenderEmail}`);
+    }
+  }
+
   return {
     isValid: errors.length === 0,
     errors,

@@ -6,7 +6,7 @@ import { stripe } from '../../lib/stripe';
 import { sendRideStartedNotification } from '../../services/pushNotificationService';
 import { socketService } from '../../services/socketService';
 import { calculateRideEarnings } from '../../utils/earnings';
-import { shouldBypassAuth } from '../../utils/testMode';
+import { authenticate, requireDriver } from '../../middleware/auth';
 import {
   sendSuccess,
   sendError,
@@ -23,11 +23,14 @@ const router = express.Router();
 /**
  * POST /api/driver/rides
  * Create a new ride
+ * Requires: JWT token in Authorization header
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
+
     const {
-      driverId,
       driverName,
       driverPhone,
       carMake,
@@ -59,8 +62,8 @@ router.post('/', async (req: Request, res: Response) => {
     } = req.body;
 
     // Validate required fields
-    if (!driverId || !driverName || !driverPhone) {
-      return sendBadRequest(res, 'Driver information is required');
+    if (!driverName || !driverPhone) {
+      return sendBadRequest(res, 'Driver name and phone are required');
     }
 
     if (!fromAddress || !fromCity || !fromState || !fromLatitude || !fromLongitude) {
@@ -92,7 +95,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Verify driver exists
     const driver = await prisma.users.findUnique({
-      where: { id: parseInt(driverId) },
+      where: { id: driverId },
     });
 
     if (!driver) {
@@ -106,7 +109,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (!isDraft) {
       const existingRides = await prisma.rides.findMany({
         where: {
-          driverId: parseInt(driverId),
+          driverId: driverId,
           status: { in: ['scheduled', 'in-progress'] }, // Only check active rides, not completed or cancelled
         },
         select: {
@@ -178,7 +181,7 @@ router.post('/', async (req: Request, res: Response) => {
     // Create the ride
     const ride = await prisma.rides.create({
       data: {
-        driverId: parseInt(driverId),
+        driverId: driverId,
         driverName,
         driverPhone,
         carMake: carMake || null,
@@ -273,19 +276,12 @@ router.post('/', async (req: Request, res: Response) => {
 /**
  * GET /api/driver/rides/past
  * Get past/completed rides for the driver
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  */
-router.get('/past', async (req: Request, res: Response) => {
+router.get('/past', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-    
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-        rides: [],
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Get completed rides for the specific driver
     const rides = await prisma.rides.findMany({
@@ -431,19 +427,12 @@ router.get('/past', async (req: Request, res: Response) => {
 /**
  * GET /api/driver/rides/upcoming
  * Get upcoming rides for the driver
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  */
-router.get('/upcoming', async (req: Request, res: Response) => {
+router.get('/upcoming', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-    
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-        rides: [],
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Get rides for the specific driver (scheduled and in-progress only, exclude cancelled and completed)
     const rides = await prisma.rides.findMany({
@@ -585,19 +574,13 @@ router.get('/upcoming', async (req: Request, res: Response) => {
 /**
  * GET /api/driver/rides/earnings
  * Get earnings summary for the driver
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  * NOTE: This route must be defined BEFORE /:id to avoid route conflicts
  */
-router.get('/earnings', async (req: Request, res: Response) => {
+router.get('/earnings', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
-    
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Get all completed rides for the driver with bookings to calculate earnings
     type CompletedRideForEarnings = Prisma.ridesGetPayload<{
@@ -741,9 +724,9 @@ router.get('/earnings', async (req: Request, res: Response) => {
 /**
  * GET /api/driver/rides/:id
  * Get a specific ride by ID with all details including bookings
- * Query params: driverId (optional, but recommended for security)
+ * Requires: JWT token in Authorization header
  */
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
     const rideIdParam = req.params.id;
     if (!rideIdParam) {
@@ -754,9 +737,8 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
     
     const rideId = parseInt(rideIdParam);
-    const driverId = req.query.driverId && typeof req.query.driverId === 'string' 
-      ? parseInt(req.query.driverId) 
-      : null;
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
     
     if (isNaN(rideId)) {
       return res.status(400).json({
@@ -811,8 +793,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // If driverId is provided, verify that the ride belongs to this driver
-    if (driverId && ride.driverId !== driverId) {
+    // Verify that the ride belongs to this driver
+    if (ride.driverId !== driverId) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to view this ride',
@@ -1022,10 +1004,10 @@ router.delete('/:id', async (req: Request, res: Response) => {
 /**
  * PUT /api/driver/rides/:id
  * Update a ride by ID
- * Query params: driverId (required for security)
+ * Requires: JWT token in Authorization header
  * Body: Can update date, time, price, seats (if no bookings exist)
  */
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
     const rideIdParam = req.params.id;
     if (!rideIdParam) {
@@ -1036,21 +1018,13 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
     
     const rideId = parseInt(rideIdParam);
-    const driverId = req.query.driverId && typeof req.query.driverId === 'string' 
-      ? parseInt(req.query.driverId) 
-      : null;
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
     
     if (isNaN(rideId)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid ride ID',
-      });
-    }
-
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
       });
     }
 
@@ -1337,9 +1311,9 @@ router.put('/:id/cancel', async (req: Request, res: Response) => {
 /**
  * PUT /api/driver/rides/:id/start
  * Start a ride (update status to 'in-progress')
- * Query params: driverId (required for security)
+ * Requires: JWT token in Authorization header
  */
-router.put('/:id/start', async (req: Request, res: Response) => {
+router.put('/:id/start', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
     const rideIdParam = req.params.id;
     if (!rideIdParam) {
@@ -1350,21 +1324,13 @@ router.put('/:id/start', async (req: Request, res: Response) => {
     }
     
     const rideId = parseInt(rideIdParam);
-    const driverId = req.query.driverId && typeof req.query.driverId === 'string' 
-      ? parseInt(req.query.driverId) 
-      : null;
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
     
     if (isNaN(rideId)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid ride ID',
-      });
-    }
-
-    if (!driverId || isNaN(driverId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Driver ID is required',
       });
     }
 
@@ -1614,6 +1580,7 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     }
 
     // Check if test mode is enabled (from environment variable)
+    const { shouldBypassAuth } = await import('../../utils/testMode');
     const isTestMode = shouldBypassAuth();
     
     // Debug: Log test mode status

@@ -1,517 +1,174 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
   RefreshControl,
-  Platform,
   TouchableOpacity,
   Alert,
-  Linking,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
-import { router, useFocusEffect } from 'expo-router';
-import { useUser } from '@/context/UserContext';
-import { getUpcomingRides, deleteRide, type Ride } from '@/services/api';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { calculateTotalDistance } from '@/utils/distance';
-import { LoadingScreen, InlineLoader } from '@/components/LoadingScreen';
-import { SkeletonRideList } from '@/components/SkeletonLoader';
-import { HapticFeedback } from '@/utils/haptics';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import { router, useFocusEffect } from "expo-router";
+import { useUser } from "@/context/UserContext";
+import { IconSymbol } from "@/components/ui/icon-symbol";
+import { LoadingScreen } from "@/components/LoadingScreen";
+import { SkeletonRideList } from "@/components/SkeletonLoader";
+import { HomeHeader, ActiveRideCard, RideCard } from "@/components/home";
+import { useRides } from "@/features/rides";
+import { calculateTotalDistance } from "@/utils/distance";
+import { calculateRideEarnings } from "@/utils/price";
+import { formatDate, formatTime, safeParseDate } from "@/utils/date";
+import { theme } from "@/design-system";
+import type { Ride } from "@/features/rides";
 
-// Import Location - it will be null on web but that's handled in the code
-import * as ExpoLocation from 'expo-location';
-const Location = Platform.OS !== 'web' ? ExpoLocation : null;
+// Custom formatDate that includes "Today"/"Tomorrow" logic
+const formatDateWithRelative = (dateString: string): string => {
+  const date = safeParseDate(dateString);
+  if (!date) return formatDate(dateString);
 
-interface LocationCoords {
-  latitude: number;
-  longitude: number;
-}
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
 
+    if (dateOnly.getTime() === today.getTime()) {
+      return "Today";
+    } else if (dateOnly.getTime() === tomorrow.getTime()) {
+      return "Tomorrow";
+    } else {
+      return formatDate(dateString);
+    }
+  } catch (error) {
+    return formatDate(dateString);
+  }
+};
 
-// Calculate earnings for a ride based on booked seats
-// Using centralized utility from utils/price.ts
-import { calculateRideEarnings } from '@/utils/price';
-import { formatDate, formatTime, safeParseDate } from '@/utils/date';
-const calculateEarnings = calculateRideEarnings;
+const isToday = (dateString: string): boolean => {
+  const date = new Date(dateString);
+  const today = new Date();
+  return date.toDateString() === today.toDateString();
+};
+
+const getStatusBadge = (ride: Ride) => {
+  if (ride.status === "in-progress") {
+    return {
+      text: "IN PROGRESS",
+      color: "#4285F4",
+      bgColor: "rgba(66, 133, 244, 0.15)",
+    };
+  }
+  if (ride.status === "completed") {
+    return {
+      text: "COMPLETED",
+      color: "#34C759",
+      bgColor: "rgba(52, 199, 89, 0.15)",
+    };
+  }
+  if (ride.status === "cancelled") {
+    return {
+      text: "CANCELLED",
+      color: "#FF3B30",
+      bgColor: "rgba(255, 59, 48, 0.15)",
+    };
+  }
+  return {
+    text: "SCHEDULED",
+    color: "#FFD60A",
+    bgColor: "rgba(255, 214, 10, 0.15)",
+  };
+};
 
 export default function HomeScreen(): React.JSX.Element {
   const { user } = useUser();
-  const [location, setLocation] = useState<LocationCoords | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const [currentCity, setCurrentCity] = useState<string | null>(null);
-  const [currentState, setCurrentState] = useState<string | null>(null);
-  const [rides, setRides] = useState<Ride[]>([]);
-  const [isLoadingRides, setIsLoadingRides] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  
-  // Filter and sort state
-  const [filterStatus, setFilterStatus] = useState<'all' | 'scheduled' | 'in-progress' | 'completed'>('all');
-  const [sortBy, setSortBy] = useState<'date' | 'distance' | 'earnings'>('date');
   const [showFilters, setShowFilters] = useState(false);
-  
-  // Memoize greeting to avoid recalculating on every render
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
-  }, []); // Empty deps - only calculate once per hour (refresh handled by app lifecycle)
 
-  // Current active ride - memoized to avoid recalculation
-  const currentRide = useMemo(() => {
-    return rides.find((ride) => ride.status === 'in-progress') || null;
-  }, [rides]);
-  
-  // Calculate progress for active ride (simplified - would need route data for accurate calculation)
-  // For now, we'll show a placeholder. Real progress calculation would require route coordinates
-  const activeRideProgress = useMemo(() => {
-    return currentRide ? 0 : 0; // Will be calculated when viewing ride details
-  }, [currentRide]);
+  // Use the useRides hook - all business logic is handled here
+  const {
+    rides,
+    isLoading,
+    refreshing,
+    onRefresh,
+    greeting,
+    currentCity,
+    currentState,
+    currentLocation,
+    currentRide,
+    todaysRides,
+    upcomingRides,
+    filterStatus,
+    setFilterStatus,
+    sortBy,
+    setSortBy,
+    handleRidePress,
+    handleAddRide,
+    deleteRide,
+  } = useRides();
 
-  // Reverse geocode coordinates to get city and state - memoized to prevent recreating on every render
-  const reverseGeocode = useCallback(async (lat: number, lng: number) => {
-    try {
-      const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
-      if (!GOOGLE_API_KEY) {
-        return;
-      }
-
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.status === 'OK' && data.results.length > 0) {
-        const result = data.results[0];
-        const addressComponents = result.address_components || [];
-        
-        let city = '';
-        let state = '';
-
-        addressComponents.forEach((component: any) => {
-          if (component.types.includes('locality')) {
-            city = component.long_name;
-          } else if (component.types.includes('administrative_area_level_1')) {
-            state = component.short_name;
-          }
-        });
-
-        setCurrentCity(city);
-        setCurrentState(state);
-      }
-    } catch (error) {
-    }
-  }, []); // Empty deps - function doesn't depend on any props/state
-
-  // Show location error alert with actionable "Open Settings" button - memoized
-  const showLocationErrorAlert = useCallback((errorType: 'services' | 'permission' | 'timeout') => {
-    const messages = {
-      services: {
-        title: 'Location Services Disabled',
-        message: 'Please enable Location Services in your device settings to use location features.',
-      },
-      permission: {
-        title: 'Location Permission Required',
-        message: 'Waypool Driver needs location permission to show your position and match you with riders.',
-      },
-      timeout: {
-        title: 'Location Unavailable',
-        message: 'Unable to get your current location. Please check your GPS signal and try again.',
-      },
-    };
-
-    const { title, message } = messages[errorType];
-
-    if (errorType === 'timeout') {
-      // For timeout, just show message with retry option
-      Alert.alert(title, message, [
-        { text: 'OK', style: 'cancel' },
-        { text: 'Retry', onPress: () => window.location.reload() },
-      ]);
-    } else {
-      // For services/permission, show "Open Settings" button
-      Alert.alert(title, message, [
-        { text: 'Not Now', style: 'cancel' },
-        {
-          text: 'Open Settings',
-          onPress: () => {
-            if (Platform.OS === 'ios') {
-              Linking.openURL('app-settings:');
-            } else {
-              Linking.openSettings();
-            }
-          },
-        },
-      ]);
-    }
-  }, []); // Empty deps - function doesn't depend on any props/state
-
-  // Request location permissions and get current location (native only)
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout | null = null;
-    let isMounted = true;
-
-    (async () => {
-      if (user && Location && Platform.OS !== 'web') {
-        try {
-          // Check if location services are enabled
-          const servicesEnabled = await Location.hasServicesEnabledAsync();
-          if (!servicesEnabled) {
-            if (isMounted) {
-              setLocationError('Location services are disabled');
-              showLocationErrorAlert('services');
-            }
-            return;
-          }
-
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status !== 'granted') {
-            if (isMounted) {
-              setLocationError('Location permission denied');
-              showLocationErrorAlert('permission');
-            }
-            return;
-          }
-
-          // Get location with timeout
-          const locationPromise = Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          } as any);
-          
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => {
-              if (isMounted) {
-                reject(new Error("Location request timeout"));
-              }
-            }, 15000) as unknown as NodeJS.Timeout;
-          });
-          
-          const currentLocation = await Promise.race([
-            locationPromise,
-            timeoutPromise,
-          ]) as any;
-
-          // Clear timeout if location promise wins
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = null;
-          }
-
-          if (!isMounted) return;
-
-          const coords = {
-            latitude: currentLocation.coords.latitude,
-            longitude: currentLocation.coords.longitude,
-          };
-          
-          // Validate coordinates
-          if (isFinite(coords.latitude) && isFinite(coords.longitude)) {
-          setLocation(coords);
-            setLocationError(null); // Clear any previous errors
-          // Reverse geocode to get city and state
-          await reverseGeocode(coords.latitude, coords.longitude);
-          } else {
-            throw new Error("Invalid location coordinates received");
-          }
-        } catch (error: unknown) {
-          // Clear timeout on error
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = null;
-          }
-
-          if (!isMounted) return;
-          
-          let errorMessage = 'Failed to get location';
-          const err = error instanceof Error ? error : new Error(String(error));
-          
-          if (err.message?.includes("timeout")) {
-            errorMessage = 'Location request timed out';
-            showLocationErrorAlert('timeout');
-          } else if (err.message?.includes("permission")) {
-            errorMessage = 'Location permission denied';
-            showLocationErrorAlert('permission');
-          }
-          setLocationError(errorMessage);
-          
-          // Try to use last known location as fallback
-          if (isMounted) {
-            try {
-              const lastKnownLocation = await Location.getLastKnownPositionAsync({} as any);
-              if (lastKnownLocation && isMounted) {
-                const fallbackCoords = {
-                  latitude: lastKnownLocation.coords.latitude,
-                  longitude: lastKnownLocation.coords.longitude,
-                };
-                if (isFinite(fallbackCoords.latitude) && isFinite(fallbackCoords.longitude)) {
-                  setLocation(fallbackCoords);
-                  await reverseGeocode(fallbackCoords.latitude, fallbackCoords.longitude);
-                }
-              }
-            } catch (fallbackError) {
-              // Ignore fallback errors
-            }
-          }
-        }
-      } else if (Platform.OS === 'web') {
-        // Web fallback - try browser geolocation API
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            async (position) => {
-              if (!isMounted) return;
-              const coords = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude,
-              };
-              setLocation(coords);
-              // Reverse geocode to get city and state
-              await reverseGeocode(coords.latitude, coords.longitude);
-            },
-            (error) => {
-              if (isMounted) {
-                setLocationError('Location permission denied');
-              }
-            }
-          );
-        } else {
-          if (isMounted) {
-            setLocationError('Geolocation not supported');
-          }
-        }
-      }
-    })();
-
-    // Cleanup function
-    return () => {
-      isMounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-    };
-  }, [user, showLocationErrorAlert, reverseGeocode]);
-
-  // Fetch upcoming rides
-  const fetchRides = useCallback(async () => {
-    if (!user?.id) {
-      setIsLoadingRides(false);
-      return;
-    }
-    
-    try {
-      setIsLoadingRides(true);
-      const data = await getUpcomingRides(user.id);
-      setRides(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error fetching rides:', error);
-      // Set empty array on error instead of leaving it undefined
-      setRides([]);
-    } finally {
-      setIsLoadingRides(false);
-    }
-  }, [user?.id]);
-
-  // Refetch rides when screen comes into focus (e.g., after adding a ride)
+  // Refetch rides when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       if (user) {
-        fetchRides();
+        onRefresh();
       }
-      return () => {};
-    }, [user, fetchRides])
+    }, [user, onRefresh])
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    HapticFeedback.selection(); // Haptic feedback on pull-to-refresh
-    await fetchRides();
-    setRefreshing(false);
-    HapticFeedback.success(); // Success feedback when refresh completes
-  }, [fetchRides]);
-
-  // Using centralized date formatting utilities from utils/date.ts
-  // Custom formatDate that includes "Today"/"Tomorrow" logic
-  const formatDateWithRelative = (dateString: string): string => {
-    const date = safeParseDate(dateString);
-    if (!date) return formatDate(dateString);
-
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const dateOnly = new Date(date);
-      dateOnly.setHours(0, 0, 0, 0);
-
-      if (dateOnly.getTime() === today.getTime()) {
-        return 'Today';
-      } else if (dateOnly.getTime() === tomorrow.getTime()) {
-        return 'Tomorrow';
-      } else {
-        return formatDate(dateString);
-      }
-    } catch (error) {
-      return formatDate(dateString);
-    }
-  };
-
-  // Removed isToday - using memoized version below
-
-  // Memoize isToday helper to avoid recreating on every render
-  const isTodayMemo = useCallback((dateString: string): boolean => {
-    const date = new Date(dateString);
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
-  }, []);
-
-  // Get status badge info - memoized function
-  const getStatusBadge = useCallback((ride: Ride) => {
-    if (ride.status === 'in-progress') {
-      return { text: 'IN PROGRESS', color: '#4285F4', bgColor: 'rgba(66, 133, 244, 0.15)' };
-    }
-    if (ride.status === 'completed') {
-      return { text: 'COMPLETED', color: '#34C759', bgColor: 'rgba(52, 199, 89, 0.15)' };
-    }
-    if (ride.status === 'cancelled') {
-      return { text: 'CANCELLED', color: '#FF3B30', bgColor: 'rgba(255, 59, 48, 0.15)' };
-    }
-    return { text: 'SCHEDULED', color: '#FFD60A', bgColor: 'rgba(255, 214, 10, 0.15)' };
-  }, []);
-
-  // Memoize filtered rides - only recalculate when rides or filterStatus changes
-  const filteredRides = useMemo(() => {
-    return rides.filter((ride) => {
-      if (filterStatus === 'all') return true;
-      if (filterStatus === 'scheduled') return ride.status === 'scheduled' || !ride.status;
-      if (filterStatus === 'in-progress') return ride.status === 'in-progress';
-      if (filterStatus === 'completed') return ride.status === 'completed';
-      return true;
-    });
-  }, [rides, filterStatus]);
-
-  // Memoize sorted rides - only recalculate when filteredRides or sortBy changes
-  const sortedRides = useMemo(() => {
-    return [...filteredRides].sort((a, b) => {
-      if (sortBy === 'date') {
-        return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
-      }
-      if (sortBy === 'distance') {
-        const distA = calculateTotalDistance(a);
-        const distB = calculateTotalDistance(b);
-        return distB - distA; // Descending
-      }
-      if (sortBy === 'earnings') {
-        const earningsA = calculateEarnings(a);
-        const earningsB = calculateEarnings(b);
-        return earningsB - earningsA; // Descending
-      }
-      return 0;
-    });
-  }, [filteredRides, sortBy]);
-
-  // Memoize separated rides - only recalculate when sortedRides changes
-  const ridesExcludingActive = useMemo(() => {
-    return sortedRides.filter((ride) => ride.status !== 'in-progress');
-  }, [sortedRides]);
-
-  const todaysRides = useMemo(() => {
-    return ridesExcludingActive.filter((ride) => isTodayMemo(ride.departureTime));
-  }, [ridesExcludingActive, isTodayMemo]);
-
-  const upcomingRides = useMemo(() => {
-    return ridesExcludingActive.filter((ride) => !isTodayMemo(ride.departureTime));
-  }, [ridesExcludingActive, isTodayMemo]);
-
-  // Memoize callbacks to prevent unnecessary re-renders
-  // IMPORTANT: All hooks must be called before any conditional returns
-  const handleAddRide = useCallback(() => {
-    router.push('/add-ride');
-  }, []);
-
-  const handleRidePress = useCallback((rideId: number) => {
-    // Find the ride from the rides array
-    const ride = rides.find((r) => r.id === rideId);
-    if (!ride) {
-      return;
-    }
-
-    // For in-progress rides, navigate to current ride screen
-    if (ride.status === 'in-progress') {
-      router.push({
-        pathname: '/current-ride',
-        params: {
-          rideId: String(ride.id),
-          ride: JSON.stringify(ride),
-        },
-      });
-    } else {
-      // For scheduled/upcoming rides, navigate to upcoming ride details screen (read-only)
-      router.push({
-        pathname: '/upcoming-ride-details',
-        params: {
-          rideId: String(ride.id),
-        },
-      });
-    }
-  }, [rides]);
-
   const handleStartRide = useCallback((ride: Ride) => {
-    // Navigate to current ride screen with ride ID and ride data
     router.push({
-      pathname: '/current-ride',
+      pathname: "/current-ride",
       params: {
         rideId: String(ride.id),
-        ride: JSON.stringify(ride), // Keep for fallback
+        ride: JSON.stringify(ride),
       },
     });
   }, []);
 
-  const handleDeleteRide = useCallback((ride: Ride) => {
-    Alert.alert(
-      'Delete Ride',
-      'Are you sure you want to delete this ride? This action cannot be undone.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (!user?.id) {
-              Alert.alert('Error', 'User not found');
-              return;
-            }
-
-            try {
-              await deleteRide(ride.id, user.id);
-              // Refresh the rides list
-              await fetchRides();
-            } catch (error: unknown) {
-              const errorMessage = error instanceof Error ? error.message : 'Failed to delete ride. Please try again.';
-              Alert.alert(
-                'Error',
-                errorMessage
-              );
-            }
+  const handleDeleteRideWithConfirm = useCallback(
+    async (ride: Ride) => {
+      Alert.alert(
+        "Delete Ride",
+        "Are you sure you want to delete this ride? This action cannot be undone.",
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
           },
-        },
-      ]
-    );
-  }, [user?.id, fetchRides]);
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await deleteRide(ride.id);
+              } catch (error: unknown) {
+                const errorMessage =
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to delete ride. Please try again.";
+                Alert.alert("Error", errorMessage);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [deleteRide]
+  );
 
-  // If user is not logged in, show nothing (should redirect)
-  // This must come AFTER all hooks are called (Rules of Hooks)
+  // If user is not logged in, show loading
   if (!user) {
     return <LoadingScreen message="Loading..." safeArea={true} />;
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      edges={["top"]}
+    >
       <StatusBar style="light" />
       <ScrollView
         style={styles.scrollView}
@@ -520,148 +177,147 @@ export default function HomeScreen(): React.JSX.Element {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#4285F4"
-            colors={['#4285F4']}
-            progressBackgroundColor="#1C1C1E"
-            size="default"
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+            progressBackgroundColor={theme.colors.surface.secondary}
           />
-        }>
+        }
+      >
         {/* Greeting Section */}
-        <View style={styles.greetingContainer}>
-          <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.name}>{user.fullName}</Text>
-          {(currentCity || currentState) && (
-            <View style={styles.locationContainer}>
-              <IconSymbol size={14} name="location.fill" color="#4285F4" />
-              <Text style={styles.locationText}>
-                {currentCity && currentState 
-                  ? `${currentCity}, ${currentState}`
-                  : currentCity || currentState || ''}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Map Section - Hidden for now, can be re-enabled later */}
-        {/* <View style={styles.mapWrapper}>
-          <MapComponent
-            location={location}
-            locationError={locationError}
-            initialRegion={initialRegion}
-          />
-        </View> */}
+        <HomeHeader
+          userName={user.fullName}
+          greeting={greeting}
+          currentCity={currentCity}
+          currentState={currentState}
+        />
 
         {/* Current Active Ride */}
         {currentRide && (
-          <TouchableOpacity 
-            style={styles.currentRideCard}
+          <ActiveRideCard
+            ride={currentRide}
             onPress={() => handleRidePress(currentRide.id)}
-            activeOpacity={0.9}>
-            
-            <View style={styles.liveHeader}>
-              <View style={styles.liveBadge}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>LIVE RIDE</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.viewRideButton}
-                onPress={() => handleRidePress(currentRide.id)}
-                activeOpacity={0.7}>
-                <Text style={styles.viewRideButtonText}>View Ride</Text>
-                <IconSymbol size={14} name="chevron.right" color="#4285F4" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.currentRideInfo}>
-                  <View style={styles.statusRow}>
-                <IconSymbol size={16} name="car.fill" color="#4285F4" />
-                <Text style={styles.statusLabel}>Active Ride</Text>
-                  </View>
-              <Text style={styles.currentRouteLabel}>Route</Text>
-              <View style={styles.currentRouteContainer}>
-                <View style={styles.currentRouteItem}>
-                  <View style={styles.currentRouteIndicator} />
-                  <Text style={styles.currentRouteText} numberOfLines={1}>
-                    {currentRide.fromAddress}
-                  </Text>
-                  </View>
-                <View style={styles.currentRouteConnector} />
-                <View style={styles.currentRouteItem}>
-                  <View style={[styles.currentRouteIndicator, styles.currentRouteIndicatorDest]} />
-                  <Text style={styles.currentRouteText} numberOfLines={1}>
-                    {currentRide.toAddress}
-                  </Text>
-                  </View>
-                  </View>
-              
-              {currentRide.passengers && currentRide.passengers.length > 0 && (
-                <View style={styles.currentPassengersInfo}>
-                  <IconSymbol size={14} name="person.2.fill" color="#FFFFFF" />
-                  <Text style={styles.currentPassengersText}>
-                    {currentRide.passengers.length} passenger{currentRide.passengers.length !== 1 ? 's' : ''}
-                  </Text>
-                </View>
-              )}
-        </View>
-
-            {/* Progress Bar - Shows distance covered */}
-            <View style={styles.progressBar}>
-              <View style={[styles.progress, { width: `${activeRideProgress}%` }]} />
-            </View>
-            {activeRideProgress > 0 && (
-              <Text style={styles.progressText}>
-                {activeRideProgress.toFixed(0)}% complete
-              </Text>
-            )}
-          </TouchableOpacity>
+            activeRideProgress={0}
+          />
         )}
 
         {/* Filter and Sort Section */}
         <View style={styles.filterSection}>
           <View style={styles.filterRow}>
             <TouchableOpacity
-              style={styles.filterToggle}
+              style={[
+                styles.filterToggle,
+                {
+                  backgroundColor: theme.colors.surface.secondary,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               onPress={() => setShowFilters(!showFilters)}
-              activeOpacity={0.7}>
-              <IconSymbol size={18} name="line.3.horizontal.decrease" color="#FFFFFF" />
-              <Text style={styles.filterToggleText}>Filter & Sort</Text>
-              {showFilters && <IconSymbol size={14} name="chevron.up" color="#FFFFFF" />}
-              {!showFilters && <IconSymbol size={14} name="chevron.down" color="#FFFFFF" />}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                size={18}
+                name="line.3.horizontal.decrease"
+                color={theme.colors.text.primary}
+              />
+              <Text
+                style={[
+                  styles.filterToggleText,
+                  { color: theme.colors.text.primary },
+                ]}
+              >
+                Filter & Sort
+              </Text>
+              {showFilters ? (
+                <IconSymbol
+                  size={14}
+                  name="chevron.up"
+                  color={theme.colors.text.primary}
+                />
+              ) : (
+                <IconSymbol
+                  size={14}
+                  name="chevron.down"
+                  color={theme.colors.text.primary}
+                />
+              )}
             </TouchableOpacity>
-            {(filterStatus !== 'all' || sortBy !== 'date') && (
+            {(filterStatus !== "all" || sortBy !== "date") && (
               <TouchableOpacity
-                style={styles.clearFiltersButton}
+                style={[
+                  styles.clearFiltersButton,
+                  {
+                    backgroundColor: theme.colors.surface.secondary,
+                    borderColor: theme.colors.border,
+                  },
+                ]}
                 onPress={() => {
-                  setFilterStatus('all');
-                  setSortBy('date');
+                  setFilterStatus("all");
+                  setSortBy("date");
                 }}
-                activeOpacity={0.7}>
-                <Text style={styles.clearFiltersText}>Clear</Text>
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.clearFiltersText,
+                    { color: theme.colors.primary },
+                  ]}
+                >
+                  Clear
+                </Text>
               </TouchableOpacity>
             )}
           </View>
 
           {showFilters && (
-            <View style={styles.filtersContainer}>
+            <View
+              style={[
+                styles.filtersContainer,
+                {
+                  backgroundColor: theme.colors.surface.primary,
+                  borderColor: theme.colors.border,
+                },
+              ]}
+            >
               {/* Status Filter */}
               <View style={styles.filterGroup}>
-                <Text style={styles.filterLabel}>Status</Text>
+                <Text
+                  style={[
+                    styles.filterLabel,
+                    { color: theme.colors.text.secondary },
+                  ]}
+                >
+                  Status
+                </Text>
                 <View style={styles.filterOptions}>
-                  {(['all', 'scheduled', 'in-progress', 'completed'] as const).map((status) => (
+                  {(
+                    ["all", "scheduled", "in-progress", "completed"] as const
+                  ).map((status) => (
                     <TouchableOpacity
                       key={status}
                       style={[
                         styles.filterChip,
-                        filterStatus === status && styles.filterChipActive,
+                        {
+                          backgroundColor: theme.colors.surface.secondary,
+                          borderColor: theme.colors.border,
+                        },
+                        filterStatus === status && {
+                          backgroundColor: theme.colors.primary,
+                          borderColor: theme.colors.primary,
+                        },
                       ]}
                       onPress={() => setFilterStatus(status)}
-                      activeOpacity={0.7}>
+                      activeOpacity={0.7}
+                    >
                       <Text
                         style={[
                           styles.filterChipText,
-                          filterStatus === status && styles.filterChipTextActive,
-                        ]}>
-                        {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                          { color: theme.colors.text.primary },
+                          filterStatus === status && { color: "#000000" },
+                        ]}
+                      >
+                        {status === "all"
+                          ? "All"
+                          : status.charAt(0).toUpperCase() + status.slice(1)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -670,23 +326,42 @@ export default function HomeScreen(): React.JSX.Element {
 
               {/* Sort Options */}
               <View style={styles.filterGroup}>
-                <Text style={styles.filterLabel}>Sort By</Text>
+                <Text
+                  style={[
+                    styles.filterLabel,
+                    { color: theme.colors.text.secondary },
+                  ]}
+                >
+                  Sort By
+                </Text>
                 <View style={styles.filterOptions}>
-                  {(['date', 'distance', 'earnings'] as const).map((sort) => (
+                  {(["date", "distance", "earnings"] as const).map((sort) => (
                     <TouchableOpacity
                       key={sort}
                       style={[
                         styles.filterChip,
-                        sortBy === sort && styles.filterChipActive,
+                        {
+                          backgroundColor: theme.colors.surface.secondary,
+                          borderColor: theme.colors.border,
+                        },
+                        sortBy === sort && {
+                          backgroundColor: theme.colors.primary,
+                          borderColor: theme.colors.primary,
+                        },
                       ]}
                       onPress={() => setSortBy(sort)}
-                      activeOpacity={0.7}>
+                      activeOpacity={0.7}
+                    >
                       <Text
                         style={[
                           styles.filterChipText,
-                          sortBy === sort && styles.filterChipTextActive,
-                        ]}>
-                        {sort === 'date' ? 'Date' : sort.charAt(0).toUpperCase() + sort.slice(1)}
+                          { color: theme.colors.text.primary },
+                          sortBy === sort && { color: "#000000" },
+                        ]}
+                      >
+                        {sort === "date"
+                          ? "Date"
+                          : sort.charAt(0).toUpperCase() + sort.slice(1)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -700,127 +375,30 @@ export default function HomeScreen(): React.JSX.Element {
         {todaysRides.length > 0 && (
           <View style={styles.ridesContainer}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Today&apos;s rides</Text>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: theme.colors.text.primary },
+                ]}
+              >
+                Today&apos;s rides
+              </Text>
             </View>
             {todaysRides.map((ride) => (
-              <View key={ride.id} style={styles.rideCard}>
-                <View style={styles.rideCardHeader}>
-                <TouchableOpacity 
-                  onPress={() => handleRidePress(ride.id)}
-                    activeOpacity={0.7}
-                    style={styles.rideCardContent}>
-                  <View style={styles.rideHeader}>
-                    <View style={styles.rideTimeContainer}>
-                      <View style={styles.rideTimeRow}>
-                      <Text style={styles.rideDate}>{formatDateWithRelative(ride.departureTime)}</Text>
-                        {(() => {
-                          const statusBadge = getStatusBadge(ride);
-                          return (
-                            <View style={[styles.statusBadge, { backgroundColor: statusBadge.bgColor }]}>
-                              <View style={[styles.statusDot, { backgroundColor: statusBadge.color }]} />
-                              <Text style={[styles.statusBadgeText, { color: statusBadge.color }]}>
-                                {statusBadge.text}
-                              </Text>
-                            </View>
-                          );
-                        })()}
-                      </View>
-                      <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
-                    </View>
-                    <View style={styles.seatsContainer}>
-                      <View style={styles.seatsInfo}>
-                      <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
-                        <Text style={styles.seatsLabel}>available</Text>
-                        {ride.totalSeats > ride.availableSeats && (
-                          <Text style={styles.bookedSeatsLabel}>
-                            {ride.totalSeats - ride.availableSeats} booked
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.routeContainer}>
-                    <View style={styles.routeItem}>
-                      <View style={styles.routeIndicator} />
-                      <View style={styles.routeContent}>
-                        <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.routeConnector} />
-                    <View style={styles.routeItem}>
-                      <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
-                      <View style={styles.routeContent}>
-                        <Text style={styles.routeAddress}>{ride.toAddress}</Text>
-                      </View>
-                    </View>
-                  </View>
-                  {/* Distance and Price display */}
-                  <View style={styles.infoContainer}>
-                    {(() => {
-                      const totalDistance = calculateTotalDistance(ride);
-                      return totalDistance > 0 ? (
-                        <View style={styles.infoItem}>
-                          <IconSymbol size={14} name="mappin" color="#999999" />
-                          <Text style={styles.infoValue}>
-                            {totalDistance.toFixed(1)} mi
-                          </Text>
-                        </View>
-                      ) : null;
-                    })()}
-                    {ride.price && (
-                      <View style={styles.infoItem}>
-                        <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                        <Text style={styles.priceValue}>
-                          ${ride.price.toFixed(2)}/seat
-                        </Text>
-                      </View>
-                    )}
-                    {ride.totalSeats > ride.availableSeats && (
-                      <View style={styles.infoItem}>
-                        <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                        <Text style={styles.earningsValue}>
-                          ${calculateEarnings(ride).toFixed(2)} earned
-                        </Text>
-                      </View>
-                    )}
-                </View>
-                </TouchableOpacity>
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => router.push({ pathname: '/edit-ride', params: { rideId: ride.id.toString() } })}
-                    activeOpacity={0.7}>
-                    <IconSymbol size={18} name="pencil" color="#4285F4" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeleteRide(ride)}
-                    activeOpacity={0.7}>
-                    <IconSymbol size={18} name="trash" color="#FF3B30" />
-                  </TouchableOpacity>
-                </View>
-                </View>
-                {/* Action Buttons - Only for today's rides */}
-                {/* Only show Start Ride for scheduled rides that are today */}
-                {(ride.status === 'scheduled' || !ride.status) && isTodayMemo(ride.departureTime) ? (
-                <TouchableOpacity
-                  style={styles.startRideButton}
-                  onPress={() => handleStartRide(ride)}
-                  activeOpacity={0.8}>
-                  <IconSymbol size={18} name="play.fill" color="#000000" />
-                  <Text style={styles.startRideButtonText}>Start Ride</Text>
-                </TouchableOpacity>
-                ) : ride.status === 'in-progress' ? (
-                  <TouchableOpacity
-                    style={[styles.startRideButton, styles.viewRideButtonStyle]}
-                    onPress={() => handleRidePress(ride.id)}
-                    activeOpacity={0.8}>
-                    <IconSymbol size={18} name="arrow.right.circle.fill" color="#FFFFFF" />
-                    <Text style={[styles.startRideButtonText, styles.viewRideButtonTextStyle]}>Continue Ride</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+              <RideCard
+                key={ride.id}
+                ride={ride}
+                onPress={() => handleRidePress(ride.id)}
+                onEdit={() =>
+                  router.push({
+                    pathname: "/edit-ride",
+                    params: { rideId: ride.id.toString() },
+                  })
+                }
+                onDelete={() => handleDeleteRideWithConfirm(ride)}
+                onStartRide={() => handleStartRide(ride)}
+                showActions={true}
+              />
             ))}
           </View>
         )}
@@ -828,130 +406,91 @@ export default function HomeScreen(): React.JSX.Element {
         {/* Upcoming Rides Section */}
         <View style={styles.ridesContainer}>
           <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Upcoming rides</Text>
-            <TouchableOpacity 
-              style={styles.addRideButton}
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: theme.colors.text.primary },
+              ]}
+            >
+              Upcoming rides
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.addRideButton,
+                { backgroundColor: theme.colors.primary },
+              ]}
               onPress={handleAddRide}
-              activeOpacity={0.7}>
+              activeOpacity={0.7}
+            >
               <Text style={styles.addRideIcon}>+</Text>
             </TouchableOpacity>
           </View>
-          
-          {isLoadingRides ? (
+
+          {isLoading ? (
             <SkeletonRideList count={3} />
           ) : rides.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <IconSymbol size={48} name="car" color="#333333" />
-              <Text style={styles.emptyTitle}>No upcoming rides</Text>
-              <Text style={styles.emptySubtext}>Tap the + button to create your first ride</Text>
+              <IconSymbol
+                size={48}
+                name="car"
+                color={theme.colors.text.tertiary}
+              />
+              <Text
+                style={[
+                  styles.emptyTitle,
+                  { color: theme.colors.text.primary },
+                ]}
+              >
+                No upcoming rides
+              </Text>
+              <Text
+                style={[
+                  styles.emptySubtext,
+                  { color: theme.colors.text.secondary },
+                ]}
+              >
+                Tap the + button to create your first ride
+              </Text>
             </View>
           ) : upcomingRides.length === 0 && todaysRides.length > 0 ? (
             <View style={styles.emptyContainer}>
-              <IconSymbol size={48} name="calendar" color="#333333" />
-              <Text style={styles.emptyTitle}>No upcoming rides</Text>
-              <Text style={styles.emptySubtext}>All your rides are scheduled for today</Text>
+              <IconSymbol
+                size={48}
+                name="calendar"
+                color={theme.colors.text.tertiary}
+              />
+              <Text
+                style={[
+                  styles.emptyTitle,
+                  { color: theme.colors.text.primary },
+                ]}
+              >
+                No upcoming rides
+              </Text>
+              <Text
+                style={[
+                  styles.emptySubtext,
+                  { color: theme.colors.text.secondary },
+                ]}
+              >
+                All your rides are scheduled for today
+              </Text>
             </View>
           ) : (
             upcomingRides.map((ride) => (
-              <View key={ride.id} style={styles.rideCard}>
-                <View style={styles.rideCardHeader}>
-              <TouchableOpacity 
+              <RideCard
+                key={ride.id}
+                ride={ride}
                 onPress={() => handleRidePress(ride.id)}
-                    activeOpacity={0.7}
-                    style={styles.rideCardContent}>
-                <View style={styles.rideHeader}>
-                  <View style={styles.rideTimeContainer}>
-                    <View style={styles.rideTimeRow}>
-                    <Text style={styles.rideDate}>{formatDate(ride.departureTime)}</Text>
-                      {(() => {
-                        const statusBadge = getStatusBadge(ride);
-                        return (
-                          <View style={[styles.statusBadge, { backgroundColor: statusBadge.bgColor }]}>
-                            <View style={[styles.statusDot, { backgroundColor: statusBadge.color }]} />
-                            <Text style={[styles.statusBadgeText, { color: statusBadge.color }]}>
-                              {statusBadge.text}
-                            </Text>
-                          </View>
-                        );
-                      })()}
-                    </View>
-                    <Text style={styles.rideTime}>{formatTime(ride.departureTime)}</Text>
-                  </View>
-                  <View style={styles.seatsContainer}>
-                    <View style={styles.seatsInfo}>
-                    <Text style={styles.seatsValue}>{ride.availableSeats}</Text>
-                      <Text style={styles.seatsLabel}>available</Text>
-                      {ride.totalSeats > ride.availableSeats && (
-                        <Text style={styles.bookedSeatsLabel}>
-                          {ride.totalSeats - ride.availableSeats} booked
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.routeContainer}>
-                  <View style={styles.routeItem}>
-                    <View style={styles.routeIndicator} />
-                    <View style={styles.routeContent}>
-                      <Text style={styles.routeAddress}>{ride.fromAddress}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.routeConnector} />
-                  <View style={styles.routeItem}>
-                    <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
-                    <View style={styles.routeContent}>
-                      <Text style={styles.routeAddress}>{ride.toAddress}</Text>
-                    </View>
-                  </View>
-                </View>
-                {/* Distance and Price display */}
-                <View style={styles.infoContainer}>
-                  {(() => {
-                    const totalDistance = calculateTotalDistance(ride);
-                    return totalDistance > 0 ? (
-                      <View style={styles.infoItem}>
-                        <IconSymbol size={14} name="mappin" color="#999999" />
-                        <Text style={styles.infoValue}>
-                          {totalDistance.toFixed(1)} mi
-                        </Text>
-                      </View>
-                    ) : null;
-                  })()}
-                  {ride.price && (
-                    <View style={styles.infoItem}>
-                      <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                      <Text style={styles.priceValue}>
-                        ${ride.price.toFixed(2)}/seat
-                      </Text>
-                    </View>
-                  )}
-                  {ride.totalSeats > ride.availableSeats && (
-                    <View style={styles.infoItem}>
-                      <IconSymbol size={14} name="dollarsign.circle.fill" color="#4285F4" />
-                      <Text style={styles.earningsValue}>
-                        ${calculateEarnings(ride).toFixed(2)} earned
-                      </Text>
-                    </View>
-                  )}
-              </View>
-              </TouchableOpacity>
-              <View style={styles.actionButtons}>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => router.push({ pathname: '/edit-ride', params: { rideId: ride.id.toString() } })}
-                  activeOpacity={0.7}>
-                  <IconSymbol size={18} name="pencil" color="#4285F4" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDeleteRide(ride)}
-                  activeOpacity={0.7}>
-                  <IconSymbol size={18} name="trash" color="#FF3B30" />
-                </TouchableOpacity>
-              </View>
-              </View>
-            </View>
+                onEdit={() =>
+                  router.push({
+                    pathname: "/edit-ride",
+                    params: { rideId: ride.id.toString() },
+                  })
+                }
+                onDelete={() => handleDeleteRideWithConfirm(ride)}
+                showActions={true}
+              />
             ))
           )}
         </View>
@@ -963,497 +502,141 @@ export default function HomeScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 120,
-  },
-  greetingContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
     paddingBottom: 20,
-    marginBottom: 8,
   },
-  greeting: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4285F4',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    opacity: 0.9,
-  },
-  name: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -1,
-    marginBottom: 4,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  locationText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#4285F4',
-    opacity: 0.9,
-  },
-  mapWrapper: {
+  filterSection: {
     marginHorizontal: 20,
-    marginBottom: 24,
+    marginBottom: 20,
   },
-  currentRideCard: {
-    backgroundColor: '#0F0F0F',
-    marginHorizontal: 20,
-    marginBottom: 24,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 2,
-    borderColor: '#4285F4',
+  filterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
   },
-  liveHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(66, 133, 244, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4285F4',
-  },
-  liveText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#4285F4',
-    letterSpacing: 1.2,
-  },
-  currentEta: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#4285F4',
-  },
-  currentRideInfo: {
-    marginBottom: 16,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  filterToggle: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
   },
-  statusLabel: {
+  filterToggleText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  clearFiltersButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  clearFiltersText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  filtersContainer: {
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    gap: 16,
+  },
+  filterGroup: {
+    gap: 8,
+  },
+  filterLabel: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    opacity: 0.7,
-    textTransform: 'uppercase',
+    fontWeight: "600",
+    opacity: 0.6,
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  currentPassenger: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 10,
-    letterSpacing: -0.5,
+  filterOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  currentDestination: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
   },
-  currentDestText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#FFFFFF',
-    opacity: 0.8,
-    flex: 1,
-    lineHeight: 20,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: 'rgba(66, 133, 244, 0.15)',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progress: {
-    height: '100%',
-    backgroundColor: '#4285F4',
-    borderRadius: 4,
-    minWidth: 2,
-  },
-  progressText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#666666',
-    marginTop: 4,
-    textAlign: 'right',
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   ridesContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    marginTop: 8,
+    marginHorizontal: 20,
+    marginBottom: 24,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
+    fontWeight: "700",
   },
   addRideButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#4285F4',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
   addRideIcon: {
     fontSize: 24,
-    fontWeight: '300',
-    color: '#000000',
-    lineHeight: 24,
-  },
-  loadingContainer: {
-    paddingVertical: 40,
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    opacity: 0.6,
-    fontWeight: '500',
-  },
-  emptyContainer: {
-    paddingVertical: 50,
-    alignItems: 'center',
-    gap: 12,
-  },
-  emptyTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  emptySubtext: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    opacity: 0.5,
-    fontWeight: '400',
-    textAlign: 'center',
-    maxWidth: 250,
+    fontWeight: "300",
+    color: "#000000",
   },
   rideCard: {
-    backgroundColor: '#0F0F0F',
-    borderRadius: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+    overflow: "hidden",
+  },
+  rideCardHeader: {
+    position: "relative",
+  },
+  rideCardContent: {
     padding: 20,
-    marginBottom: 18,
-    borderTopWidth: 2,
-    borderLeftWidth: 1.5,
-    borderRightWidth: 1,
-    borderBottomWidth: 0.5,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
-    borderLeftColor: 'rgba(255, 255, 255, 0.05)',
-    borderRightColor: 'rgba(0, 0, 0, 0.3)',
-    borderBottomColor: 'rgba(0, 0, 0, 0.5)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 6,
   },
   rideHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
   },
   rideTimeContainer: {
     flex: 1,
   },
-  rideDate: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#FFFFFF',
-    opacity: 0.4,
+  rideTimeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginBottom: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  },
+  rideDate: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   rideTime: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  seatsContainer: {
-    alignItems: 'flex-end',
-  },
-  seatsInfo: {
-    alignItems: 'flex-end',
-  },
-  seatsValue: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  seatsLabel: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: '#FFFFFF',
-    opacity: 0.4,
-    marginTop: 2,
-    textTransform: 'lowercase',
-  },
-  bookedSeatsLabel: {
-    fontSize: 10,
-    fontWeight: '400',
-    color: '#FFFFFF',
-    opacity: 0.5,
-    marginTop: 2,
-    textTransform: 'lowercase',
-  },
-  routeContainer: {
-    gap: 6,
-  },
-  routeItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  routeIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4285F4',
-    marginTop: 4,
-    marginRight: 10,
-  },
-  routeIndicatorDest: {
-    backgroundColor: '#FF3B30',
-  },
-  routeConnector: {
-    width: 2,
-    height: 12,
-    backgroundColor: 'rgba(66, 133, 244, 0.2)',
-    marginLeft: 3,
-    marginVertical: 2,
-    borderRadius: 1,
-  },
-  routeContent: {
-    flex: 1,
-  },
-  routeAddress: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#FFFFFF',
-    lineHeight: 20,
-    letterSpacing: -0.2,
-  },
-  infoContainer: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#FFFFFF',
-    opacity: 0.6,
-  },
-  infoValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  priceValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4285F4',
-  },
-  earningsValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4285F4',
-  },
-  pricePerSeat: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: '#FFFFFF',
-    opacity: 0.5,
-  },
-  passengerCount: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: '#FFFFFF',
-    opacity: 0.5,
-  },
-  startRideButton: {
-    marginTop: 16,
-    backgroundColor: '#4285F4',
-    borderRadius: 12,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#4285F4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  startRideButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000000',
-    letterSpacing: 0.3,
-  },
-  rideCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  rideCardContent: {
-    flex: 1,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-  editButton: {
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteButton: {
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Active Ride Card Styles
-  viewRideButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(66, 133, 244, 0.15)',
-  },
-  viewRideButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
-  currentRouteLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    opacity: 0.6,
-    marginTop: 12,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  currentRouteContainer: {
-    gap: 8,
-    marginBottom: 12,
-  },
-  currentRouteItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  currentRouteIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4285F4',
-  },
-  currentRouteIndicatorDest: {
-    backgroundColor: '#FF3B30',
-  },
-  currentRouteText: {
-    flex: 1,
     fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
-    opacity: 0.9,
-  },
-  currentRouteConnector: {
-    width: 2,
-    height: 12,
-    backgroundColor: 'rgba(66, 133, 244, 0.3)',
-    marginLeft: 3,
-    marginVertical: 2,
-    borderRadius: 1,
-  },
-  currentPassengersInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  currentPassengersText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#FFFFFF',
-    opacity: 0.7,
-  },
-  // Status Badge Styles
-  rideTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
+    fontWeight: "500",
   },
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1466,102 +649,142 @@ const styles = StyleSheet.create({
   },
   statusBadgeText: {
     fontSize: 9,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+    fontWeight: "700",
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  // Filter & Sort Styles
-  filterSection: {
+  seatsContainer: {
+    alignItems: "flex-end",
+  },
+  seatsInfo: {
+    alignItems: "flex-end",
+  },
+  seatsValue: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  seatsLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  bookedSeatsLabel: {
+    fontSize: 11,
+    fontWeight: "400",
+    marginTop: 2,
+  },
+  routeContainer: {
+    marginBottom: 16,
+  },
+  routeItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  routeIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  routeIndicatorDest: {
+    backgroundColor: "#FF3B30",
+  },
+  routeContent: {
+    flex: 1,
+  },
+  routeAddress: {
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  routeConnector: {
+    width: 2,
+    height: 12,
+    marginLeft: 3,
+    marginVertical: 2,
+    borderRadius: 1,
+  },
+  infoContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#1A1A1A",
+  },
+  infoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  infoValue: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  priceValue: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  earningsValue: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  actionButtons: {
+    position: "absolute",
+    top: 20,
+    right: 20,
+    flexDirection: "row",
+    gap: 8,
+  },
+  editButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(66, 133, 244, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  deleteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 59, 48, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  startRideButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
     marginHorizontal: 20,
     marginBottom: 20,
   },
-  filterRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  filterToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: '#1A1A1A',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-  },
-  filterToggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  clearFiltersButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: '#1A1A1A',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-  },
-  clearFiltersText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
-  filtersContainer: {
-    backgroundColor: '#0F0F0F',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1A1A1A',
-    gap: 16,
-  },
-  filterGroup: {
-    gap: 8,
-  },
-  filterLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    opacity: 0.6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  filterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  filterChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    backgroundColor: '#1A1A1A',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-  },
-  filterChipActive: {
-    backgroundColor: '#4285F4',
-    borderColor: '#4285F4',
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    opacity: 0.7,
-  },
-  filterChipTextActive: {
-    color: '#000000',
-    opacity: 1,
+  startRideButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   viewRideButtonStyle: {
-    backgroundColor: '#1A1A1A',
     borderWidth: 1,
-    borderColor: '#4285F4',
   },
-  viewRideButtonTextStyle: {
-    color: '#FFFFFF',
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 48,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    fontWeight: "400",
+    textAlign: "center",
   },
 });

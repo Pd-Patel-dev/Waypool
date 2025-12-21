@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logout as apiLogout } from '@/services/api';
+import { getAccessToken, clearTokens } from '@/utils/tokenStorage';
 
 interface User {
   id: number;
   fullName: string;
   email: string;
   phoneNumber: string;
+  emailVerified?: boolean;
   photoUrl: string | null;
   city: string | null;
   carMake: string | null;
@@ -40,13 +42,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user from storage on mount
+  // Load user from storage on mount and check token
   useEffect(() => {
     loadUser();
   }, []);
 
   const loadUser = async () => {
     try {
+      // Check if access token exists - if not, user is not authenticated
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        // No token means user is not logged in, clear any stale user data
+        await AsyncStorage.removeItem(USER_STORAGE_KEY);
+        setUserState(null);
+        setIsLoading(false);
+        return;
+      }
+
+      // Load user data from storage
       const userData = await AsyncStorage.getItem(USER_STORAGE_KEY);
       if (userData) {
         const parsed = JSON.parse(userData);
@@ -56,16 +69,26 @@ export function UserProvider({ children }: { children: ReactNode }) {
           if (isNaN(parsed.id)) {
             // If conversion fails, don't load invalid user data
             await AsyncStorage.removeItem(USER_STORAGE_KEY);
+            await clearTokens();
             setUserState(null);
             setIsLoading(false);
             return;
           }
         }
+        // Normalize emailVerified to boolean (default to false if undefined)
+        if (parsed) {
+          parsed.emailVerified = parsed.emailVerified ?? false;
+        }
         setUserState(parsed);
+      } else if (accessToken) {
+        // Token exists but no user data - inconsistent state, clear tokens
+        await clearTokens();
+        setUserState(null);
       }
     } catch (error) {
       // On error, clear potentially corrupted data
       await AsyncStorage.removeItem(USER_STORAGE_KEY);
+      await clearTokens();
       setUserState(null);
     } finally {
       setIsLoading(false);
@@ -79,6 +102,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const normalizedUser: User = {
           ...userData,
           id: typeof userData.id === 'string' ? parseInt(userData.id, 10) : Number(userData.id),
+          emailVerified: userData.emailVerified ?? false,
         };
         
         // Validate that id is a valid number
@@ -101,12 +125,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      // Call backend logout endpoint
+      // Call backend logout endpoint (it will clear tokens)
       await apiLogout();
     } catch (error) {
-      // Even if backend call fails, clear local storage
+      // Even if backend call fails, clear local storage and tokens
+      await clearTokens();
     } finally {
-      // Always clear local user data
+      // Always clear local user data and tokens
+      await clearTokens();
       await setUser(null);
     }
   };

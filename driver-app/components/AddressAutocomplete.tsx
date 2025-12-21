@@ -59,6 +59,15 @@ export default function AddressAutocomplete({
   disabled = false,
   currentLocation = null,
 }: AddressAutocompleteProps): React.JSX.Element {
+  // Debug: Log when currentLocation changes
+  useEffect(() => {
+    if (currentLocation) {
+      console.log('📍 [AddressAutocomplete] Received currentLocation:', currentLocation);
+    } else {
+      console.log('📍 [AddressAutocomplete] No currentLocation provided');
+    }
+  }, [currentLocation]);
+
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
@@ -141,32 +150,6 @@ export default function AddressAutocomplete({
     return null;
   };
 
-  // Fallback mock predictions for testing when API fails
-  const setMockPredictions = useCallback((input: string) => {
-    const mockPredictions: PlacePrediction[] = [
-      {
-        place_id: 'mock-1',
-        description: `${input} Street, San Francisco, CA 94102, USA`,
-        structured_formatting: {
-          main_text: `${input} Street`,
-          secondary_text: 'San Francisco, CA 94102, USA',
-        },
-      },
-      {
-        place_id: 'mock-2',
-        description: `${input} Avenue, Los Angeles, CA 90001, USA`,
-        structured_formatting: {
-          main_text: `${input} Avenue`,
-          secondary_text: 'Los Angeles, CA 90001, USA',
-        },
-      },
-    ];
-    setPredictions(mockPredictions);
-    setShowPredictions(true);
-    if (onPredictionsChange) {
-      onPredictionsChange(mockPredictions);
-    }
-  }, [onPredictionsChange]);
 
   // Fetch predictions from Google Places API
   const fetchPredictions = useCallback(async (input: string) => {
@@ -194,9 +177,16 @@ export default function AddressAutocomplete({
       )}&key=${GOOGLE_PLACES_API_KEY}&components=country:us`;
       
       // Add location bias to prioritize nearby results
-      if (currentLocation) {
-        apiUrl += `&location=${currentLocation.latitude},${currentLocation.longitude}&radius=50000`; // 50km radius
+      if (currentLocation && currentLocation.latitude && currentLocation.longitude) {
+        console.log('📍 [AddressAutocomplete] Using location bias:', currentLocation);
+        // Use location and radius for better local suggestions (5km radius = 5000 meters)
+        // Smaller radius gives more localized results
+        apiUrl += `&location=${currentLocation.latitude},${currentLocation.longitude}&radius=5000`;
+      } else {
+        console.log('📍 [AddressAutocomplete] No current location available for bias');
       }
+      
+      console.log('📍 [AddressAutocomplete] Fetching predictions with URL:', apiUrl.replace(GOOGLE_PLACES_API_KEY, 'API_KEY_HIDDEN'));
       
       const response = await fetch(apiUrl, {
         method: 'GET',
@@ -207,8 +197,20 @@ export default function AddressAutocomplete({
 
       const data = await response.json();
 
+      console.log('📍 [AddressAutocomplete] API response status:', data.status);
+      console.log('📍 [AddressAutocomplete] Number of predictions:', data.predictions?.length || 0);
+      
+      // Log error details if present
+      if (data.error_message) {
+        console.error('📍 [AddressAutocomplete] API error message:', data.error_message);
+      }
+
       if (data.status === 'OK' && data.predictions) {
         let sortedPredictions = data.predictions;
+        
+        console.log('📍 [AddressAutocomplete] First 3 predictions:', 
+          sortedPredictions.slice(0, 3).map(p => p.description)
+        );
 
         // Sort by distance if current location is available
         if (currentLocation && data.predictions.length > 0) {
@@ -223,21 +225,48 @@ export default function AddressAutocomplete({
           onPredictionsChange(sortedPredictions);
         }
       } else if (data.status === 'REQUEST_DENIED') {
-        // Fallback: show mock suggestions for testing
-        setMockPredictions(input);
-      } else {
+        const errorMsg = data.error_message || 'API request denied';
+        console.error('📍 [AddressAutocomplete] Google Places API REQUEST_DENIED');
+        console.error('📍 [AddressAutocomplete] Error message:', errorMsg);
+        console.error('📍 [AddressAutocomplete] Possible causes:');
+        console.error('   1. API key is invalid or missing');
+        console.error('   2. Places API is not enabled in Google Cloud Console');
+        console.error('   3. API key has restrictions (IP/HTTP referrer) blocking the request');
+        console.error('   4. Billing is not enabled on the Google Cloud project');
+        setApiKeyError(`API access denied: ${errorMsg}. Check API key configuration in Google Cloud Console.`);
         setPredictions([]);
+        setShowPredictions(false);
+        if (onPredictionsChange) {
+          onPredictionsChange([]);
+        }
+      } else if (data.status === 'ZERO_RESULTS') {
+        console.log('📍 [AddressAutocomplete] No results found for:', input);
+        setPredictions([]);
+        setShowPredictions(false);
+        if (onPredictionsChange) {
+          onPredictionsChange([]);
+        }
+      } else {
+        const errorMsg = data.error_message || 'Unknown error';
+        console.warn('📍 [AddressAutocomplete] API returned status:', data.status);
+        console.warn('📍 [AddressAutocomplete] Error message:', errorMsg);
+        setPredictions([]);
+        setShowPredictions(false);
         if (onPredictionsChange) {
           onPredictionsChange([]);
         }
       }
     } catch (error) {
-      // Fallback: show mock suggestions for testing
-      setMockPredictions(input);
+      console.error('📍 [AddressAutocomplete] Error fetching predictions:', error);
+      setPredictions([]);
+      setShowPredictions(false);
+      if (onPredictionsChange) {
+        onPredictionsChange([]);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [currentLocation, onPredictionsChange, setMockPredictions]);
+  }, [currentLocation, onPredictionsChange]);
 
   // Debounce address input
   useEffect(() => {

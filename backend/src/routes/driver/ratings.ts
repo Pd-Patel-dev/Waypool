@@ -2,22 +2,26 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import type { Prisma } from '@prisma/client';
+import { authenticate, requireDriver } from '../../middleware/auth';
 
 const router = express.Router();
 
 /**
  * POST /api/driver/ratings
  * Submit a rating for a passenger
+ * Requires: JWT token in Authorization header
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const { rideId, bookingId, driverId, riderId, rating, feedback } = req.body;
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
+    const { rideId, bookingId, riderId, rating, feedback } = req.body;
 
     // Validate required fields
-    if (!rideId || !driverId || !riderId || !rating) {
+    if (!rideId || !riderId || !rating) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: rideId, driverId, riderId, rating',
+        message: 'Missing required fields: rideId, riderId, rating',
       });
     }
 
@@ -45,11 +49,12 @@ router.post('/', async (req: Request, res: Response) => {
       };
     }>;
     
+    const rideIdNum = typeof rideId === 'number' ? rideId : parseInt(String(rideId));
     const ride = await prisma.rides.findUnique({
-      where: { id: parseInt(rideId) },
+      where: { id: rideIdNum },
       include: {
         bookings: bookingId ? {
-          where: { id: parseInt(bookingId) },
+          where: { id: typeof bookingId === 'number' ? bookingId : parseInt(String(bookingId)) },
           include: {
             users: {
               select: {
@@ -76,7 +81,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    if (ride.driverId !== parseInt(driverId)) {
+    if (ride.driverId !== driverId) {
       return res.status(403).json({
         success: false,
         message: 'You can only rate passengers on your own rides',
@@ -95,12 +100,16 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Check if rating already exists (use findFirst since bookingId can be null)
+    const rideIdForRating = typeof rideId === 'number' ? rideId : parseInt(String(rideId));
+    const riderIdForRating = typeof riderId === 'number' ? riderId : parseInt(String(riderId));
+    const bookingIdForRating = bookingId ? (typeof bookingId === 'number' ? bookingId : parseInt(String(bookingId))) : null;
+    
     const existingRating = await prisma.ratings.findFirst({
       where: {
-        rideId: parseInt(rideId),
-        bookingId: bookingId ? parseInt(bookingId) : null,
-        raterId: parseInt(driverId),
-        ratedUserId: parseInt(riderId),
+        rideId: rideIdForRating,
+        bookingId: bookingIdForRating,
+        raterId: driverId,
+        ratedUserId: riderIdForRating,
       },
     });
 
@@ -124,11 +133,11 @@ router.post('/', async (req: Request, res: Response) => {
     // Create new rating
     const newRating = await prisma.ratings.create({
       data: {
-        rideId: parseInt(rideId),
-        bookingId: bookingId ? parseInt(bookingId) : null,
-        raterId: parseInt(driverId),
-        ratedUserId: parseInt(riderId),
-        rating: parseInt(rating),
+        rideId: rideIdForRating,
+        bookingId: bookingIdForRating,
+        raterId: driverId,
+        ratedUserId: riderIdForRating,
+        rating: typeof rating === 'number' ? rating : parseInt(String(rating)),
         feedback: feedback?.trim() || null,
       },
     });
@@ -152,8 +161,10 @@ router.post('/', async (req: Request, res: Response) => {
  * GET /api/driver/ratings/ride/:rideId
  * Get all ratings for a specific ride
  */
-router.get('/ride/:rideId', async (req: Request, res: Response) => {
+router.get('/ride/:rideId', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
     const rideIdParam = req.params.rideId;
     if (!rideIdParam) {
       return res.status(400).json({
@@ -163,7 +174,6 @@ router.get('/ride/:rideId', async (req: Request, res: Response) => {
     }
     
     const rideId = parseInt(rideIdParam);
-    const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : null;
 
     if (isNaN(rideId)) {
       return res.status(400).json({
@@ -172,7 +182,7 @@ router.get('/ride/:rideId', async (req: Request, res: Response) => {
       });
     }
 
-    // Verify ride exists and belongs to driver (if driverId provided)
+    // Verify ride exists and belongs to driver
     const ride = await prisma.rides.findUnique({
       where: { id: rideId },
     });
@@ -184,7 +194,8 @@ router.get('/ride/:rideId', async (req: Request, res: Response) => {
       });
     }
 
-    if (driverId && ride.driverId !== driverId) {
+    // Verify ownership
+    if (ride.driverId !== driverId) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to view ratings for this ride',

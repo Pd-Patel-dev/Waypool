@@ -15,7 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CachedImage } from '@/components/CachedImage';
-import { signup, checkEmail, type ApiError } from '@/services/api';
+import { signup, checkEmail, sendOTP, type ApiError } from '@/services/api';
 import { getCitiesByState, getStateNames } from '@/data/usStatesCities';
 import CustomDropdown from '@/components/CustomDropdown';
 
@@ -186,41 +186,41 @@ export default function SignupScreen(): React.JSX.Element {
       return;
     }
 
+    if (!email.trim() || !validateEmail(email)) {
+      setErrors({ ...errors, email: 'Please enter a valid email address' });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const signupData = {
-        fullName: fullName.trim(),
+      // Send OTP to email
+      await sendOTP({
         email: email.trim().toLowerCase(),
-        phoneNumber: phoneNumber.replace(/\D/g, ''),
-        password,
-        photoUrl: photoUrl.trim(),
-        city: selectedCity,
-        carMake: carMake.trim(),
-        carModel: carModel.trim(),
-        carYear: parseInt(carYear.trim(), 10),
-        carColor: carColor.trim(),
-      };
+        fullName: fullName.trim(),
+      });
 
-      await signup(signupData);
-
-      Alert.alert(
-        'Success',
-        'Your account has been created successfully!',
-        [{ text: 'Login', onPress: () => router.replace('/login') }]
-      );
+      // Navigate to OTP verification screen with signup data
+      router.push({
+        pathname: '/verify-email',
+        params: {
+          email: email.trim().toLowerCase(),
+          fullName: fullName.trim(),
+          phoneNumber: phoneNumber.replace(/\D/g, ''),
+          password,
+          photoUrl: photoUrl.trim(),
+          city: selectedCity,
+          carMake: carMake.trim(),
+          carModel: carModel.trim(),
+          carYear: carYear.trim(),
+          carColor: carColor.trim(),
+        },
+      });
     } catch (error: unknown) {
-      let errorMessage = 'Failed to create account';
-      
-      if (error && typeof error === 'object') {
-        if ('message' in error) {
-          errorMessage = String(error.message);
-        } else if ('errors' in error && Array.isArray(error.errors) && error.errors.length > 0) {
-          errorMessage = error.errors.join('\n');
-        }
-      }
-      
-      Alert.alert('Error', errorMessage);
+      const apiError = error as ApiError;
+      setErrors({
+        general: apiError.message || 'Failed to send verification code. Please try again.',
+      });
     } finally {
       setIsLoading(false);
     }

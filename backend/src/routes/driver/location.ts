@@ -1,22 +1,26 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
+import { authenticate, requireDriver } from '../../middleware/auth';
 
 const router = express.Router();
 
 /**
  * PUT /api/driver/location
  * Update driver's current location
- * Body: { driverId: number, latitude: number, longitude: number }
+ * Requires: JWT token in Authorization header
+ * Body: { latitude: number, longitude: number }
  */
-router.put('/', async (req: Request, res: Response) => {
+router.put('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    const { driverId, latitude, longitude } = req.body;
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
+    const { latitude, longitude } = req.body;
 
-    if (!driverId || latitude === undefined || longitude === undefined) {
+    if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Driver ID, latitude, and longitude are required',
+        message: 'Latitude and longitude are required',
       });
     }
 
@@ -37,7 +41,7 @@ router.put('/', async (req: Request, res: Response) => {
 
     // Update driver location
     await prisma.users.update({
-      where: { id: parseInt(driverId) },
+      where: { id: driverId },
       data: {
         lastLocationLatitude: parseFloat(latitude),
         lastLocationLongitude: parseFloat(longitude),

@@ -50,6 +50,7 @@ export default function AddRideScreen(): React.JSX.Element {
   const [pricePerSeat, setPricePerSeat] = useState('');
 
   // Coordinates
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [fromCoords, setFromCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [toCoords, setToCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
@@ -75,14 +76,28 @@ export default function AddRideScreen(): React.JSX.Element {
     (async () => {
       if (Location && Platform.OS !== 'web') {
         try {
+          console.log('📍 [AddRideScreen] Requesting location permission...');
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status === 'granted') {
-            await Location.getCurrentPositionAsync({
+            console.log('📍 [AddRideScreen] Permission granted, getting location...');
+            const location = await Location.getCurrentPositionAsync({
               accuracy: Location.Accuracy.Balanced,
+              timeout: 10000,
             });
+            const coords = {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            };
+            console.log('📍 [AddRideScreen] Got location:', coords);
+            setCurrentLocation(coords);
+          } else {
+            console.warn('📍 [AddRideScreen] Location permission denied');
           }
         } catch (error) {
+          console.error('📍 [AddRideScreen] Error getting current location:', error);
         }
+      } else {
+        console.warn('📍 [AddRideScreen] Location not available (web or Location module not loaded)');
       }
     })();
   }, []);
@@ -279,13 +294,11 @@ export default function AddRideScreen(): React.JSX.Element {
       return;
     }
 
-    const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
-
     setIsSubmitting(true);
 
     try {
+      // driverId is now obtained from JWT token - not needed in request body
       const rideData = {
-        driverId,
         driverName: user.fullName || 'Driver',
         driverPhone: user.phoneNumber || '',
         fromAddress,
@@ -308,18 +321,30 @@ export default function AddRideScreen(): React.JSX.Element {
         distance: distance || 0,
       };
 
-      await createRide(rideData);
+      console.log('[AddRideScreen] Creating ride with data:', JSON.stringify(rideData, null, 2));
+      
+      const response = await createRide(rideData);
+      
+      console.log('[AddRideScreen] Ride created successfully:', response);
 
       Alert.alert(
         'Success',
-        'Your ride has been created successfully!',
+        response.message || 'Your ride has been created successfully!',
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
+      console.error('[AddRideScreen] Error creating ride:', error);
       const apiError = error as ApiError;
+      
+      // Show detailed error message
+      const errorMessage = apiError.message || 'Failed to create ride. Please try again.';
+      const errorDetails = apiError.errors && apiError.errors.length > 0 
+        ? `\n\n${apiError.errors.join('\n')}`
+        : '';
+      
       Alert.alert(
         'Error',
-        apiError.message || 'Failed to create ride. Please try again.'
+        errorMessage + errorDetails
       );
     } finally {
       setIsSubmitting(false);
@@ -375,6 +400,7 @@ export default function AddRideScreen(): React.JSX.Element {
               onChangeText={setFromAddress}
               onSelectAddress={handleSelectFromAddress}
               onFocusChange={setIsFromInputActive}
+              currentLocation={currentLocation}
             />
             {errors.fromAddress && (
               <Text style={styles.errorText}>{errors.fromAddress}</Text>
@@ -390,6 +416,7 @@ export default function AddRideScreen(): React.JSX.Element {
               onChangeText={setToAddress}
               onSelectAddress={handleSelectToAddress}
               onFocusChange={setIsToInputActive}
+              currentLocation={currentLocation}
             />
             {errors.toAddress && (
               <Text style={styles.errorText}>{errors.toAddress}</Text>

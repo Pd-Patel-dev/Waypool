@@ -2,28 +2,19 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import type { Prisma } from '@prisma/client';
-import { getUserIdFromRequest } from '../../middleware/testModeAuth';
+import { authenticate, requireDriver } from '../../middleware/auth';
 
 const router = express.Router();
 
 /**
  * GET /api/driver/notifications
  * Get all notifications for a driver
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    // Use test mode helper to get validated user ID (bypasses in test mode)
-    let driverId: number;
-    try {
-      driverId = getUserIdFromRequest(req, 'driver');
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Driver ID is required',
-        notifications: [],
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Get all notifications for this driver
     const notifications = await prisma.notifications.findMany({
@@ -182,9 +173,9 @@ router.get('/', async (req: Request, res: Response) => {
 /**
  * PUT /api/driver/notifications/:id/read
  * Mark a notification as read
- * Query params: driverId (required for security)
+ * Requires: JWT token in Authorization header
  */
-router.put('/:id/read', async (req: Request, res: Response) => {
+router.put('/:id/read', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
     const notificationIdParam = req.params.id;
     if (!notificationIdParam) {
@@ -203,16 +194,8 @@ router.put('/:id/read', async (req: Request, res: Response) => {
       });
     }
 
-    // Use test mode helper to get validated user ID (bypasses in test mode)
-    let driverId: number;
-    try {
-      driverId = getUserIdFromRequest(req, 'driver');
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Driver ID is required',
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Verify ownership
     const notification = await prisma.notifications.findUnique({
@@ -257,20 +240,12 @@ router.put('/:id/read', async (req: Request, res: Response) => {
 /**
  * PUT /api/driver/notifications/read-all
  * Mark all notifications as read for a driver
- * Query params: driverId (required)
+ * Requires: JWT token in Authorization header
  */
-router.put('/read-all', async (req: Request, res: Response) => {
+router.put('/read-all', authenticate, requireDriver, async (req: Request, res: Response) => {
   try {
-    // Use test mode helper to get validated user ID (bypasses in test mode)
-    let driverId: number;
-    try {
-      driverId = getUserIdFromRequest(req, 'driver');
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Driver ID is required',
-      });
-    }
+    // Get driver ID from JWT token (already verified by middleware)
+    const driverId = req.user!.userId;
 
     // Mark all as read
     await prisma.notifications.updateMany({

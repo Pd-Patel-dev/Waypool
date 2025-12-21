@@ -14,11 +14,13 @@ import payoutsRoutes from "./payouts";
 import payoutsWebhookRoutes from "./payouts-webhook";
 import connectRoutes from "./connect";
 import driverConnectRoutes from "../driverConnect.routes";
+import emailVerificationRoutes from "./emailVerification";
 
 const router = express.Router();
 
 // Driver app routes
 router.use("/auth", authRoutes);
+router.use("/email-verification", emailVerificationRoutes);
 router.use("/rides", ridesRoutes);
 router.use("/notifications", notificationsRoutes);
 router.use("/bookings", bookingsRoutes);

@@ -1,9 +1,8 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { UserProvider } from '@/context/UserContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { RealtimeProvider } from '@/context/RealtimeContext';
@@ -14,18 +13,17 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <ErrorBoundary>
       <UserProvider>
         <NotificationProvider>
           <RealtimeProvider>
-            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <NavigationThemeProvider value={DarkTheme}>
               <Stack>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="login" options={{ headerShown: false, presentation: 'card' }} />
                 <Stack.Screen name="signup" options={{ headerShown: false, presentation: 'card' }} />
+                <Stack.Screen name="verify-email" options={{ headerShown: false, presentation: 'card' }} />
                 <Stack.Screen name="add-ride" options={{ headerShown: false, presentation: 'card' }} />
                 <Stack.Screen name="current-ride" options={{ headerShown: false, presentation: 'card' }} />
                 <Stack.Screen name="booking-request" options={{ headerShown: false, presentation: 'card' }} />
@@ -44,8 +42,8 @@ export default function RootLayout() {
                 <Stack.Screen name="payout-history" options={{ headerShown: false, presentation: 'card' }} />
                 <Stack.Screen name="onboarding/complete" options={{ headerShown: false, presentation: 'card' }} />
               </Stack>
-              <StatusBar style="auto" />
-            </ThemeProvider>
+              <StatusBar style="light" />
+            </NavigationThemeProvider>
           </RealtimeProvider>
         </NotificationProvider>
       </UserProvider>
