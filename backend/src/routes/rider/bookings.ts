@@ -35,6 +35,238 @@ const decryptPIN = (encrypted: string): string => {
 };
 
 /**
+ * PUT /api/rider/bookings/:id
+ * Update a booking (pickup location, number of seats)
+ * Query params: riderId (required for security)
+ */
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const bookingIdParam = req.params.id;
+    if (!bookingIdParam) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking ID is required',
+      });
+    }
+
+    const bookingId = parseInt(bookingIdParam);
+    const riderId = req.query.riderId && typeof req.query.riderId === 'string' 
+      ? parseInt(req.query.riderId) 
+      : null;
+
+    if (isNaN(bookingId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid booking ID',
+      });
+    }
+
+    if (!riderId || isNaN(riderId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rider ID is required',
+      });
+    }
+
+    const {
+      pickupAddress,
+      pickupCity,
+      pickupState,
+      pickupZipCode,
+      pickupLatitude,
+      pickupLongitude,
+      numberOfSeats,
+    } = req.body;
+
+    // Find the booking with ride details
+    const booking = await prisma.bookings.findUnique({
+      where: { id: bookingId },
+      include: {
+        rides: true,
+      },
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    // Verify that the booking belongs to this rider
+    if (booking.riderId !== riderId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to update this booking',
+      });
+    }
+
+    // Check if booking can be updated (not cancelled, rejected, or completed)
+    if (booking.status === 'cancelled' || booking.status === 'rejected') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot update a ${booking.status} booking`,
+      });
+    }
+
+    if (booking.status === 'completed' || booking.rides.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot update a completed booking',
+      });
+    }
+
+    // Check if ride has started (cannot update if in-progress)
+    if (booking.rides.status === 'in-progress') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot update booking for a ride that has already started',
+      });
+    }
+
+    // Validate and prepare update data
+    const updateData: any = {};
+
+    // Update pickup location if provided
+    if (pickupAddress !== undefined) {
+      if (!pickupLatitude || pickupLongitude === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: 'Pickup latitude and longitude are required when updating pickup address',
+        });
+      }
+      updateData.pickupAddress = pickupAddress;
+      updateData.pickupLatitude = parseFloat(pickupLatitude);
+      updateData.pickupLongitude = parseFloat(pickupLongitude);
+      if (pickupCity !== undefined) updateData.pickupCity = pickupCity;
+      if (pickupState !== undefined) updateData.pickupState = pickupState;
+      if (pickupZipCode !== undefined) updateData.pickupZipCode = pickupZipCode;
+    }
+
+    // Update number of seats if provided
+    if (numberOfSeats !== undefined) {
+      const newSeats = parseInt(numberOfSeats);
+      if (isNaN(newSeats) || newSeats < 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Number of seats must be at least 1',
+        });
+      }
+
+      const currentSeats = booking.numberOfSeats || 1;
+      const seatDifference = newSeats - currentSeats;
+
+      // If increasing seats, check if ride has enough available seats
+      if (seatDifference > 0) {
+        if (booking.rides.availableSeats < seatDifference) {
+          return res.status(400).json({
+            success: false,
+            message: `Only ${booking.rides.availableSeats} additional seat${booking.rides.availableSeats !== 1 ? 's' : ''} available on this ride`,
+          });
+        }
+
+        // Decrement available seats
+        await prisma.rides.update({
+          where: { id: booking.rideId },
+          data: {
+            availableSeats: {
+              decrement: seatDifference,
+            },
+          },
+        });
+      } else if (seatDifference < 0) {
+        // If decreasing seats, restore available seats
+        await prisma.rides.update({
+          where: { id: booking.rideId },
+          data: {
+            availableSeats: {
+              increment: Math.abs(seatDifference),
+            },
+          },
+        });
+      }
+
+      updateData.numberOfSeats = newSeats;
+    }
+
+    // If no changes, return early
+    if (Object.keys(updateData).length === 0) {
+      return res.json({
+        success: true,
+        message: 'No changes to update',
+        booking: booking,
+      });
+    }
+
+    // Update the booking
+    const updatedBooking = await prisma.bookings.update({
+      where: { id: bookingId },
+      data: updateData,
+      include: {
+        rides: {
+          include: {
+            users: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                phoneNumber: true,
+                photoUrl: true,
+              },
+            },
+          },
+        },
+        users: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
+    });
+
+    // Create notification for the driver about the booking update
+    try {
+      const changes: string[] = [];
+      if (pickupAddress !== undefined) changes.push('pickup location');
+      if (numberOfSeats !== undefined) changes.push('number of seats');
+      
+      if (changes.length > 0) {
+        await prisma.notifications.create({
+          data: {
+            driverId: booking.rides.driverId,
+            type: 'booking-updated',
+            title: 'Booking Updated',
+            message: `A rider has updated the ${changes.join(' and ')} for their booking on your ride from ${booking.rides.fromAddress} to ${booking.rides.toAddress}.`,
+            bookingId: booking.id,
+            rideId: booking.rideId,
+            isRead: false,
+          },
+        });
+      }
+    } catch (notificationError) {
+      // Don't fail the update if notification creation fails
+      console.error('❌ Error creating update notification:', notificationError);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Booking updated successfully',
+      booking: updatedBooking,
+    });
+  } catch (error) {
+    console.error('❌ Error updating booking:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update booking',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
  * PUT /api/rider/bookings/:id/cancel
  * Cancel a booking by ID
  * Query params: riderId (required for security)

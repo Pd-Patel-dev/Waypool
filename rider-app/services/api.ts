@@ -486,6 +486,60 @@ export async function bookRide(data: BookingRequest): Promise<BookingResponse> {
   }
 }
 
+export interface UpdateBookingRequest {
+  pickupAddress?: string;
+  pickupCity?: string | null;
+  pickupState?: string | null;
+  pickupZipCode?: string | null;
+  pickupLatitude?: number;
+  pickupLongitude?: number;
+  numberOfSeats?: number;
+}
+
+export interface UpdateBookingResponse {
+  success: boolean;
+  message: string;
+  booking?: RiderBooking;
+}
+
+export async function updateBooking(
+  bookingId: number,
+  riderId: number,
+  data: UpdateBookingRequest
+): Promise<UpdateBookingResponse> {
+  try {
+    const response = await fetchWithAuth(
+      `${API_URL}/api/rider/bookings/${bookingId}?riderId=${riderId}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to update booking',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
 export async function cancelBooking(bookingId: number, riderId: number): Promise<CancelBookingResponse> {
   try {
     const response = await fetchWithAuth(

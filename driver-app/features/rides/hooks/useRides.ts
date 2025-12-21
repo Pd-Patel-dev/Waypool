@@ -312,7 +312,10 @@ export function useRides(options: UseRidesOptions = {}): UseRidesReturn {
     };
   }, [sortedRides]);
 
-  const todaysRides = today;
+  // Filter out in-progress rides from today's rides (they're shown in ActiveRideCard)
+  const todaysRides = useMemo(() => {
+    return today.filter((ride) => ride.status !== "in-progress");
+  }, [today]);
   const upcomingRides = upcoming;
 
   // Actions
