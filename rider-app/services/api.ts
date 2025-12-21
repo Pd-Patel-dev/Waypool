@@ -34,6 +34,10 @@ export interface AuthResponse {
     profilePicture?: string;
   };
   token?: string;
+  tokens?: {
+    accessToken: string;
+    refreshToken: string;
+  };
 }
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
@@ -82,12 +86,26 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
       } as ApiError;
     }
 
-    // Save token if provided
-    if (result.token) {
-      await AsyncStorage.setItem('token', result.token);
+    // Handle response structure (support both old flat format and new data format)
+    const responseData = result.data || result;
+    
+    // Save token if provided (support both old 'token' and new 'tokens' format)
+    if (responseData.tokens?.accessToken) {
+      await AsyncStorage.setItem('token', responseData.tokens.accessToken);
+      if (responseData.tokens.refreshToken) {
+        await AsyncStorage.setItem('refreshToken', responseData.tokens.refreshToken);
+      }
+    } else if (responseData.token) {
+      await AsyncStorage.setItem('token', responseData.token);
     }
 
-    return result;
+    // Return in expected format for frontend
+    return {
+      ...result,
+      user: responseData.user,
+      tokens: responseData.tokens,
+      token: responseData.token, // Keep for backward compatibility
+    };
   } catch (error: any) {
     if (error.message && error.status !== undefined) {
       throw error;
@@ -268,11 +286,11 @@ export interface RiderBookingsResponse {
 }
 
 /**
- * Get a single ride by ID
+ * Get a single ride by ID (rider endpoint)
  */
 export async function getRideById(rideId: number): Promise<{ success: boolean; ride: Ride }> {
   try {
-    const response = await fetch(`${API_URL}/api/driver/rides/${rideId}`, {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/rides/${rideId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -289,9 +307,15 @@ export async function getRideById(rideId: number): Promise<{ success: boolean; r
     }
 
     return result;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching ride details:', error);
-    throw error as ApiError;
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
   }
 }
 
@@ -586,6 +610,374 @@ export interface PickupPINResponse {
   message?: string;
 }
 
+export interface RiderProfile {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  phoneNumber: string | null;
+  photoUrl: string | null;
+  city: string | null;
+  emailVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GetProfileResponse {
+  success: boolean;
+  message?: string;
+  user: RiderProfile;
+}
+
+export interface UpdateProfileRequest {
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  email?: string;
+  phoneNumber?: string;
+  photoUrl?: string | null;
+  city?: string | null;
+}
+
+export interface UpdateProfileResponse {
+  success: boolean;
+  message?: string;
+  user: RiderProfile;
+}
+
+/**
+ * Get rider profile
+ */
+export async function getRiderProfile(): Promise<GetProfileResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/profile`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to fetch profile',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+/**
+ * Update rider profile
+ */
+export async function updateRiderProfile(data: UpdateProfileRequest): Promise<UpdateProfileResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to update profile',
+        status: response.status,
+      } as ApiError;
+    }
+
+    // Handle response structure (support both old flat format and new data format)
+    if (result.data) {
+      return {
+        success: result.success,
+        message: result.message,
+        user: result.data.user,
+      };
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+/**
+ * Update rider profile photo
+ */
+export async function updateRiderProfilePhoto(photoUrl: string): Promise<UpdateProfileResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/profile/photo`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ photoUrl }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to update profile photo',
+        status: response.status,
+      } as ApiError;
+    }
+
+    // Handle response structure (support both old flat format and new data format)
+    if (result.data) {
+      return {
+        success: result.success,
+        message: result.message,
+        user: result.data.user,
+      };
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+export interface SavedAddress {
+  id: number;
+  riderId: number;
+  label: string;
+  address: string;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
+  latitude: number;
+  longitude: number;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GetSavedAddressesResponse {
+  success: boolean;
+  message?: string;
+  addresses: SavedAddress[];
+}
+
+export interface CreateSavedAddressRequest {
+  label: string;
+  address: string;
+  city?: string | null;
+  state?: string | null;
+  zipCode?: string | null;
+  latitude: number;
+  longitude: number;
+  isDefault?: boolean;
+}
+
+export interface UpdateSavedAddressRequest {
+  label?: string;
+  address?: string;
+  city?: string | null;
+  state?: string | null;
+  zipCode?: string | null;
+  latitude?: number;
+  longitude?: number;
+  isDefault?: boolean;
+}
+
+export interface SavedAddressResponse {
+  success: boolean;
+  message?: string;
+  address: SavedAddress;
+}
+
+/**
+ * Get all saved addresses for the rider
+ */
+export async function getSavedAddresses(): Promise<GetSavedAddressesResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/saved-addresses`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to fetch saved addresses',
+        status: response.status,
+      } as ApiError;
+    }
+
+    // Handle response structure (support both old flat format and new data format)
+    if (result.data) {
+      return {
+        success: result.success,
+        message: result.message,
+        addresses: result.data.addresses,
+      };
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+/**
+ * Create a new saved address
+ */
+export async function createSavedAddress(data: CreateSavedAddressRequest): Promise<SavedAddressResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/saved-addresses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to create saved address',
+        status: response.status,
+      } as ApiError;
+    }
+
+    // Handle response structure
+    if (result.data) {
+      return {
+        success: result.success,
+        message: result.message,
+        address: result.data.address,
+      };
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+/**
+ * Update a saved address
+ */
+export async function updateSavedAddress(
+  addressId: number,
+  data: UpdateSavedAddressRequest
+): Promise<SavedAddressResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/saved-addresses/${addressId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to update saved address',
+        status: response.status,
+      } as ApiError;
+    }
+
+    // Handle response structure
+    if (result.data) {
+      return {
+        success: result.success,
+        message: result.message,
+        address: result.data.address,
+      };
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+/**
+ * Delete a saved address
+ */
+export async function deleteSavedAddress(addressId: number): Promise<{ success: boolean; message?: string }> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/saved-addresses/${addressId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to delete saved address',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
 export async function getPickupPIN(bookingId: number, riderId: number): Promise<PickupPINResponse> {
   try {
     const response = await fetchWithAuth(
@@ -832,6 +1224,171 @@ export async function deletePaymentMethod(riderId: number, paymentMethodId: stri
       success: true,
       message: 'Mock response - payment method deleted',
     };
+  }
+}
+
+// ==================== Notifications ====================
+
+export interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  time: string;
+  unread: boolean;
+  createdAt: string;
+  booking?: {
+    id: number;
+    confirmationNumber: string;
+    numberOfSeats: number;
+    status: string;
+    pickupAddress: string;
+    pickupCity?: string;
+    pickupState?: string;
+    ride: {
+      id: number;
+      fromAddress: string;
+      toAddress: string;
+      fromCity: string;
+      toCity: string;
+      departureDate: string;
+      departureTime: string;
+      pricePerSeat: number;
+      driverName: string;
+      driverPhone: string;
+      status: string;
+    };
+  } | null;
+  ride?: {
+    id: number;
+    fromAddress: string;
+    toAddress: string;
+    fromCity: string;
+    toCity: string;
+    driver?: {
+      id: number;
+      fullName: string;
+      email: string;
+      phoneNumber: string;
+    } | null;
+  } | null;
+}
+
+export interface GetNotificationsResponse {
+  success: boolean;
+  notifications: Notification[];
+  message?: string;
+}
+
+export async function getNotifications(): Promise<GetNotificationsResponse> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/notifications`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // Check if response exists (network errors may not have a response)
+    if (!response) {
+      throw {
+        message: 'Network error. Please check your connection and try again.',
+        status: 0,
+      } as ApiError;
+    }
+
+    let result;
+    try {
+      result = await response.json();
+    } catch (jsonError) {
+      // If response is not JSON, it's likely a network/server error
+      throw {
+        message: `Server error: ${response.status} ${response.statusText}`,
+        status: response.status || 0,
+      } as ApiError;
+    }
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to fetch notifications',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    // If it's already an ApiError with status, rethrow it
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    // Network errors (TypeError: Network request failed) don't have status
+    // Wrap them in our ApiError format
+    throw {
+      message: error.message || 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+export async function markNotificationAsRead(notificationId: number): Promise<{ success: boolean; message?: string }> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/notifications/${notificationId}/read`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to mark notification as read',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error('Error marking notification as read:', error);
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
+  }
+}
+
+export async function markAllNotificationsAsRead(): Promise<{ success: boolean; message?: string }> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rider/notifications/read-all`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: result.message || 'Failed to mark all notifications as read',
+        status: response.status,
+      } as ApiError;
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error('Error marking all notifications as read:', error);
+    if (error.message && error.status !== undefined) {
+      throw error;
+    }
+    throw {
+      message: 'Network error. Please check your connection and try again.',
+      status: 0,
+    } as ApiError;
   }
 }
 

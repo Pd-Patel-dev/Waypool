@@ -69,19 +69,15 @@ export default function MenuScreen(): React.JSX.Element {
         </View>
 
         <View style={styles.menuSection}>
-          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/profile')}
+          >
             <View style={styles.menuItemIcon}>
               <IconSymbol size={20} name="person" color="#4285F4" />
             </View>
             <Text style={styles.menuItemText}>Profile</Text>
-            <IconSymbol size={18} name="chevron.right" color="#666666" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
-            <View style={styles.menuItemIcon}>
-              <IconSymbol size={20} name="car" color="#4285F4" />
-            </View>
-            <Text style={styles.menuItemText}>My Rides</Text>
             <IconSymbol size={18} name="chevron.right" color="#666666" />
           </TouchableOpacity>
           
@@ -97,7 +93,11 @@ export default function MenuScreen(): React.JSX.Element {
             <IconSymbol size={18} name="chevron.right" color="#666666" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7}>
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/saved-addresses')}
+          >
             <View style={styles.menuItemIcon}>
               <IconSymbol size={20} name="mappin" color="#4285F4" />
             </View>
@@ -105,7 +105,11 @@ export default function MenuScreen(): React.JSX.Element {
             <IconSymbol size={18} name="chevron.right" color="#666666" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={[styles.menuItem, styles.menuItemLast]} activeOpacity={0.7}>
+          <TouchableOpacity 
+            style={[styles.menuItem, styles.menuItemLast]} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/help-support')}
+          >
             <View style={styles.menuItemIcon}>
               <IconSymbol size={20} name="envelope" color="#4285F4" />
             </View>

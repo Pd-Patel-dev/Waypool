@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { websocketService } from '@/services/websocket';
 
 export interface User {
   id: string;
@@ -58,6 +59,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      // Disconnect WebSocket on logout
+      websocketService.disconnect();
+      
       await AsyncStorage.removeItem('user');
       await AsyncStorage.removeItem('token');
       setUserState(null);

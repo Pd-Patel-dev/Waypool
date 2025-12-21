@@ -2,6 +2,15 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcrypt';
+import { generateTokenPair } from '../../utils/jwt';
+import {
+  sendSuccess,
+  sendBadRequest,
+  sendUnauthorized,
+  sendInternalError,
+  sendValidationError,
+  sendConflict,
+} from '../../utils/apiResponse';
 
 const router = express.Router();
 
@@ -248,32 +257,40 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
+    // Verify user is a rider
+    if (!user.isRider) {
+      return sendUnauthorized(res, 'This account is not registered as a rider');
+    }
+
+    // Generate JWT tokens
+    const tokens = generateTokenPair({
+      userId: user.id,
+      email: user.email,
+      role: 'rider',
+      emailVerified: user.emailVerified || false,
+    });
+
     // Split fullName into firstName and lastName
     const nameParts = user.fullName.split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    // Return user data (without password)
-    res.json({
-      success: true,
-      message: 'Login successful',
+    // Return user data (without password) and tokens
+    return sendSuccess(res, 'Login successful', {
       user: {
         id: String(user.id),
         email: user.email,
-        role: user.isRider ? 'rider' : 'driver', // Keep for backward compatibility
+        role: 'rider',
         isDriver: user.isDriver,
         isRider: user.isRider,
         firstName,
         lastName,
         phoneNumber: user.phoneNumber,
       },
+      tokens,
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-    });
+    return sendInternalError(res, error, 'Failed to authenticate user');
   }
 });
 

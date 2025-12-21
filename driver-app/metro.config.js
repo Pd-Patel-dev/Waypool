@@ -5,6 +5,7 @@ const { getDefaultConfig } = require('expo/metro-config');
 const config = getDefaultConfig(__dirname);
 
 // For web builds, ensure react-native-maps is not bundled
+const defaultResolver = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Exclude react-native-maps from web builds
   if (moduleName === 'react-native-maps' && platform === 'web') {
@@ -13,6 +14,9 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     };
   }
   // Use the default resolver for other modules
+  if (defaultResolver) {
+    return defaultResolver(context, moduleName, platform);
+  }
   return context.resolveRequest(context, moduleName, platform);
 };
 

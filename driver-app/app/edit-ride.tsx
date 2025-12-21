@@ -412,6 +412,43 @@ export default function EditRideScreen(): React.JSX.Element {
     );
   }
 
+  // Prevent editing if ride is in-progress, completed, or cancelled
+  if (rideData.status === 'in-progress') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="light" />
+        <View style={styles.loadingContainer}>
+          <IconSymbol size={48} name="exclamationmark.triangle.fill" color="#FFD60A" />
+          <Text style={styles.errorText}>Cannot Edit Active Ride</Text>
+          <Text style={[styles.errorText, { fontSize: 14, opacity: 0.7, marginTop: 8, textAlign: 'center' }]}>
+            This ride is currently in progress. Please complete or cancel the ride first.
+          </Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (rideData.status === 'completed' || rideData.status === 'cancelled') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="light" />
+        <View style={styles.loadingContainer}>
+          <IconSymbol size={48} name="exclamationmark.triangle.fill" color="#FF3B30" />
+          <Text style={styles.errorText}>Cannot Edit {rideData.status === 'completed' ? 'Completed' : 'Cancelled'} Ride</Text>
+          <Text style={[styles.errorText, { fontSize: 14, opacity: 0.7, marginTop: 8, textAlign: 'center' }]}>
+            This ride has been {rideData.status}. You cannot edit it anymore.
+          </Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />

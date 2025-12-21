@@ -35,6 +35,7 @@ router.get('/', authenticate, requireDriver, async (req: Request, res: Response)
           },
           select: {
             numberOfSeats: true,
+            pricePerSeat: true, // Include locked-in price
             status: true,
           },
         },
@@ -74,6 +75,7 @@ router.get('/', authenticate, requireDriver, async (req: Request, res: Response)
     completedRides.forEach((ride) => {
       const seatsBooked = ride.bookings.reduce((sum, booking) => sum + (booking.numberOfSeats || 1), 0);
       const distance = ride.distance || 0;
+      // Use current ride price as fallback (for display), but calculations use booking prices
       const pricePerSeat = ride.pricePerSeat || 0;
       
       // Check if ride has bookings - if not, earnings should be 0
@@ -81,16 +83,10 @@ router.get('/', authenticate, requireDriver, async (req: Request, res: Response)
         console.warn(`[Earnings] Ride ${ride.id} has no bookings - earnings will be $0`);
       }
       
-      // Check if pricePerSeat is valid
-      if (pricePerSeat <= 0) {
-        console.warn(`[Earnings] Ride ${ride.id} has invalid pricePerSeat (${pricePerSeat}) - earnings will be $0`);
-      }
-      
-      // Calculate gross earnings (before fees)
-      const grossRideEarnings = seatsBooked * pricePerSeat;
-      
-      // Calculate driver earnings after fees (processing fee + $2 commission)
+      // Calculate gross earnings using booking prices (locked in at booking time)
+      // calculateRideEarnings will use booking.pricePerSeat if available
       const earningsBreakdown = calculateRideEarnings(pricePerSeat, ride.bookings);
+      const grossRideEarnings = earningsBreakdown.grossEarnings; // Use calculated gross from locked-in prices
       const rideEarnings = earningsBreakdown.netEarnings; // Net earnings for driver
       
       // Debug logging for troubleshooting

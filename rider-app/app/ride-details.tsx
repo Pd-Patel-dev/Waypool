@@ -14,7 +14,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { getRideById } from '@/services/api';
-
+import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, BUTTONS, RESPONSIVE_SPACING } from '@/constants/designSystem';
 
 interface Ride {
   id: number;
@@ -32,15 +32,13 @@ interface Ride {
   availableSeats: number;
   totalSeats: number;
   price: number;
+  pricePerSeat?: number;
   status: string;
   distance?: number | null;
   carMake?: string | null;
   carModel?: string | null;
   carYear?: number | null;
   carColor?: string | null;
-  isRecurring?: boolean;
-  recurringPattern?: 'daily' | 'weekly' | 'monthly' | null;
-  recurringEndDate?: string | null;
   driver: {
     id: number;
     fullName: string;
@@ -95,12 +93,9 @@ export default function RideDetailsScreen(): React.JSX.Element {
 
   const fetchRoute = useCallback(async (rideData: Ride) => {
     try {
-      // Use API key from environment variable
-      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || 'AIzaSyB3dqyiWNGJLqv_UYA2zQxUdYpiIbmw3k4';
+      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
       
       if (!apiKey) {
-        console.warn('Google Maps API key not found');
-        // Fallback: create simple route with just start and end points
         setRouteCoordinates([
           { latitude: rideData.fromLatitude, longitude: rideData.fromLongitude },
           { latitude: rideData.toLatitude, longitude: rideData.toLongitude },
@@ -117,21 +112,18 @@ export default function RideDetailsScreen(): React.JSX.Element {
 
       if (data.status === 'OK' && data.routes && data.routes.length > 0) {
         const points = data.routes[0].overview_polyline.points;
-        // Decode polyline points
         const decoded = decodePolyline(points);
         setRouteCoordinates(decoded);
 
-        // Fit map to show entire route after a short delay to ensure map is ready
         setTimeout(() => {
           if (mapRef.current && decoded.length > 0) {
             mapRef.current.fitToCoordinates(decoded, {
-              edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+              edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
               animated: true,
             });
           }
         }, 500);
       } else {
-        // Fallback: create simple route
         setRouteCoordinates([
           { latitude: rideData.fromLatitude, longitude: rideData.fromLongitude },
           { latitude: rideData.toLatitude, longitude: rideData.toLongitude },
@@ -139,7 +131,6 @@ export default function RideDetailsScreen(): React.JSX.Element {
       }
     } catch (error) {
       console.error('Error fetching route:', error);
-      // Fallback: create simple route
       setRouteCoordinates([
         { latitude: rideData.fromLatitude, longitude: rideData.fromLongitude },
         { latitude: rideData.toLatitude, longitude: rideData.toLongitude },
@@ -148,7 +139,6 @@ export default function RideDetailsScreen(): React.JSX.Element {
   }, [decodePolyline]);
 
   useEffect(() => {
-    // Parse ride data from params only once
     if (params.ride && !hasFetchedRoute.current) {
       try {
         const rideData = JSON.parse(params.ride as string);
@@ -165,25 +155,22 @@ export default function RideDetailsScreen(): React.JSX.Element {
     }
   }, [params.ride, fetchRoute]);
 
-  // Refresh ride data when screen comes back into focus
   useFocusEffect(
     useCallback(() => {
       const refreshRideData = async () => {
         if (ride?.id) {
           try {
-            console.log('🔄 Refreshing ride data for ride ID:', ride.id);
             const response = await getRideById(ride.id);
             if (response.success && response.ride) {
-              console.log('✅ Updated ride data - Available seats:', response.ride.availableSeats);
               setRide(response.ride);
             }
-          } catch (error) {
-            console.error('❌ Error refreshing ride data:', error);
-            // Keep existing ride data if refresh fails
+          } catch (error: any) {
+            if (error.status !== 401) {
+              console.error('Error refreshing ride data:', error);
+            }
           }
         }
       };
-
       refreshRideData();
     }, [ride?.id])
   );
@@ -191,14 +178,18 @@ export default function RideDetailsScreen(): React.JSX.Element {
   const formatDate = (dateString: string): string => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { 
-        weekday: 'long',
-        month: 'long', 
-        day: 'numeric',
-        year: 'numeric'
-      });
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateOnly = new Date(date);
+      dateOnly.setHours(0, 0, 0, 0);
+
+      if (dateOnly.getTime() === today.getTime()) return 'Today';
+      if (dateOnly.getTime() === tomorrow.getTime()) return 'Tomorrow';
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     } catch {
-      return 'Invalid date';
+      return '';
     }
   };
 
@@ -211,7 +202,7 @@ export default function RideDetailsScreen(): React.JSX.Element {
         hour12: true 
       });
     } catch {
-      return 'Invalid time';
+      return '';
     }
   };
 
@@ -220,7 +211,8 @@ export default function RideDetailsScreen(): React.JSX.Element {
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="light" />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Loading ride details...</Text>
         </View>
       </SafeAreaView>
     );
@@ -231,11 +223,9 @@ export default function RideDetailsScreen(): React.JSX.Element {
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="light" />
         <View style={styles.errorContainer}>
+          <IconSymbol size={48} name="exclamationmark.triangle" color={COLORS.textTertiary} />
           <Text style={styles.errorText}>Ride not found</Text>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -244,7 +234,6 @@ export default function RideDetailsScreen(): React.JSX.Element {
   }
 
   const handleBookSeat = () => {
-    // Navigate to booking screen with ride data
     router.push({
       pathname: '/booking',
       params: {
@@ -253,24 +242,29 @@ export default function RideDetailsScreen(): React.JSX.Element {
     });
   };
 
+  const price = ride.pricePerSeat || ride.price || 0;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
+      
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <IconSymbol size={22} name="chevron.left" color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Ride Details</Text>
         <View style={styles.placeholder} />
       </View>
 
-      {/* Map Section - Takes up most of the screen */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Map Section - Compact */}
       {ride && (
-        <View style={styles.mapSection}>
+          <View style={styles.mapContainer}>
               <MapView
                 ref={mapRef}
                 provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
@@ -287,19 +281,17 @@ export default function RideDetailsScreen(): React.JSX.Element {
                 showsTraffic={false}
                 toolbarEnabled={false}
                 loadingEnabled={true}
-                loadingBackgroundColor="#2A2A2A"
-                loadingIndicatorColor="#4285F4"
+              loadingBackgroundColor={COLORS.background}
+              loadingIndicatorColor={COLORS.primary}
                 onMapReady={() => {
-                  // Fit to coordinates after map loads
                   if (mapRef.current && routeCoordinates.length > 0) {
                     setTimeout(() => {
                       mapRef.current?.fitToCoordinates(routeCoordinates, {
-                        edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
+                      edgePadding: { top: 30, right: 30, bottom: 30, left: 30 },
                         animated: true,
                       });
                     }, 300);
                   } else if (mapRef.current) {
-                    // Fallback: fit to start and end points
                     setTimeout(() => {
                       mapRef.current?.fitToCoordinates(
                         [
@@ -307,7 +299,7 @@ export default function RideDetailsScreen(): React.JSX.Element {
                           { latitude: ride.toLatitude, longitude: ride.toLongitude },
                         ],
                         {
-                          edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
+                        edgePadding: { top: 30, right: 30, bottom: 30, left: 30 },
                           animated: true,
                         }
                       );
@@ -315,22 +307,20 @@ export default function RideDetailsScreen(): React.JSX.Element {
                   }
                 }}
               >
-                {/* Route line - actual road route with gradient effect */}
+              {/* Route Line */}
                 {routeCoordinates.length > 0 ? (
                   <>
-                    {/* Shadow/outline */}
                     <Polyline
                       coordinates={routeCoordinates}
                       strokeColor="rgba(66, 133, 244, 0.3)"
-                      strokeWidth={8}
+                    strokeWidth={6}
                       lineCap="round"
                       lineJoin="round"
                     />
-                    {/* Main route */}
                     <Polyline
                       coordinates={routeCoordinates}
-                      strokeColor="#4285F4"
-                      strokeWidth={5}
+                    strokeColor={COLORS.primary}
+                    strokeWidth={4}
                       lineCap="round"
                       lineJoin="round"
                     />
@@ -341,65 +331,102 @@ export default function RideDetailsScreen(): React.JSX.Element {
                       { latitude: ride.fromLatitude, longitude: ride.fromLongitude },
                       { latitude: ride.toLatitude, longitude: ride.toLongitude },
                     ]}
-                    strokeColor="#4285F4"
-                    strokeWidth={5}
+                  strokeColor={COLORS.primary}
+                  strokeWidth={4}
                     lineCap="round"
                     lineJoin="round"
-                    lineDashPattern={[10, 5]}
+                  lineDashPattern={[8, 4]}
                   />
                 )}
-                {/* Start marker - Small Car Icon */}
+              
+              {/* Start Marker */}
                 <Marker 
                   coordinate={{
                     latitude: ride.fromLatitude,
                     longitude: ride.fromLongitude,
                   }}
-                  title="Pickup"
-                  description={ride.fromAddress}
                 >
-                  <View style={styles.markerContainer}>
-                    <View style={styles.carMarker}>
-                      <IconSymbol size={16} name="car" color="#FFFFFF" />
-                    </View>
+                <View style={styles.markerStart}>
+                  <View style={styles.markerDot} />
                   </View>
                 </Marker>
                 
-                {/* Destination marker - Small Flag Icon */}
+              {/* Destination Marker */}
                 <Marker 
                   coordinate={{
                     latitude: ride.toLatitude,
                     longitude: ride.toLongitude,
                   }}
-                  title="Destination"
-                  description={ride.toAddress}
                 >
-                  <View style={styles.markerContainer}>
-                    <View style={styles.destinationMarker}>
-                      <IconSymbol size={14} name="flag" color="#FFFFFF" />
-                    </View>
-                    <View style={styles.markerPin} />
+                <View style={styles.markerEnd}>
+                  <View style={styles.markerDotEnd} />
                   </View>
                 </Marker>
               </MapView>
               
               {/* Distance Badge */}
               {ride.distance && (
-                <View style={styles.distanceOverlay}>
-                  <Text style={styles.distanceText}>
-                    {ride.distance.toFixed(1)} mi
-                  </Text>
+              <View style={styles.distanceBadge}>
+                <IconSymbol size={14} name="mappin.circle.fill" color={COLORS.primary} />
+                <Text style={styles.distanceText}>{ride.distance.toFixed(1)} mi</Text>
                 </View>
               )}
             </View>
           )}
 
-      {/* Content Below Map */}
-      <View style={styles.contentContainer}>
-        <View style={styles.content}>
-          {/* Driver Info */}
-          <View style={styles.driverSection}>
+        {/* All Info in One Card */}
+        <View style={styles.card}>
+          {/* Route Section */}
+          <View style={styles.routeRow}>
+            <View style={styles.routeDot} />
+            <View style={styles.routeContent}>
+              <Text style={styles.routeLabel}>Pickup</Text>
+              <Text style={styles.routeAddress} numberOfLines={1}>{ride.fromAddress}</Text>
+            </View>
+          </View>
+          <View style={styles.routeSeparator} />
+          <View style={styles.routeRow}>
+            <View style={[styles.routeDot, styles.routeDotDest]} />
+            <View style={styles.routeContent}>
+              <Text style={styles.routeLabel}>Destination</Text>
+              <Text style={styles.routeAddress} numberOfLines={1}>{ride.toAddress}</Text>
+            </View>
+          </View>
+
+          {/* Separator */}
+          <View style={styles.sectionSeparator} />
+
+          {/* Date & Time Row */}
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <IconSymbol size={16} name="calendar" color={COLORS.textSecondary} />
+              <Text style={styles.infoText}>{formatDate(ride.departureTime)}</Text>
+            </View>
+            <View style={styles.infoItem}>
+              <IconSymbol size={16} name="clock.fill" color={COLORS.textSecondary} />
+              <Text style={styles.infoText}>{formatTime(ride.departureTime)}</Text>
+            </View>
+          </View>
+          
+          {/* Seats & Price Row */}
+          <View style={styles.infoRow}>
+            <View style={styles.infoItem}>
+              <IconSymbol size={16} name="person.2.fill" color={COLORS.textSecondary} />
+              <Text style={styles.infoText}>{ride.availableSeats} seats</Text>
+            </View>
+            <View style={styles.infoItem}>
+              <IconSymbol size={16} name="dollarsign.circle.fill" color={COLORS.primary} />
+              <Text style={[styles.infoText, styles.priceText]}>${price.toFixed(2)}/seat</Text>
+            </View>
+          </View>
+
+          {/* Separator */}
+          <View style={styles.sectionSeparator} />
+
+          {/* Driver Row */}
+          <View style={styles.driverRow}>
             <View style={styles.driverAvatar}>
-              <Text style={styles.driverAvatarText}>
+              <Text style={styles.driverInitial}>
                 {ride.driverName.charAt(0).toUpperCase()}
               </Text>
             </View>
@@ -411,51 +438,11 @@ export default function RideDetailsScreen(): React.JSX.Element {
                 </Text>
               )}
             </View>
-            <View style={styles.priceSection}>
-              <Text style={styles.price}>${ride.price.toFixed(0)}</Text>
-              <Text style={styles.priceLabel}>per seat</Text>
-            </View>
           </View>
+            </View>
+      </ScrollView>
 
-          {/* Route */}
-          <View style={styles.routeSection}>
-            <View style={styles.routeItem}>
-              <Text style={styles.routeLabel}>From</Text>
-              <Text style={styles.routeAddress} numberOfLines={1}>
-                {ride.fromAddress}
-              </Text>
-            </View>
-            <View style={styles.routeItem}>
-              <Text style={styles.routeLabel}>To</Text>
-              <Text style={styles.routeAddress} numberOfLines={1}>
-                {ride.toAddress}
-              </Text>
-            </View>
-          </View>
-
-          {/* Trip Details */}
-          <View style={styles.detailsSection}>
-            <View style={styles.detailItem}>
-              <IconSymbol size={16} name="clock" color="#666666" />
-              <Text style={styles.detailText}>
-                {formatDate(ride.departureTime)} • {formatTime(ride.departureTime)}
-              </Text>
-            </View>
-            {ride.distance && (
-              <View style={styles.detailItem}>
-                <IconSymbol size={16} name="mappin" color="#666666" />
-                <Text style={styles.detailText}>{ride.distance.toFixed(1)} mi</Text>
-              </View>
-            )}
-            <View style={styles.detailItem}>
-              <IconSymbol size={16} name="person" color="#666666" />
-              <Text style={styles.detailText}>
-                {ride.availableSeats} seat{ride.availableSeats !== 1 ? 's' : ''} available
-              </Text>
-            </View>
-          </View>
-
-          {/* Book Button */}
+      {/* Book Button - Fixed at bottom */}
           <View style={styles.buttonContainer}>
             <TouchableOpacity
               style={styles.bookButton}
@@ -463,9 +450,8 @@ export default function RideDetailsScreen(): React.JSX.Element {
               activeOpacity={0.8}
             >
               <Text style={styles.bookButtonText}>Book Seat</Text>
+          <IconSymbol size={20} name="arrow.right" color={COLORS.textPrimary} />
             </TouchableOpacity>
-          </View>
-        </View>
       </View>
     </SafeAreaView>
   );
@@ -474,272 +460,262 @@ export default function RideDetailsScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: COLORS.background,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    marginBottom: 20,
-  },
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: '#000000',
-    zIndex: 10,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  placeholder: {
-    width: 40,
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingTop: SPACING.base,
+    paddingBottom: SPACING.base,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   backButton: {
     width: 40,
     height: 40,
     justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  headerTitle: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 18,
+    color: COLORS.textPrimary,
+  },
+  placeholder: {
+    width: 40,
+  },
+  // Loading & Error
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: SPACING.base,
+    backgroundColor: COLORS.background,
   },
-  mapSection: {
-    height: '45%',
-    backgroundColor: '#1A1A1A',
-    overflow: 'hidden',
+  loadingText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
   },
-  contentContainer: {
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+    gap: SPACING.base,
+    backgroundColor: COLORS.background,
+  },
+  errorText: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.textPrimary,
+  },
+  backButtonText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  // Scroll View
+  scrollView: {
     flex: 1,
   },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
+  scrollContent: {
+    paddingBottom: 100,
+  },
+  // Map
+  mapContainer: {
+    height: 240,
+    backgroundColor: COLORS.background,
+    marginHorizontal: RESPONSIVE_SPACING.margin,
+    marginTop: SPACING.base,
+    marginBottom: SPACING.base,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   map: {
     flex: 1,
     width: '100%',
     height: '100%',
   },
-  markerContainer: {
+  markerStart: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  carMarker: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#4285F4',
-    justifyContent: 'center',
+  markerEnd: {
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  destinationMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#000000',
     justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
   },
-  markerPin: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 4,
-    borderRightWidth: 4,
-    borderTopWidth: 6,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: '#000000',
-    marginTop: -2,
+  markerDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    borderWidth: 3,
+    borderColor: COLORS.textPrimary,
   },
-  distanceOverlay: {
+  markerDotEnd: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.error,
+    borderWidth: 3,
+    borderColor: COLORS.textPrimary,
+  },
+  distanceBadge: {
     position: 'absolute',
-    bottom: 12,
-    left: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  distanceText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  driverSection: {
+    bottom: SPACING.sm,
+    left: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A2A2C',
+    gap: SPACING.xs,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  distanceText: {
+    ...TYPOGRAPHY.bodySmall,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  // Cards
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.base,
+    marginHorizontal: RESPONSIVE_SPACING.margin,
+    marginBottom: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  // Route Card
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+  },
+  routeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 6,
+    backgroundColor: COLORS.primary,
+  },
+  routeDotDest: {
+    backgroundColor: COLORS.error,
+  },
+  routeContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  routeLabel: {
+    ...TYPOGRAPHY.badge,
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs / 2,
+  },
+  routeAddress: {
+    ...TYPOGRAPHY.body,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  routeSeparator: {
+    width: 2,
+    height: 12,
+    backgroundColor: COLORS.border,
+    marginLeft: 3,
+    marginVertical: SPACING.sm,
+  },
+  sectionSeparator: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.base,
+  },
+  // Info Rows
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flex: 1,
+  },
+  infoText: {
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+  },
+  priceText: {
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  driverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.base,
   },
   driverAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#4285F4',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
-  driverAvatarText: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#FFFFFF',
+  driverInitial: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 20,
+    color: COLORS.textPrimary,
   },
   driverInfo: {
     flex: 1,
+    minWidth: 0,
   },
   driverName: {
-    fontSize: 18,
+    ...TYPOGRAPHY.body,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 4,
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.xs / 2,
   },
   carInfo: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: '#999999',
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.textSecondary,
   },
-  priceSection: {
-    alignItems: 'flex-end',
-  },
-  price: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#4285F4',
-  },
-  priceLabel: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: '#999999',
-    marginTop: 2,
-  },
-  routeSection: {
-    marginBottom: 24,
-  },
-  routeItem: {
-    marginBottom: 20,
-  },
-  routeLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#999999',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  routeAddress: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#FFFFFF',
-    lineHeight: 20,
-  },
-  detailsSection: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  detailText: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#666666',
-  },
+  // Button
   buttonContainer: {
-    padding: 20,
-    paddingBottom: 40,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingTop: SPACING.base,
+    paddingBottom: SPACING.xl,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   bookButton: {
-    width: '100%',
-    height: 56,
-    backgroundColor: '#4285F4',
-    borderRadius: 12,
-    justifyContent: 'center',
+    ...BUTTONS.primary,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    minHeight: 52,
   },
   bookButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#4285F4',
-  },
-  recurringCard: {
-    backgroundColor: '#0F0F0F',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#1A1A1A',
-  },
-  recurringHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  recurringTitle: {
+    ...TYPOGRAPHY.body,
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
-  recurringContent: {
-    gap: 8,
-  },
-  recurringRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  recurringLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#999999',
-  },
-  recurringValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4285F4',
-    textTransform: 'capitalize',
+    color: COLORS.textPrimary,
   },
 });
-

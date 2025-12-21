@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { COLORS, TYPOGRAPHY, SPACING, RESPONSIVE_SPACING } from '@/constants/designSystem';
 
 interface HomeHeaderProps {
   userName: string;
@@ -57,38 +58,33 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-    marginBottom: 8,
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingTop: SPACING.base,
+    paddingBottom: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
   greeting: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4285F4',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    opacity: 0.9,
+    ...TYPOGRAPHY.label,
+    fontSize: 13,
+    color: COLORS.primary,
+    marginBottom: SPACING.sm,
+    opacity: 0.95,
   },
   name: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -1,
-    marginBottom: 4,
+    ...TYPOGRAPHY.h1,
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.xs,
   },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
   },
   locationText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#4285F4',
-    opacity: 0.9,
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.primary,
+    opacity: 0.95,
   },
 });
 

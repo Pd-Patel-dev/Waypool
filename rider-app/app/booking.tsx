@@ -8,6 +8,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +16,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import AddressAutocomplete, { type AddressDetails } from '@/components/AddressAutocomplete';
+import { getSavedAddresses, type SavedAddress } from '@/services/api';
+import { useUser } from '@/context/UserContext';
+import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, BUTTONS, SHADOWS, RESPONSIVE_SPACING, CARDS } from '@/constants/designSystem';
 
 // Conditionally import Location only on native platforms
 let Location: any = null;
@@ -38,6 +42,7 @@ interface Ride {
 
 export default function BookingScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
+  const { user } = useUser();
   const [ride, setRide] = useState<Ride | null>(null);
   const [pickupAddress, setPickupAddress] = useState<string>('');
   const [pickupDetails, setPickupDetails] = useState<AddressDetails | null>(null);
@@ -45,6 +50,10 @@ export default function BookingScreen(): React.JSX.Element {
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [totalDistance, setTotalDistance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [isLoadingSavedAddresses, setIsLoadingSavedAddresses] = useState(false);
+  const [showAddressDropdown, setShowAddressDropdown] = useState(false);
+  const [selectedSavedAddress, setSelectedSavedAddress] = useState<SavedAddress | null>(null);
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
@@ -62,6 +71,30 @@ export default function BookingScreen(): React.JSX.Element {
       setIsLoading(false);
     }
   }, [params.ride]);
+
+  // Load saved addresses
+  useEffect(() => {
+    const loadSavedAddresses = async () => {
+      if (!user?.id) return;
+      setIsLoadingSavedAddresses(true);
+      try {
+        const response = await getSavedAddresses();
+        if (response.success) {
+          setSavedAddresses(response.addresses);
+        }
+      } catch (error: any) {
+        console.error('Error loading saved addresses:', error);
+        // Silently fail - saved addresses are optional for booking flow
+        // Only log 401 errors, don't show alert to avoid interrupting booking
+        if (error.status !== 401) {
+          console.warn('Failed to load saved addresses:', error.message);
+        }
+      } finally {
+        setIsLoadingSavedAddresses(false);
+      }
+    };
+    loadSavedAddresses();
+  }, [user]);
 
   // Get current location
   useEffect(() => {
@@ -220,6 +253,40 @@ export default function BookingScreen(): React.JSX.Element {
     setPickupDetails(addressDetails);
   };
 
+  const handleSelectSavedAddress = (savedAddress: SavedAddress) => {
+    const addressDetails: AddressDetails = {
+      fullAddress: savedAddress.address,
+      placeId: '', // Not needed for saved addresses
+      city: savedAddress.city || '',
+      state: savedAddress.state || '',
+      zipCode: savedAddress.zipCode || '',
+      latitude: savedAddress.latitude,
+      longitude: savedAddress.longitude,
+    };
+    setSelectedSavedAddress(savedAddress);
+    setPickupAddress(savedAddress.address);
+    setPickupDetails(addressDetails);
+    setShowAddressDropdown(false);
+  };
+
+  const handleClearSavedAddress = () => {
+    setSelectedSavedAddress(null);
+    setPickupAddress('');
+    setPickupDetails(null);
+  };
+
+  const getLabelIcon = (label: string): string => {
+    if (label === 'home') return 'house.fill';
+    if (label === 'work') return 'briefcase.fill';
+    return 'mappin.circle.fill';
+  };
+
+  const getLabelDisplay = (label: string): string => {
+    if (label === 'home') return 'Home';
+    if (label === 'work') return 'Work';
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  };
+
   const handleContinue = () => {
     if (!pickupDetails || !ride) return;
     
@@ -265,7 +332,7 @@ export default function BookingScreen(): React.JSX.Element {
         </View>
 
         {/* Map Section */}
-        <View style={styles.mapSection}>
+        <View style={styles.mapContainer}>
           <MapView
             ref={mapRef}
             provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
@@ -282,8 +349,8 @@ export default function BookingScreen(): React.JSX.Element {
             showsTraffic={false}
             toolbarEnabled={false}
             loadingEnabled={true}
-            loadingBackgroundColor="#2A2A2A"
-            loadingIndicatorColor="#4285F4"
+            loadingBackgroundColor={COLORS.background}
+            loadingIndicatorColor={COLORS.primary}
             scrollEnabled={false}
             zoomEnabled={false}
             pitchEnabled={false}
@@ -365,72 +432,219 @@ export default function BookingScreen(): React.JSX.Element {
                </View>
              </Marker>
           </MapView>
+          {/* Map Overlay Info */}
+          {totalDistance !== null && pickupDetails && (
+            <View style={styles.mapInfoBadge}>
+              <IconSymbol name="mappin.circle.fill" size={14} color={COLORS.primary} />
+              <Text style={styles.mapInfoText}>{totalDistance.toFixed(1)} miles</Text>
+            </View>
+          )}
         </View>
 
         {/* Content */}
         <View style={styles.contentContainer}>
-          <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Select Your Pickup Location</Text>
-            
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Section: Pickup Location */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Pickup Location</Text>
+              
+              {/* Saved Addresses Dropdown */}
+              {savedAddresses.length > 0 && (
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => setShowAddressDropdown(true)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.dropdownContent}>
+                    {selectedSavedAddress ? (
+                      <>
+                        <View style={styles.dropdownIconContainer}>
+                          <IconSymbol
+                            size={20}
+                            name={getLabelIcon(selectedSavedAddress.label)}
+                            color={COLORS.primary}
+                          />
+                        </View>
+                        <View style={styles.dropdownTextContainer}>
+                          <Text style={styles.dropdownLabel}>
+                            {getLabelDisplay(selectedSavedAddress.label)}
+                          </Text>
+                          <Text style={styles.dropdownAddress} numberOfLines={1}>
+                            {selectedSavedAddress.address}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleClearSavedAddress();
+                          }}
+                          style={styles.clearIconButton}
+                        >
+                          <IconSymbol name="xmark.circle.fill" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.dropdownIconContainer}>
+                          <IconSymbol name="mappin" size={20} color={COLORS.textSecondary} />
+                        </View>
+                        <Text style={styles.dropdownPlaceholder}>Select saved address</Text>
+                      </>
+                    )}
+                    <IconSymbol name="chevron.down" size={16} color={COLORS.textSecondary} />
+                  </View>
+                </TouchableOpacity>
+              )}
+              
+              {/* Address Input */}
+              <View style={styles.addressInputWrapper}>
+                <Text style={styles.inputLabel}>
+                  {savedAddresses.length > 0 ? 'Or enter address' : 'Enter pickup address'}
+                </Text>
             <AddressAutocomplete
               value={pickupAddress}
-              onChangeText={setPickupAddress}
-              onSelectAddress={handleSelectPickup}
-              placeholder="Enter your pickup address"
+                  onChangeText={(text) => {
+                    setPickupAddress(text);
+                    if (selectedSavedAddress) {
+                      setSelectedSavedAddress(null);
+                    }
+                  }}
+                  onSelectAddress={(details) => {
+                    handleSelectPickup(details);
+                    setSelectedSavedAddress(null);
+                  }}
+                  placeholder="Search for an address"
               currentLocation={currentLocation}
             />
+              </View>
+            </View>
 
-            {/* Route Info - Stops */}
+            {/* Route Preview */}
             {pickupDetails && (
-              <View style={styles.routeInfo}>
-                <Text style={styles.stopsTitle}>Route Stops</Text>
-                
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Route Preview</Text>
+                <View style={styles.routeCard}>
                 {/* Stop 1: Original Pickup */}
-                <View style={styles.stopItem}>
-                  <View style={styles.stopNumber}>
-                    <Text style={styles.stopNumberText}>1</Text>
+                  <View style={styles.routeStopRow}>
+                    <View style={styles.routeStopBadge}>
+                      <Text style={styles.routeStopBadgeText}>1</Text>
                   </View>
-                  <View style={styles.stopContent}>
-                    <Text style={styles.stopLabel}>Original Pickup</Text>
-                    <Text style={styles.stopAddress} numberOfLines={1}>{ride.fromAddress}</Text>
+                    <View style={styles.routeStopInfo}>
+                      <Text style={styles.routeStopLabel}>Original Pickup</Text>
+                      <Text style={styles.routeStopAddress} numberOfLines={2}>
+                        {ride.fromAddress}
+                      </Text>
                   </View>
                 </View>
 
                 {/* Stop 2: Your Pickup */}
-                <View style={styles.stopItem}>
-                  <View style={[styles.stopNumber, styles.stopNumberOriginal]}>
-                    <Text style={styles.stopNumberText}>2</Text>
+                  <View style={styles.routeStopDivider} />
+                  <View style={styles.routeStopRow}>
+                    <View style={[styles.routeStopBadge, styles.routeStopBadgeGreen]}>
+                      <Text style={styles.routeStopBadgeText}>2</Text>
                   </View>
-                  <View style={styles.stopContent}>
-                    <Text style={styles.stopLabel}>Your Pickup</Text>
-                    <Text style={styles.stopAddress} numberOfLines={1}>{pickupDetails.fullAddress}</Text>
+                    <View style={styles.routeStopInfo}>
+                      <Text style={styles.routeStopLabel}>Your Pickup</Text>
+                      <Text style={styles.routeStopAddress} numberOfLines={2}>
+                        {pickupDetails.fullAddress}
+                      </Text>
                   </View>
                 </View>
 
                 {/* Stop 3: Destination */}
-                <View style={styles.stopItem}>
-                  <View style={[styles.stopNumber, styles.stopNumberEnd]}>
-                    <Text style={styles.stopNumberText}>3</Text>
+                  <View style={styles.routeStopDivider} />
+                  <View style={styles.routeStopRow}>
+                    <View style={[styles.routeStopBadge, styles.routeStopBadgeRed]}>
+                      <Text style={styles.routeStopBadgeText}>3</Text>
+                    </View>
+                    <View style={styles.routeStopInfo}>
+                      <Text style={styles.routeStopLabel}>Destination</Text>
+                      <Text style={styles.routeStopAddress} numberOfLines={2}>
+                        {ride.toAddress}
+                      </Text>
                   </View>
-                  <View style={styles.stopContent}>
-                    <Text style={styles.stopLabel}>Destination</Text>
-                    <Text style={styles.stopAddress} numberOfLines={1}>{ride.toAddress}</Text>
                   </View>
                 </View>
-                
-                {/* Distance Display */}
-                {totalDistance !== null && (
-                  <View style={styles.distanceContainer}>
-                    <IconSymbol name="mappin" size={14} color="#4285F4" />
-                    <Text style={styles.distanceText}>
-                      {totalDistance.toFixed(1)} mi
-                    </Text>
-                  </View>
-                )}
               </View>
             )}
 
-            {/* Continue Button */}
+            {/* Saved Addresses Dropdown Modal */}
+            <Modal
+              visible={showAddressDropdown}
+              transparent={true}
+              animationType="slide"
+              onRequestClose={() => setShowAddressDropdown(false)}
+            >
+              <TouchableOpacity
+                style={styles.modalOverlay}
+                activeOpacity={1}
+                onPress={() => setShowAddressDropdown(false)}
+              >
+                <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Saved Addresses</Text>
+                    <TouchableOpacity
+                      onPress={() => setShowAddressDropdown(false)}
+                      style={styles.modalCloseButton}
+                    >
+                      <IconSymbol name="xmark" size={20} color={COLORS.textPrimary} />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+                    {savedAddresses.map((savedAddr) => {
+                      const isSelected = selectedSavedAddress?.id === savedAddr.id;
+                      return (
+                        <TouchableOpacity
+                          key={savedAddr.id}
+                          style={[
+                            styles.modalOption,
+                            isSelected && styles.modalOptionSelected,
+                          ]}
+                          onPress={() => handleSelectSavedAddress(savedAddr)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.modalOptionContent}>
+                            <View style={[
+                              styles.modalOptionIconContainer,
+                              isSelected && styles.modalOptionIconContainerSelected
+                            ]}>
+                              <IconSymbol
+                                size={18}
+                                name={getLabelIcon(savedAddr.label)}
+                                color={isSelected ? COLORS.primary : COLORS.textSecondary}
+                              />
+                            </View>
+                            <View style={styles.modalOptionInfo}>
+                              <Text style={[
+                                styles.modalOptionLabel,
+                                isSelected && styles.modalOptionLabelSelected
+                              ]}>
+                                {getLabelDisplay(savedAddr.label)}
+                              </Text>
+                              <Text style={styles.modalOptionAddress} numberOfLines={2}>
+                                {savedAddr.address}
+                              </Text>
+                            </View>
+                          </View>
+                          {isSelected && (
+                            <IconSymbol name="checkmark.circle.fill" size={22} color={COLORS.primary} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </TouchableOpacity>
+            </Modal>
+          </ScrollView>
+
+          {/* Continue Button - Fixed at Bottom */}
+          <View style={styles.buttonContainer}>
             <TouchableOpacity
               style={[
                 styles.confirmButton,
@@ -452,12 +666,13 @@ export default function BookingScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: COLORS.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.background,
   },
   keyboardView: {
     flex: 1,
@@ -466,16 +681,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: '#000000',
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingTop: SPACING.base,
+    paddingBottom: SPACING.base,
+    backgroundColor: COLORS.background,
     zIndex: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   headerTitle: {
+    ...TYPOGRAPHY.h3,
     fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
   },
   placeholder: {
     width: 40,
@@ -486,176 +703,312 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  mapSection: {
-    height: '35%',
-    backgroundColor: '#1A1A1A',
+  mapContainer: {
+    height: 280,
+    backgroundColor: COLORS.background,
+    marginHorizontal: RESPONSIVE_SPACING.margin,
+    marginTop: SPACING.base,
+    marginBottom: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    position: 'relative',
   },
   map: {
     flex: 1,
     width: '100%',
     height: '100%',
   },
+  mapInfoBadge: {
+    position: 'absolute',
+    bottom: SPACING.base,
+    left: SPACING.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: SPACING.base,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  mapInfoText: {
+    ...TYPOGRAPHY.bodySmall,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
   simpleMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#4285F4',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    borderWidth: 3,
+    borderColor: COLORS.textPrimary,
+    ...SHADOWS.lg,
   },
   simpleMarkerGreen: {
-    backgroundColor: '#34C759',
+    backgroundColor: COLORS.success,
   },
   simpleMarkerBlack: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: COLORS.error,
   },
   simpleMarkerText: {
-    fontSize: 14,
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
   },
   contentContainer: {
     flex: 1,
   },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingBottom: 100,
+  },
+  section: {
+    marginBottom: SPACING.xl,
   },
   sectionTitle: {
+    ...TYPOGRAPHY.h3,
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 12,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.base,
   },
-  routeInfo: {
-    marginTop: 16,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#2A2A2C',
+  dropdownButton: {
+    ...CARDS.default,
+    marginBottom: SPACING.base,
   },
-  stopsTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 12,
-  },
-  stopItem: {
+  dropdownContent: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-    position: 'relative',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
-  stopNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#4285F4',
+  dropdownIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryTint,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
-    borderWidth: 2,
-    borderColor: '#1C1C1E',
   },
-  stopNumberOriginal: {
-    backgroundColor: '#34C759',
-  },
-  stopNumberEnd: {
-    backgroundColor: '#FF3B30',
-  },
-  stopNumberText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  stopContent: {
+  dropdownTextContainer: {
     flex: 1,
-    paddingRight: 8,
+    minWidth: 0,
   },
-  stopLabel: {
-    fontSize: 11,
+  dropdownLabel: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#999999',
+    color: COLORS.textPrimary,
     marginBottom: 2,
-    textTransform: 'uppercase',
   },
-  stopAddress: {
+  dropdownAddress: {
+    ...TYPOGRAPHY.caption,
     fontSize: 13,
-    fontWeight: '500',
-    color: '#FFFFFF',
+    color: COLORS.textSecondary,
     lineHeight: 18,
   },
-  stopMarker: {
-    width: 24,
-    alignItems: 'center',
+  dropdownPlaceholder: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.textTertiary,
+    flex: 1,
+  },
+  clearIconButton: {
+    padding: SPACING.xs,
+    marginRight: -SPACING.xs,
+  },
+  addressInputWrapper: {
+    gap: SPACING.sm,
+  },
+  inputLabel: {
+    ...TYPOGRAPHY.label,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+  },
+  routeCard: {
+    ...CARDS.default,
+    gap: 0,
+  },
+  routeStopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.base,
+  },
+  routeStopBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+    marginTop: 2,
   },
-  stopDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#34C759',
-    borderWidth: 2,
-    borderColor: '#1C1C1E',
+  routeStopBadgeGreen: {
+    backgroundColor: COLORS.success,
   },
-  stopDotOriginal: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#4285F4',
-    borderWidth: 2,
-    borderColor: '#1C1C1E',
+  routeStopBadgeRed: {
+    backgroundColor: COLORS.error,
   },
-  stopDotEnd: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#FF3B30',
-    borderWidth: 2,
-    borderColor: '#1C1C1E',
+  routeStopBadgeText: {
+    ...TYPOGRAPHY.caption,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  routeStopInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 4,
+  },
+  routeStopLabel: {
+    ...TYPOGRAPHY.badge,
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  routeStopAddress: {
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  routeStopDivider: {
+    width: 2,
+    height: 16,
+    backgroundColor: COLORS.border,
+    marginLeft: 15,
+    marginVertical: SPACING.sm,
+  },
+  buttonContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingTop: SPACING.base,
+    paddingBottom: SPACING.xl,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    ...SHADOWS.lg,
   },
   confirmButton: {
     width: '100%',
-    height: 50,
-    backgroundColor: '#4285F4',
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
+    ...BUTTONS.primary,
+    minHeight: 56,
   },
   confirmButtonDisabled: {
-    backgroundColor: '#2A2A2C',
+    backgroundColor: COLORS.surfaceElevated,
     opacity: 0.5,
   },
   confirmButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    ...TYPOGRAPHY.body,
+    fontSize: 17,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
     letterSpacing: 0.3,
   },
-  distanceContainer: {
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: COLORS.overlayDark,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    maxHeight: '75%',
+    paddingBottom: SPACING.xl,
+    ...SHADOWS.xl,
+  },
+  modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#2A2A2C',
-    gap: 6,
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.base * 1.25,
+    paddingVertical: SPACING.base * 1.25,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  distanceText: {
-    fontSize: 14,
+  modalTitle: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+    backgroundColor: COLORS.surfaceElevated,
+  },
+  modalScrollView: {
+    paddingTop: SPACING.sm,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.base * 1.25,
+    paddingVertical: SPACING.base,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalOptionSelected: {
+    backgroundColor: COLORS.primaryTint,
+  },
+  modalOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: SPACING.base,
+  },
+  modalOptionIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.surfaceElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalOptionIconContainerSelected: {
+    backgroundColor: COLORS.primaryTint,
+  },
+  modalOptionInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  modalOptionLabel: {
+    ...TYPOGRAPHY.body,
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  modalOptionLabelSelected: {
+    color: COLORS.textPrimary,
     fontWeight: '600',
-    color: '#4285F4',
+  },
+  modalOptionAddress: {
+    ...TYPOGRAPHY.caption,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
   },
 });
 

@@ -1,143 +1,299 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { useUser } from '@/context/UserContext';
+import { useFocusEffect } from 'expo-router';
+import { getRiderBookings, type RiderBooking } from '@/services/api';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, CARDS, RESPONSIVE_SPACING } from '@/constants/designSystem';
+
+type FilterType = 'all' | 'completed' | 'cancelled';
 
 export default function ActivityScreen(): React.JSX.Element {
-  const { user, logout, isLoading } = useUser();
+  const { user, isLoading: userLoading } = useUser();
+  const [bookings, setBookings] = useState<RiderBooking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filter, setFilter] = useState<FilterType>('all');
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    // If no user is logged in, redirect to welcome screen
-    if (!isLoading && !user) {
-      router.replace('/welcome');
-    }
-  }, [user, isLoading]);
+  const fetchBookings = useCallback(async () => {
+    if (!user?.id) return;
 
-  const handleLogout = async () => {
     try {
-      await logout();
-      router.replace('/welcome');
-    } catch (error) {
-      console.error('Logout failed:', error);
+      setIsLoading(true);
+      const riderId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+      const response = await getRiderBookings(riderId);
+      
+      if (response.success && response.bookings) {
+        setBookings(response.bookings);
+      }
+    } catch (error: any) {
+      console.error('Error fetching bookings:', error);
+      // Silently fail - don't show error to user
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchBookings();
+    }, [fetchBookings])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchBookings();
+    setRefreshing(false);
+  }, [fetchBookings]);
+
+  // Filter bookings
+  const filteredBookings = bookings.filter((booking) => {
+    if (filter === 'completed') {
+      return booking.status === 'completed';
+    }
+    if (filter === 'cancelled') {
+      return booking.status === 'cancelled';
+    }
+    return true; // 'all'
+  });
+
+  // Calculate statistics
+  const completedBookings = bookings.filter((b) => b.status === 'completed');
+  const totalRides = completedBookings.length;
+  const totalSpent = completedBookings.reduce((sum, booking) => {
+    const pricePerSeat = booking.ride.pricePerSeat || 0;
+    const seats = booking.numberOfSeats || 1;
+    return sum + pricePerSeat * seats;
+  }, 0);
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch {
+      return '';
     }
   };
 
-  if (isLoading || !user) {
+  const formatTime = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  const getStatusColor = (status: string): string => {
+    if (status === 'completed') return COLORS.success;
+    if (status === 'cancelled') return COLORS.error;
+    if (status === 'confirmed') return COLORS.primary;
+    return COLORS.textSecondary;
+  };
+
+  const getStatusLabel = (status: string): string => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const handleViewRideDetails = (booking: RiderBooking) => {
+    // Navigate to ride details if ride still exists and is available
+    if (booking.ride.status === 'scheduled' && booking.ride.id) {
+      router.push({
+        pathname: '/ride-details',
+        params: {
+          rideId: booking.ride.id.toString(),
+        },
+      });
+    }
+  };
+
+  if (userLoading || isLoading) {
     return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="light" />
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Loading activity...</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Activity</Text>
+      </View>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Activity</Text>
-        </View>
-
-        {/* Profile Section */}
-        <View style={styles.profileSection}>
-          <View style={styles.profileCard}>
-            <View style={styles.avatarContainer}>
-              <Text style={styles.avatarText}>
-                {user.firstName ? user.firstName.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>
-                {user.firstName && user.lastName
-                  ? `${user.firstName} ${user.lastName}`
-                  : user.email}
-              </Text>
-              <Text style={styles.profileEmail}>{user.email}</Text>
-              {user.phoneNumber && (
-                <Text style={styles.profilePhone}>{user.phoneNumber}</Text>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {/* Ride Stats */}
-        <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Your stats</Text>
+        {/* Statistics Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Your Stats</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>0</Text>
-              <Text style={styles.statLabel}>Total rides</Text>
+              <IconSymbol name="car.fill" size={24} color={COLORS.primary} />
+              <Text style={styles.statValue}>{totalRides}</Text>
+              <Text style={styles.statLabel}>Total Rides</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>$0</Text>
-              <Text style={styles.statLabel}>Spent</Text>
+              <IconSymbol name="dollarsign.circle.fill" size={24} color={COLORS.success} />
+              <Text style={styles.statValue}>${totalSpent.toFixed(2)}</Text>
+              <Text style={styles.statLabel}>Total Spent</Text>
             </View>
           </View>
         </View>
 
-        {/* Settings */}
-        <View style={styles.settingsSection}>
-          <Text style={styles.sectionTitle}>Settings</Text>
-          
+        {/* Filters */}
+        <View style={styles.section}>
+          <View style={styles.filterContainer}>
           <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => console.log('Edit profile')}
-          >
-            <Text style={styles.settingIcon}>👤</Text>
-            <Text style={styles.settingText}>Edit profile</Text>
-            <Text style={styles.settingChevron}>›</Text>
+              style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
+              onPress={() => setFilter('all')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>
+                All
+              </Text>
           </TouchableOpacity>
-
           <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => console.log('Payment methods')}
-          >
-            <Text style={styles.settingIcon}>💳</Text>
-            <Text style={styles.settingText}>Payment methods</Text>
-            <Text style={styles.settingChevron}>›</Text>
+              style={[styles.filterButton, filter === 'completed' && styles.filterButtonActive]}
+              onPress={() => setFilter('completed')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.filterText, filter === 'completed' && styles.filterTextActive]}>
+                Completed
+              </Text>
           </TouchableOpacity>
-
           <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => console.log('Ride history')}
-          >
-            <Text style={styles.settingIcon}>🕒</Text>
-            <Text style={styles.settingText}>Ride history</Text>
-            <Text style={styles.settingChevron}>›</Text>
+              style={[styles.filterButton, filter === 'cancelled' && styles.filterButtonActive]}
+              onPress={() => setFilter('cancelled')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.filterText, filter === 'cancelled' && styles.filterTextActive]}>
+                Cancelled
+              </Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => console.log('Help & Support')}
-          >
-            <Text style={styles.settingIcon}>❓</Text>
-            <Text style={styles.settingText}>Help & Support</Text>
-            <Text style={styles.settingChevron}>›</Text>
-          </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Logout Button */}
-        <View style={styles.logoutSection}>
+        {/* Ride History */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Ride History {filteredBookings.length > 0 && `(${filteredBookings.length})`}
+          </Text>
+
+          {filteredBookings.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <IconSymbol name="clock.fill" size={48} color={COLORS.textTertiary} />
+              <Text style={styles.emptyTitle}>No rides found</Text>
+              <Text style={styles.emptyText}>
+                {filter === 'all'
+                  ? 'You haven\'t taken any rides yet'
+                  : `No ${filter} rides found`}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.bookingsList}>
+              {filteredBookings.map((booking) => (
           <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={handleLogout}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.logoutButtonText}>Log out</Text>
+                  key={booking.id}
+                  style={styles.bookingCard}
+                  onPress={() => handleViewRideDetails(booking)}
+                  activeOpacity={0.7}
+                  disabled={booking.ride.status !== 'scheduled'}
+                >
+                  <View style={styles.bookingHeader}>
+                    <View style={styles.bookingRoute}>
+                      <View style={styles.routeRow}>
+                        <View style={styles.routeDot} />
+                        <View style={styles.routeContent}>
+                          <Text style={styles.routeFrom} numberOfLines={1}>
+                            {booking.ride.fromCity || booking.ride.fromAddress}
+                          </Text>
+                          <Text style={styles.routeTo} numberOfLines={1}>
+                            {booking.ride.toCity || booking.ride.toAddress}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(booking.status)}20` }]}>
+                      <Text style={[styles.statusText, { color: getStatusColor(booking.status) }]}>
+                        {getStatusLabel(booking.status)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.bookingDetails}>
+                    <View style={styles.bookingDetailRow}>
+                      <IconSymbol name="calendar" size={14} color={COLORS.textSecondary} />
+                      <Text style={styles.bookingDetailText}>
+                        {formatDate(booking.ride.departureTime)}
+                      </Text>
+                    </View>
+                    <View style={styles.bookingDetailRow}>
+                      <IconSymbol name="clock.fill" size={14} color={COLORS.textSecondary} />
+                      <Text style={styles.bookingDetailText}>
+                        {formatTime(booking.ride.departureTime)}
+                      </Text>
+                    </View>
+                    <View style={styles.bookingDetailRow}>
+                      <IconSymbol name="person.2.fill" size={14} color={COLORS.textSecondary} />
+                      <Text style={styles.bookingDetailText}>
+                        {booking.numberOfSeats} seat{booking.numberOfSeats !== 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.bookingDetailRow}>
+                      <IconSymbol name="dollarsign.circle.fill" size={14} color={COLORS.primary} />
+                      <Text style={[styles.bookingDetailText, styles.priceText]}>
+                        ${((booking.ride.pricePerSeat || 0) * (booking.numberOfSeats || 1)).toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {booking.confirmationNumber && (
+                    <View style={styles.confirmationRow}>
+                      <Text style={styles.confirmationLabel}>Confirmation:</Text>
+                      <Text style={styles.confirmationNumber}>{booking.confirmationNumber}</Text>
+                    </View>
+                  )}
           </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -147,154 +303,215 @@ export default function ActivityScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: COLORS.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    gap: SPACING.base,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#CCCCCC',
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+  },
+  header: {
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingTop: SPACING.base,
+    paddingBottom: SPACING.base,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  headerTitle: {
+    ...TYPOGRAPHY.h1,
+    fontSize: 28,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.5,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingTop: SPACING.base,
+    paddingBottom: SPACING.xl,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
-    backgroundColor: '#000000',
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  profileSection: {
-    paddingHorizontal: 20,
-    marginBottom: 32,
-  },
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    padding: 20,
-  },
-  avatarContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  avatarText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#000000',
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  profileEmail: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: '#CCCCCC',
-    marginBottom: 2,
-  },
-  profilePhone: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: '#CCCCCC',
-  },
-  statsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 32,
+  section: {
+    marginBottom: SPACING.xl,
   },
   sectionTitle: {
+    ...TYPOGRAPHY.h3,
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 16,
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.base,
   },
   statsGrid: {
     flexDirection: 'row',
-    gap: 12,
+    gap: SPACING.base,
   },
   statCard: {
+    ...CARDS.default,
     flex: 1,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    padding: 20,
     alignItems: 'center',
+    padding: SPACING.base * 1.5,
+    gap: SPACING.sm,
   },
   statValue: {
-    fontSize: 28,
+    ...TYPOGRAPHY.h2,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
+    color: COLORS.textPrimary,
   },
   statLabel: {
+    ...TYPOGRAPHY.caption,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  filterButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.base,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  filterButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterText: {
+    ...TYPOGRAPHY.bodySmall,
     fontSize: 14,
-    fontWeight: '500',
-    color: '#CCCCCC',
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
-  settingsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 32,
+  filterTextActive: {
+    color: COLORS.textPrimary,
   },
-  settingItem: {
+  bookingsList: {
+    gap: SPACING.base,
+  },
+  bookingCard: {
+    ...CARDS.default,
+    padding: SPACING.base,
+  },
+  bookingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.base,
+  },
+  bookingRoute: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: SPACING.base,
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+  },
+  routeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+    marginTop: 6,
+  },
+  routeContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  routeFrom: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 2,
+  },
+  routeTo: {
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  statusBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  statusText: {
+    ...TYPOGRAPHY.badge,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  bookingDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.base,
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.base,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  bookingDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    gap: SPACING.xs,
   },
-  settingIcon: {
-    fontSize: 24,
-    marginRight: 16,
+  bookingDetailText: {
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 13,
+    color: COLORS.textSecondary,
   },
-  settingText: {
-    flex: 1,
-    fontSize: 16,
+  priceText: {
+    color: COLORS.primary,
     fontWeight: '600',
-    color: '#FFFFFF',
   },
-  settingChevron: {
-    fontSize: 24,
-    fontWeight: '300',
-    color: '#999999',
-  },
-  logoutSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  logoutButton: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#FF3B30',
-    padding: 16,
+  confirmationRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    gap: SPACING.xs,
   },
-  logoutButtonText: {
-    fontSize: 16,
+  confirmationLabel: {
+    ...TYPOGRAPHY.caption,
+    fontSize: 12,
+    color: COLORS.textTertiary,
+  },
+  confirmationNumber: {
+    ...TYPOGRAPHY.caption,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#FF3B30',
+    color: COLORS.textSecondary,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xl * 2,
+    gap: SPACING.base,
+  },
+  emptyTitle: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  emptyText: {
+    ...TYPOGRAPHY.body,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
   },
 });

@@ -15,7 +15,7 @@ import { useUser } from "@/context/UserContext";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { SkeletonRideList } from "@/components/SkeletonLoader";
-import { HomeHeader, RideCard } from "@/components/home";
+import { HomeHeader, ActiveRideCard, RideCard } from "@/components/home";
 import { useRides } from "@/features/rides";
 import { calculateTotalDistance } from "@/utils/distance";
 import { calculateRideEarnings } from "@/utils/price";
@@ -190,6 +190,15 @@ export default function HomeScreen(): React.JSX.Element {
           currentCity={currentCity}
           currentState={currentState}
         />
+
+        {/* Current Active Ride */}
+        {currentRide && (
+          <ActiveRideCard
+            ride={currentRide}
+            onPress={() => handleRidePress(currentRide.id)}
+            activeRideProgress={0}
+          />
+        )}
 
         {/* Filter and Sort Section */}
         <View style={styles.filterSection}>

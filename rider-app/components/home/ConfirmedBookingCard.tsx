@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import type { RiderBooking } from '@/services/api';
+import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, BUTTONS, RESPONSIVE_SPACING } from '@/constants/designSystem';
 
 interface ConfirmedBookingCardProps {
   booking: RiderBooking;
@@ -71,7 +72,7 @@ export const ConfirmedBookingCard: React.FC<ConfirmedBookingCardProps> = ({
             onPress={onEdit}
             activeOpacity={0.7}
           >
-            <IconSymbol size={18} name="pencil" color="#4285F4" />
+            <IconSymbol size={18} name="pencil" color={COLORS.primary} />
           </TouchableOpacity>
         )}
       </View>
@@ -100,11 +101,11 @@ export const ConfirmedBookingCard: React.FC<ConfirmedBookingCardProps> = ({
 
         <View style={styles.detailsRow}>
           <View style={styles.detailItem}>
-            <IconSymbol size={12} name="person.2.fill" color="#999999" />
+            <IconSymbol size={12} name="person.2.fill" color={COLORS.textSecondary} />
             <Text style={styles.detailText}>{booking.numberOfSeats} seat{booking.numberOfSeats !== 1 ? 's' : ''}</Text>
           </View>
           <View style={styles.detailItem}>
-            <IconSymbol size={12} name="person.fill" color="#999999" />
+            <IconSymbol size={12} name="person.fill" color={COLORS.textSecondary} />
             <Text style={styles.detailText}>{booking.ride.driverName}</Text>
           </View>
         </View>
@@ -149,179 +150,178 @@ export const ConfirmedBookingCard: React.FC<ConfirmedBookingCardProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1C1C1E',
-    marginHorizontal: 20,
-    marginBottom: 16,
-    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    marginHorizontal: RESPONSIVE_SPACING.margin,
+    marginBottom: SPACING.base,
+    borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
-    borderColor: '#34C75940',
+    borderColor: COLORS.successTint,
     overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    paddingBottom: 12,
+    paddingHorizontal: SPACING.base,
+    paddingTop: SPACING.base,
+    paddingBottom: SPACING.md,
   },
   headerLeft: {
     flex: 1,
+    minWidth: 0,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(52, 199, 89, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
+    gap: SPACING.sm,
+    backgroundColor: COLORS.successTint,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs + 1,
+    borderRadius: BORDER_RADIUS.sm,
     alignSelf: 'flex-start',
   },
   badgeDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#34C759',
+    backgroundColor: COLORS.success,
   },
   badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#34C759',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    ...TYPOGRAPHY.badge,
+    color: COLORS.success,
   },
   editButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(66, 133, 244, 0.15)',
+    backgroundColor: COLORS.primaryTint,
     justifyContent: 'center',
     alignItems: 'center',
   },
   content: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: SPACING.base,
+    paddingBottom: SPACING.base,
   },
   dateTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   dateText: {
+    ...TYPOGRAPHY.h3,
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
   },
   timeText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#999999',
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.textSecondary,
   },
   routeContainer: {
-    gap: 8,
-    marginBottom: 12,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   routeItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: SPACING.sm + 2,
   },
   routeDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#4285F4',
+    backgroundColor: COLORS.primary,
   },
   routeDotDest: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: COLORS.error,
   },
   routeText: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
+    minWidth: 0,
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.textPrimary,
   },
   routeConnector: {
     width: 2,
     height: 10,
-    backgroundColor: '#2A2A2C',
+    backgroundColor: COLORS.border,
     marginLeft: 3,
     borderRadius: 1,
   },
   detailsRow: {
     flexDirection: 'row',
-    gap: 16,
-    paddingTop: 12,
+    gap: SPACING.base,
+    paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: '#2A2A2C',
+    borderTopColor: COLORS.border,
   },
   detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: SPACING.sm,
   },
   detailText: {
+    ...TYPOGRAPHY.bodySmall,
     fontSize: 13,
-    fontWeight: '500',
-    color: '#999999',
+    color: COLORS.textSecondary,
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: 8,
-    padding: 16,
-    paddingTop: 12,
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.base,
+    paddingVertical: SPACING.base,
+    paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: '#2A2A2C',
+    borderTopColor: COLORS.border,
   },
   trackButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#4285F4',
-    paddingVertical: 12,
-    borderRadius: 12,
+    gap: SPACING.sm,
+    ...BUTTONS.primary,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
   },
   trackButtonText: {
-    fontSize: 15,
+    ...TYPOGRAPHY.body,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
   },
   editActionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(66, 133, 244, 0.15)',
-    paddingVertical: 12,
-    borderRadius: 12,
+    gap: SPACING.sm,
+    backgroundColor: COLORS.primaryTint,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
-    borderColor: '#4285F4',
+    borderColor: COLORS.primary,
   },
   editActionText: {
-    fontSize: 15,
+    ...TYPOGRAPHY.body,
     fontWeight: '600',
-    color: '#4285F4',
+    color: COLORS.primary,
   },
   cancelButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 59, 48, 0.15)',
-    paddingVertical: 12,
-    borderRadius: 12,
+    gap: SPACING.sm,
+    backgroundColor: COLORS.errorTint,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
-    borderColor: '#FF3B30',
+    borderColor: COLORS.error,
   },
   cancelButtonText: {
-    fontSize: 15,
+    ...TYPOGRAPHY.body,
     fontWeight: '600',
-    color: '#FF3B30',
+    color: COLORS.error,
   },
 });
 

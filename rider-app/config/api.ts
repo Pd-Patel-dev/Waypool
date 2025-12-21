@@ -12,6 +12,9 @@ export const API_URL = Platform.select({
   default: process.env.EXPO_PUBLIC_API_URL_IOS || 'http://localhost:3000',
 });
 
+// Export API_BASE_URL for WebSocket connection
+export const API_BASE_URL = API_URL;
+
 export const API_CONFIG = {
   timeout: 30000, // 30 seconds
   headers: {

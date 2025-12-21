@@ -28,7 +28,8 @@ model bookings {
   pickupPinExpiresAt   DateTime?
   pickupPinAttempts    Int             @default(0)
   pickupPinLockedUntil DateTime?
-  paymentIntentId     String?
+  paymentIntentId      String?
+  pricePerSeat         Float           // Price per seat at booking time (locked in)
   rides                rides           @relation(fields: [rideId], references: [id], onDelete: Cascade)
   users                users           @relation(fields: [riderId], references: [id], onDelete: Cascade)
   notifications        notifications[]
@@ -101,70 +102,71 @@ model rides {
 }
 
 model users {
-  id                                          Int             @id @default(autoincrement())
+  id                                          Int              @id @default(autoincrement())
   fullName                                    String
-  email                                       String          @unique
+  email                                       String           @unique
   phoneNumber                                 String
   password                                    String
-  createdAt                                   DateTime        @default(now())
-  updatedAt                                   DateTime        @updatedAt
+  createdAt                                   DateTime         @default(now())
+  updatedAt                                   DateTime         @updatedAt
   city                                        String?
   photoUrl                                    String?
   carColor                                    String?
   carMake                                     String?
   carModel                                    String?
   carYear                                     Int?
-  isDriver                                    Boolean         @default(false)
-  isRider                                     Boolean         @default(false)
+  isDriver                                    Boolean          @default(false)
+  isRider                                     Boolean          @default(false)
   lastLocationLatitude                        Float?
   lastLocationLongitude                       Float?
   lastLocationUpdate                          DateTime?
-  notifyBookings                              Boolean         @default(true)
-  notifyMessages                              Boolean         @default(true)
-  notifyRideUpdates                           Boolean         @default(true)
-  notifyPromotions                            Boolean         @default(true)
-  shareLocationEnabled                        Boolean         @default(true)
+  notifyBookings                              Boolean          @default(true)
+  notifyMessages                              Boolean          @default(true)
+  notifyRideUpdates                           Boolean          @default(true)
+  notifyPromotions                            Boolean          @default(true)
+  shareLocationEnabled                        Boolean          @default(true)
   pushToken                                   String?
   pushTokenType                               String?
   pushTokenPlatform                           String?
   pushTokenDeviceId                           String?
   pushTokenUpdatedAt                          DateTime?
   // Stripe Connect fields for driver payouts
-  stripeAccountId                             String?         @unique
-  stripeAccountStatus                         String?         // 'pending', 'restricted', 'enabled', 'disabled'
-  stripeOnboardingStatus                      String?         @default("not_started") // 'not_started' | 'pending' | 'verified' | 'restricted'
-  stripeRequirementsDue                        Json?          // Cache for UI (currently_due, eventually_due, past_due)
-  bankAccountId                               String?         // Stripe bank account ID
-  bankAccountLast4                            String?         // Last 4 digits of bank account
-  bankAccountType                             String?         // 'checking' or 'savings'
-  bankAccountStatus                            String?         // 'new', 'validated', 'verified', 'errored'
-  payoutsEnabled                              Boolean         @default(false)
-  emailVerified                               Boolean         @default(false)
+  stripeAccountId                             String?          @unique
+  stripeAccountStatus                         String? // 'pending', 'restricted', 'enabled', 'disabled'
+  stripeOnboardingStatus                      String?          @default("not_started") // 'not_started' | 'pending' | 'verified' | 'restricted'
+  stripeRequirementsDue                       Json? // Cache for UI (currently_due, eventually_due, past_due)
+  bankAccountId                               String? // Stripe bank account ID
+  bankAccountLast4                            String? // Last 4 digits of bank account
+  bankAccountType                             String? // 'checking' or 'savings'
+  bankAccountStatus                           String? // 'new', 'validated', 'verified', 'errored'
+  payoutsEnabled                              Boolean          @default(false)
+  emailVerified                               Boolean          @default(false)
   bookings                                    bookings[]
-  notifications_notifications_driverIdTousers notifications[] @relation("notifications_driverIdTousers")
-  notifications_notifications_riderIdTousers  notifications[] @relation("notifications_riderIdTousers")
+  notifications_notifications_driverIdTousers notifications[]  @relation("notifications_driverIdTousers")
+  notifications_notifications_riderIdTousers  notifications[]  @relation("notifications_riderIdTousers")
   rides                                       rides[]
-  messages_sent                               messages[]      @relation("messages_sender")
-  messages_received                           messages[]      @relation("messages_receiver")
-  ratings_given                               ratings[]       @relation("ratings_rater")
-  ratings_received                            ratings[]       @relation("ratings_rated")
+  messages_sent                               messages[]       @relation("messages_sender")
+  messages_received                           messages[]       @relation("messages_receiver")
+  ratings_given                               ratings[]        @relation("ratings_rater")
+  ratings_received                            ratings[]        @relation("ratings_rated")
   payouts                                     payouts[]
+  savedAddresses                              savedAddresses[]
 }
 
 model messages {
-  id          Int      @id @default(autoincrement())
-  senderId    Int
-  receiverId  Int
-  rideId      Int?
-  bookingId   Int?
-  message     String
-  isRead      Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  sender      users    @relation("messages_sender", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver    users    @relation("messages_receiver", fields: [receiverId], references: [id], onDelete: Cascade)
-  rides       rides?   @relation(fields: [rideId], references: [id], onDelete: Cascade)
-  bookings    bookings? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  id         Int       @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  rideId     Int?
+  bookingId  Int?
+  message    String
+  isRead     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  sender     users     @relation("messages_sender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   users     @relation("messages_receiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  rides      rides?    @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  bookings   bookings? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([senderId, receiverId])
   @@index([receiverId, isRead])
@@ -172,19 +174,19 @@ model messages {
 }
 
 model ratings {
-  id            Int       @id @default(autoincrement())
-  rideId        Int
-  bookingId     Int?
-  raterId       Int       // User who gave the rating (driver or rider)
-  ratedUserId   Int       // User who received the rating
-  rating        Int       // 1-5 stars
-  feedback      String?   // Optional text feedback
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  rides         rides     @relation(fields: [rideId], references: [id], onDelete: Cascade)
-  bookings      bookings? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  rater         users     @relation("ratings_rater", fields: [raterId], references: [id], onDelete: Cascade)
-  ratedUser     users     @relation("ratings_rated", fields: [ratedUserId], references: [id], onDelete: Cascade)
+  id          Int       @id @default(autoincrement())
+  rideId      Int
+  bookingId   Int?
+  raterId     Int // User who gave the rating (driver or rider)
+  ratedUserId Int // User who received the rating
+  rating      Int // 1-5 stars
+  feedback    String? // Optional text feedback
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  rides       rides     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  bookings    bookings? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  rater       users     @relation("ratings_rater", fields: [raterId], references: [id], onDelete: Cascade)
+  ratedUser   users     @relation("ratings_rated", fields: [ratedUserId], references: [id], onDelete: Cascade)
 
   @@index([ratedUserId])
   @@index([rideId])
@@ -193,20 +195,20 @@ model ratings {
 }
 
 model payouts {
-  id                    Int       @id @default(autoincrement())
-  driverId              Int
-  stripePayoutId        String?   @unique
-  amount                Float     // Amount in dollars (net earnings)
-  currency              String    @default("usd")
-  status                String    // 'pending', 'processing', 'paid', 'failed', 'canceled'
-  payoutMethod          String    @default("bank_account") // 'bank_account'
-  description           String?
-  failureCode           String?
-  failureMessage        String?
-  arrivalDate           DateTime? // When funds will arrive
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  users                 users     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  id             Int       @id @default(autoincrement())
+  driverId       Int
+  stripePayoutId String?   @unique
+  amount         Float // Amount in dollars (net earnings)
+  currency       String    @default("usd")
+  status         String // 'pending', 'processing', 'paid', 'failed', 'canceled'
+  payoutMethod   String    @default("bank_account") // 'bank_account'
+  description    String?
+  failureCode    String?
+  failureMessage String?
+  arrivalDate    DateTime? // When funds will arrive
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  users          users     @relation(fields: [driverId], references: [id], onDelete: Cascade)
 
   @@index([driverId])
   @@index([status])
@@ -215,14 +217,34 @@ model payouts {
 }
 
 model emailVerificationCodes {
-  id         Int      @id @default(autoincrement())
-  email      String   @unique
-  code       String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email])
   @@index([expiresAt])
   @@map("emailVerificationCodes")
+}
+
+model savedAddresses {
+  id        Int      @id @default(autoincrement())
+  riderId   Int
+  label     String // 'home', 'work', or custom label
+  address   String
+  city      String?
+  state     String?
+  zipCode   String?
+  latitude  Float
+  longitude Float
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     users    @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId])
+  @@index([riderId, label])
+  @@map("savedAddresses")
 }

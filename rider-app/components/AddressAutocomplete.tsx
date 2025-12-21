@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '@/constants/designSystem';
 
 // Google Maps API key from environment variables
 const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
@@ -163,12 +164,12 @@ export default function AddressAutocomplete({
   return (
     <View style={styles.container}>
       <View style={[styles.inputContainer, error && styles.inputError]}>
-        <IconSymbol name="mappin" size={20} color="#666666" style={styles.icon} />
+        <IconSymbol name="mappin" size={18} color={COLORS.textSecondary} style={styles.icon} />
         <TextInput
           ref={inputRef}
           style={styles.input}
           placeholder={placeholder}
-          placeholderTextColor="#666666"
+          placeholderTextColor={COLORS.textTertiary}
           value={value}
           onChangeText={handleTextChange}
           onFocus={() => {
@@ -178,7 +179,7 @@ export default function AddressAutocomplete({
           }}
         />
         {isLoading && (
-          <ActivityIndicator size="small" color="#4285F4" style={styles.loader} />
+          <ActivityIndicator size="small" color={COLORS.primary} style={styles.loader} />
         )}
       </View>
       
@@ -227,45 +228,45 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
-    borderColor: '#2A2A2C',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.base,
+    paddingVertical: SPACING.base,
   },
   inputError: {
-    borderColor: '#FF3B30',
+    borderColor: COLORS.error,
   },
   icon: {
-    marginRight: 12,
+    marginRight: SPACING.sm,
   },
   input: {
     flex: 1,
-    fontSize: 16,
-    color: '#FFFFFF',
+    fontSize: 15,
+    color: COLORS.textPrimary,
     padding: 0,
   },
   loader: {
     marginLeft: 8,
   },
   errorText: {
-    color: '#FF3B30',
+    color: COLORS.error,
     fontSize: 12,
-    marginTop: 6,
-    marginLeft: 4,
+    marginTop: SPACING.xs,
+    marginLeft: SPACING.xs,
   },
   predictionsContainer: {
     position: 'absolute',
     top: '100%',
     left: 0,
     right: 0,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
     borderWidth: 1,
-    borderColor: '#2A2A2C',
-    marginTop: 8,
-    maxHeight: 200,
+    borderColor: COLORS.border,
+    marginTop: SPACING.sm,
+    maxHeight: 240,
     zIndex: 1000,
     elevation: 5,
     shadowColor: '#000000',
@@ -274,42 +275,43 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   predictionsList: {
-    maxHeight: 200,
+    maxHeight: 240,
   },
   predictionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: SPACING.base,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A2A2C',
+    borderBottomColor: COLORS.border,
   },
   predictionIcon: {
-    marginRight: 12,
+    marginRight: SPACING.sm,
   },
   predictionText: {
     flex: 1,
   },
   predictionMainText: {
-    fontSize: 15,
+    ...TYPOGRAPHY.body,
+    fontSize: 14,
     fontWeight: '500',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
     marginBottom: 2,
   },
   predictionSecondaryText: {
-    fontSize: 13,
-    color: '#999999',
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
   },
   apiKeyErrorContainer: {
-    marginTop: 8,
-    padding: 12,
-    backgroundColor: '#FF3B3015',
-    borderRadius: 8,
+    marginTop: SPACING.sm,
+    padding: SPACING.base,
+    backgroundColor: COLORS.errorTint,
+    borderRadius: BORDER_RADIUS.sm,
     borderWidth: 1,
-    borderColor: '#FF3B30',
+    borderColor: COLORS.error,
   },
   apiKeyErrorText: {
-    fontSize: 13,
-    color: '#FF3B30',
+    ...TYPOGRAPHY.caption,
+    color: COLORS.error,
     lineHeight: 18,
   },
 });

@@ -284,12 +284,12 @@ export default function PaymentScreen(): React.JSX.Element {
         // User already has a booking for this ride
         Alert.alert(
           'Booking Already Exists',
-          'You already have a booking request for this ride. Please check your rides.',
+          'You already have a booking request for this ride. Please check your activity.',
           [
             {
-              text: 'View My Rides',
+              text: 'View Activity',
               onPress: () => {
-                router.replace('/(tabs)/your-rides');
+                router.replace('/(tabs)/explore');
               },
             },
             {

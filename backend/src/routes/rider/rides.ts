@@ -263,6 +263,7 @@ router.post('/book', async (req: Request, res: Response) => {
     }
 
     // Create booking as pending (request) - don't decrement seats yet
+    // Store pricePerSeat at booking time so it's locked in even if driver changes ride price later
     const booking = await prisma.bookings.create({
       data: {
         rideId: parseInt(rideId),
@@ -275,6 +276,7 @@ router.post('/book', async (req: Request, res: Response) => {
         pickupLatitude: parseFloat(pickupLatitude),
         pickupLongitude: parseFloat(pickupLongitude),
         numberOfSeats: seatsToBook,
+        pricePerSeat: ride.pricePerSeat, // Lock in the price at booking time
         status: 'pending', // Start as pending request
         paymentIntentId: paymentIntentId || null,
       },
@@ -555,6 +557,127 @@ router.get('/bookings', async (req: Request, res: Response) => {
       message: errorObj.message || 'Failed to fetch bookings',
       bookings: [],
       error: process.env.NODE_ENV === 'development' ? errorObj.message : undefined,
+    });
+  }
+});
+
+/**
+ * GET /api/rider/rides/:id
+ * Get a single ride by ID (for viewing ride details before booking)
+ * Note: This route must come AFTER /bookings and /upcoming to avoid route conflicts
+ */
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const rideIdParam = req.params.id;
+    if (!rideIdParam || isNaN(parseInt(rideIdParam))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ride ID',
+      });
+    }
+
+    const rideId = parseInt(rideIdParam);
+
+    // Find the ride - only return scheduled rides with available seats
+    const ride = await prisma.rides.findUnique({
+      where: { id: rideId },
+      include: {
+        users: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phoneNumber: true,
+            photoUrl: true,
+            carMake: true,
+            carModel: true,
+            carYear: true,
+            carColor: true,
+          },
+        },
+      },
+    });
+
+    if (!ride) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ride not found',
+      });
+    }
+
+    // Only allow viewing scheduled rides with available seats
+    if (ride.status !== 'scheduled' || ride.availableSeats <= 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'This ride is not available for booking',
+      });
+    }
+
+    // Helper function to parse date and time to ISO string
+    const parseDateTimeToISO = (dateStr: string, timeStr: string): string => {
+      try {
+        const dateParts = dateStr.split('/').map(Number);
+        if (dateParts.length !== 3) return new Date().toISOString();
+        
+        const [month, day, year] = dateParts;
+        if (!month || !day || !year) return new Date().toISOString();
+        
+        const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (!timeMatch || !timeMatch[1] || !timeMatch[2] || !timeMatch[3]) {
+          return new Date().toISOString();
+        }
+        
+        let hours = parseInt(timeMatch[1], 10);
+        const minutes = parseInt(timeMatch[2], 10);
+        const meridiem = timeMatch[3].toUpperCase();
+        
+        if (meridiem === 'PM' && hours !== 12) hours += 12;
+        if (meridiem === 'AM' && hours === 12) hours = 0;
+        
+        const date = new Date(year, month - 1, day, hours, minutes);
+        return date.toISOString();
+      } catch (error) {
+        console.error('Error parsing date/time:', error);
+        return new Date().toISOString();
+      }
+    };
+
+    const departureISO = parseDateTimeToISO(ride.departureDate, ride.departureTime);
+
+    return res.json({
+      success: true,
+      ride: {
+        id: ride.id,
+        driverName: ride.driverName,
+        driverPhone: ride.driverPhone,
+        fromAddress: ride.fromAddress,
+        toAddress: ride.toAddress,
+        fromCity: ride.fromCity,
+        toCity: ride.toCity,
+        fromLatitude: ride.fromLatitude,
+        fromLongitude: ride.fromLongitude,
+        toLatitude: ride.toLatitude,
+        toLongitude: ride.toLongitude,
+        departureTime: departureISO,
+        availableSeats: ride.availableSeats,
+        totalSeats: ride.totalSeats,
+        price: ride.pricePerSeat,
+        pricePerSeat: ride.pricePerSeat,
+        status: ride.status,
+        distance: ride.distance,
+        carMake: ride.carMake,
+        carModel: ride.carModel,
+        carYear: ride.carYear,
+        carColor: ride.carColor,
+        driver: ride.users || null,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error fetching ride:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch ride',
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });

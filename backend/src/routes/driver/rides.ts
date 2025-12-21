@@ -583,21 +583,6 @@ router.get('/earnings', authenticate, requireDriver, async (req: Request, res: R
     const driverId = req.user!.userId;
 
     // Get all completed rides for the driver with bookings to calculate earnings
-    type CompletedRideForEarnings = Prisma.ridesGetPayload<{
-      select: {
-        id: true;
-        totalEarnings: true;
-        pricePerSeat: true;
-        updatedAt: true;
-        createdAt: true;
-        bookings: {
-          select: {
-            numberOfSeats: true;
-          };
-        };
-      };
-    }>;
-    
     const completedRides = await prisma.rides.findMany({
       where: {
         driverId: driverId,
@@ -617,23 +602,28 @@ router.get('/earnings', authenticate, requireDriver, async (req: Request, res: R
           },
           select: {
             numberOfSeats: true,
+            pricePerSeat: true, // Include locked-in price
           },
         },
       },
       orderBy: {
         updatedAt: 'desc',
       },
-    }) as CompletedRideForEarnings[];
+    });
+    
+    type CompletedRideForEarnings = typeof completedRides[number];
 
     // Calculate totals - use stored totalEarnings if available, otherwise calculate from bookings
     const totalEarnings = completedRides.reduce((sum, ride) => {
       if (ride.totalEarnings !== null && ride.totalEarnings !== undefined) {
         return sum + ride.totalEarnings;
       }
-      // Fallback: calculate from bookings if totalEarnings not stored
+      // Fallback: calculate from bookings using locked-in prices
       const rideEarnings = ride.bookings.reduce((bookingSum, booking) => {
         const seats = booking.numberOfSeats || 1;
-        return bookingSum + (seats * (ride.pricePerSeat || 0));
+        // Use booking's locked-in price if available, otherwise fallback to ride price
+        const bookingPrice = booking.pricePerSeat ?? ride.pricePerSeat ?? 0;
+        return bookingSum + (seats * bookingPrice);
       }, 0);
       return sum + rideEarnings;
     }, 0);
@@ -643,10 +633,11 @@ router.get('/earnings', authenticate, requireDriver, async (req: Request, res: R
       if (ride.totalEarnings !== null && ride.totalEarnings !== undefined) {
         return ride.totalEarnings;
       }
-      // Fallback: calculate from bookings
+      // Use booking's locked-in price if available
       return ride.bookings.reduce((sum: number, booking) => {
         const seats = booking.numberOfSeats || 1;
-        return sum + (seats * (ride.pricePerSeat || 0));
+        const bookingPrice = booking.pricePerSeat ?? ride.pricePerSeat ?? 0;
+        return sum + (seats * bookingPrice);
       }, 0);
     };
 
@@ -1071,7 +1062,7 @@ router.put('/:id', authenticate, requireDriver, async (req: Request, res: Respon
       });
     }
 
-    // Check if ride is already completed or cancelled
+    // Check if ride is already completed, cancelled, or in-progress
     if (ride.status === 'completed') {
       return res.status(400).json({
         success: false,
@@ -1083,6 +1074,13 @@ router.put('/:id', authenticate, requireDriver, async (req: Request, res: Respon
       return res.status(400).json({
         success: false,
         message: 'Cannot edit a cancelled ride',
+      });
+    }
+
+    if (ride.status === 'in-progress') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot edit a ride that is in progress. Please complete or cancel the ride first.',
       });
     }
 
@@ -1116,15 +1114,26 @@ router.put('/:id', authenticate, requireDriver, async (req: Request, res: Respon
       changes.push('price per seat');
     }
 
-    // Check if seats changed - only allowed if no bookings exist
+    // Check if seats changed - allow change even with active bookings
+    // Note: Frontend should validate that new availableSeats >= booked seats
     if (availableSeats !== undefined && availableSeats !== ride.availableSeats) {
+      const newAvailableSeats = parseInt(availableSeats);
+      
+      // Validate that new available seats is not less than currently booked seats
       if (bookingsCount > 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Cannot change available seats when there are active bookings',
-        });
+        const totalBookedSeats = bookings.reduce((sum, booking) => {
+          return sum + (booking.numberOfSeats || 1);
+        }, 0);
+        
+        if (newAvailableSeats < totalBookedSeats) {
+          return res.status(400).json({
+            success: false,
+            message: `Cannot reduce available seats to ${newAvailableSeats}. You have ${totalBookedSeats} seats already booked.`,
+          });
+        }
       }
-      updateData.availableSeats = parseInt(availableSeats);
+      
+      updateData.availableSeats = newAvailableSeats;
       changes.push('available seats');
     }
 
@@ -1146,6 +1155,7 @@ router.put('/:id', authenticate, requireDriver, async (req: Request, res: Respon
     // If there are bookings and changes were made, notify riders
     if (bookingsCount > 0 && changes.length > 0) {
       const changeMessage = changes.join(', ');
+      
       const notificationPromises = bookings.map((booking: typeof bookings[0]) =>
         prisma.notifications.create({
           data: {
@@ -1164,6 +1174,19 @@ router.put('/:id', authenticate, requireDriver, async (req: Request, res: Respon
       );
 
       await Promise.all(notificationPromises);
+
+      // Emit WebSocket events to notify riders in real-time
+      bookings.forEach((booking: typeof bookings[0]) => {
+        socketService.emitToRider(booking.riderId, 'notification:new', {
+          type: 'ride-updated',
+          rideId: ride.id,
+          bookingId: booking.id,
+          changes: changes,
+        });
+        
+        // Also emit badge update to refresh badge count
+        socketService.emitToRider(booking.riderId, 'notification:badge_update', {});
+      });
     }
 
 
@@ -1681,19 +1704,17 @@ router.put('/:id/complete', async (req: Request, res: Response) => {
     }
 
     // Calculate total earnings: sum of (numberOfSeats * pricePerSeat) for all confirmed bookings
+    // Use booking.pricePerSeat (locked in at booking time) instead of ride.pricePerSeat
     let totalEarnings = 0;
     if (ride.bookings.length > 0) {
       totalEarnings = ride.bookings.reduce((sum, booking) => {
         const seats = booking.numberOfSeats || 1;
-        return sum + (seats * (ride.pricePerSeat || 0));
+        // Use booking.pricePerSeat if available (locked in at booking), otherwise fallback to ride.pricePerSeat
+        const bookingPrice = booking.pricePerSeat ?? ride.pricePerSeat ?? 0;
+        return sum + (seats * bookingPrice);
       }, 0);
     } else {
       console.warn(`[CompleteRide] Ride ${rideId} has no bookings - totalEarnings will be $0`);
-    }
-    
-    // Validate pricePerSeat
-    if (!ride.pricePerSeat || ride.pricePerSeat <= 0) {
-      console.warn(`[CompleteRide] Ride ${rideId} has invalid pricePerSeat (${ride.pricePerSeat}) - totalEarnings will be $0`);
     }
 
     // Capture payments for all bookings before completing the ride

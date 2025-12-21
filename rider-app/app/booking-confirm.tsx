@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 14,
-    color: '#999999',
+    color: '#FFFFFF',
     marginBottom: 16,
   },
   header: {
@@ -697,7 +697,7 @@ const styles = StyleSheet.create({
   routeTo: {
     fontSize: 13,
     fontWeight: '400',
-    color: '#999999',
+    color: '#FFFFFF',
   },
   divider: {
     height: 1,
@@ -717,7 +717,7 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 12,
     fontWeight: '400',
-    color: '#999999',
+    color: '#FFFFFF',
   },
   pickupRow: {
     flexDirection: 'row',
@@ -727,7 +727,7 @@ const styles = StyleSheet.create({
   pickupText: {
     fontSize: 12,
     fontWeight: '400',
-    color: '#999999',
+    color: '#FFFFFF',
     flex: 1,
   },
   seatPriceRow: {
@@ -744,7 +744,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 11,
     fontWeight: '500',
-    color: '#999999',
+    color: '#FFFFFF',
     marginBottom: 6,
     textTransform: 'uppercase',
   },
@@ -835,13 +835,13 @@ const styles = StyleSheet.create({
   dropdownSubText: {
     fontSize: 12,
     fontWeight: '400',
-    color: '#999999',
+    color: '#CCCCCC',
     marginTop: 2,
   },
   dropdownPlaceholder: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#666666',
+    color: '#FFFFFF',
   },
   paymentMethodOption: {
     flexDirection: 'row',
@@ -870,7 +870,7 @@ const styles = StyleSheet.create({
   paymentMethodText: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#999999',
+    color: '#FFFFFF',
   },
   paymentMethodTextSelected: {
     color: '#FFFFFF',
@@ -946,7 +946,7 @@ const styles = StyleSheet.create({
   modalCardText: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#999999',
+    color: '#FFFFFF',
   },
   modalCardTextSelected: {
     color: '#FFFFFF',
@@ -955,7 +955,7 @@ const styles = StyleSheet.create({
   modalCardName: {
     fontSize: 12,
     fontWeight: '400',
-    color: '#666666',
+    color: '#999999',
     marginTop: 4,
   },
   modalCardOptionDisabled: {

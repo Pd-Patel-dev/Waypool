@@ -65,13 +65,13 @@ export function calculateDriverEarnings(grossEarnings: number): {
 
 /**
  * Calculate earnings for a single ride
- * @param pricePerSeat - Price per seat for the ride
- * @param bookings - Array of bookings with numberOfSeats
+ * @param pricePerSeat - Fallback price per seat for the ride (used if booking doesn't have pricePerSeat)
+ * @param bookings - Array of bookings with numberOfSeats and pricePerSeat (locked in at booking time)
  * @returns Earnings breakdown for the ride
  */
 export function calculateRideEarnings(
   pricePerSeat: number,
-  bookings: Array<{ numberOfSeats?: number | null }>
+  bookings: Array<{ numberOfSeats?: number | null; pricePerSeat?: number | null }>
 ): {
   grossEarnings: number;
   processingFee: number;
@@ -80,9 +80,12 @@ export function calculateRideEarnings(
   netEarnings: number;
 } {
   // Calculate gross earnings: sum of (numberOfSeats * pricePerSeat) for all bookings
+  // Use booking.pricePerSeat (locked in at booking time) instead of current ride price
   const grossEarnings = bookings.reduce((sum, booking) => {
     const seats = booking.numberOfSeats || 1;
-    return sum + (seats * pricePerSeat);
+    // Use booking's locked-in price if available, otherwise fallback to ride price
+    const bookingPrice = booking.pricePerSeat ?? pricePerSeat;
+    return sum + (seats * bookingPrice);
   }, 0);
   
   return calculateDriverEarnings(grossEarnings);
