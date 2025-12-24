@@ -2,6 +2,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { stripe } from '../../lib/stripe';
+import { calculateRiderTotal } from '../../utils/earnings';
 
 const router = express.Router();
 
@@ -200,8 +201,14 @@ router.post('/book', async (req: Request, res: Response) => {
     const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
     const confirmationNumber = `WP-${dateStr}-${randomStr}`;
 
-    // Calculate total amount
-    const totalAmount = Math.round((seatsToBook * ride.pricePerSeat) * 100); // Convert to cents
+    // Calculate subtotal (price per seat × number of seats)
+    const subtotal = seatsToBook * ride.pricePerSeat;
+    
+    // Calculate platform fees (charged to rider)
+    const riderTotal = calculateRiderTotal(subtotal);
+    
+    // Total amount rider pays (subtotal + fees) - convert to cents
+    const totalAmount = Math.round(riderTotal.total * 100);
 
     // Authorize payment if paymentMethodId is provided
     let paymentIntentId: string | null = null;

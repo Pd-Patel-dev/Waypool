@@ -6,6 +6,8 @@ async function clearAllData() {
     console.log('🗑️  Starting database cleanup...\n');
 
     // Delete in order to respect foreign key constraints
+    // Delete child tables first, then parent tables
+    
     console.log('Deleting ratings...');
     const ratings = await prisma.ratings.deleteMany();
     console.log(`✅ Deleted ${ratings.count} ratings`);
@@ -22,9 +24,21 @@ async function clearAllData() {
     const bookings = await prisma.bookings.deleteMany();
     console.log(`✅ Deleted ${bookings.count} bookings`);
 
+    console.log('Deleting payouts...');
+    const payouts = await prisma.payouts.deleteMany();
+    console.log(`✅ Deleted ${payouts.count} payouts`);
+
+    console.log('Deleting saved addresses...');
+    const savedAddresses = await prisma.savedAddresses.deleteMany();
+    console.log(`✅ Deleted ${savedAddresses.count} saved addresses`);
+
     console.log('Deleting rides...');
     const rides = await prisma.rides.deleteMany();
     console.log(`✅ Deleted ${rides.count} rides`);
+
+    console.log('Deleting email verification codes...');
+    const emailVerificationCodes = await prisma.emailVerificationCodes.deleteMany();
+    console.log(`✅ Deleted ${emailVerificationCodes.count} email verification codes`);
 
     console.log('Deleting users...');
     const users = await prisma.users.deleteMany();

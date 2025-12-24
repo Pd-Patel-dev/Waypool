@@ -496,28 +496,18 @@ export default function EarningsScreen(): React.JSX.Element {
                       </Text>
                     </View>
 
-                    <View style={styles.modalBreakdownItem}>
-                      <Text style={styles.modalBreakdownLabel}>Processing Fee</Text>
-                      <Text style={styles.modalBreakdownFee}>
-                        -{formatCurrency(selectedRide.earningsBreakdown.processingFee)}
-                      </Text>
-                    </View>
-
-                    <View style={styles.modalBreakdownItem}>
-                      <Text style={styles.modalBreakdownLabel}>Platform Fee</Text>
-                      <Text style={styles.modalBreakdownFee}>
-                        -{formatCurrency(selectedRide.earningsBreakdown.commission)}
-                      </Text>
-                    </View>
-
                     <View style={styles.modalBreakdownDivider} />
 
                     <View style={styles.modalBreakdownItem}>
-                      <Text style={styles.modalBreakdownTotalLabel}>Net Earnings</Text>
+                      <Text style={styles.modalBreakdownTotalLabel}>Earnings</Text>
                       <Text style={styles.modalBreakdownTotalValue}>
                         {formatCurrency(selectedRide.earnings)}
                       </Text>
                     </View>
+                    
+                    <Text style={styles.modalBreakdownNote}>
+                      Platform fees are charged to riders, not deducted from your earnings.
+                    </Text>
                   </View>
                 ) : (
                   <View style={styles.modalBreakdownSection}>
@@ -1181,5 +1171,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#FFFFFF",
+  },
+  modalBreakdownNote: {
+    fontSize: 12,
+    fontWeight: "400",
+    color: "#999999",
+    marginTop: 12,
+    fontStyle: "italic",
+    textAlign: "center",
   },
 });

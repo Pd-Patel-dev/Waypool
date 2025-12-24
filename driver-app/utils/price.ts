@@ -1,14 +1,12 @@
 /**
  * Centralized price calculation utilities
  * Provides a single source of truth for price and earnings calculations
+ * 
+ * Note: Platform fees are charged to riders, not deducted from driver earnings.
+ * Drivers receive the full booking amount.
  */
 
 import { Ride } from '@/services/api';
-
-// Platform fee constants (matching backend)
-const PROCESSING_FEE_PERCENTAGE = 0.029; // 2.9%
-const PROCESSING_FEE_FIXED = 0.30; // $0.30
-const COMMISSION_PER_RIDE = 2.00; // $2.00 per ride
 
 /**
  * Calculate gross earnings for a ride based on booked seats
@@ -42,29 +40,16 @@ export function calculateRideEarnings(ride: Ride, bookedSeats?: number): number 
 }
 
 /**
- * Calculate net earnings for a ride (after processing fee and commission)
- * This matches the backend calculation logic
+ * Calculate net earnings for a ride
+ * Drivers receive the full booking amount (fees are charged to riders)
  * 
  * @param ride - Ride object with price information
- * @returns Net earnings for the ride (after all fees)
+ * @returns Net earnings for the ride (same as gross, no fees deducted)
  */
 export function calculateNetEarnings(ride: Ride): number {
-  // Calculate gross earnings
+  // Drivers receive full amount (fees are charged to riders)
   const grossEarnings = calculateRideEarnings(ride);
-  
-  // Calculate processing fee
-  const processingFee = (grossEarnings * PROCESSING_FEE_PERCENTAGE) + PROCESSING_FEE_FIXED;
-  
-  // Commission is per ride
-  const commission = COMMISSION_PER_RIDE;
-  
-  // Total fees
-  const totalFees = processingFee + commission;
-  
-  // Net earnings (after all fees)
-  const netEarnings = Math.max(0, grossEarnings - totalFees);
-  
-  return parseFloat(netEarnings.toFixed(2));
+  return parseFloat(grossEarnings.toFixed(2));
 }
 
 /**

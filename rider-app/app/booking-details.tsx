@@ -17,6 +17,7 @@ import { useUser } from "@/context/UserContext";
 import { cancelBooking, getPickupPIN, type RiderBooking } from "@/services/api";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { calculateDistance } from "@/utils/distance";
+import { calculateRiderTotal } from "@/utils/fees";
 
 export default function BookingDetailsScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
@@ -447,23 +448,43 @@ export default function BookingDetailsScreen(): React.JSX.Element {
         {/* Pricing Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Pricing</Text>
-          <View style={styles.pricingRow}>
-            <Text style={styles.pricingLabel}>
-              ${booking.ride.pricePerSeat.toFixed(2)} × {booking.numberOfSeats}{" "}
-              seat
-              {booking.numberOfSeats !== 1 ? "s" : ""}
-            </Text>
-            <Text style={styles.pricingValue}>
-              ${(booking.ride.pricePerSeat * booking.numberOfSeats).toFixed(2)}
-            </Text>
-          </View>
-          <View style={styles.pricingDivider} />
-          <View style={styles.pricingRow}>
-            <Text style={styles.pricingTotalLabel}>Total</Text>
-            <Text style={styles.pricingTotalValue}>
-              ${(booking.ride.pricePerSeat * booking.numberOfSeats).toFixed(2)}
-            </Text>
-          </View>
+          {(() => {
+            const subtotal = booking.ride.pricePerSeat * booking.numberOfSeats;
+            const riderTotal = calculateRiderTotal(subtotal);
+            return (
+              <>
+                <View style={styles.pricingRow}>
+                  <Text style={styles.pricingLabel}>
+                    ${booking.ride.pricePerSeat.toFixed(2)} × {booking.numberOfSeats}{" "}
+                    seat
+                    {booking.numberOfSeats !== 1 ? "s" : ""}
+                  </Text>
+                  <Text style={styles.pricingValue}>
+                    ${riderTotal.subtotal.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.pricingRow}>
+                  <Text style={styles.pricingLabel}>Processing Fee</Text>
+                  <Text style={styles.pricingValue}>
+                    ${riderTotal.processingFee.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.pricingRow}>
+                  <Text style={styles.pricingLabel}>Platform Fee</Text>
+                  <Text style={styles.pricingValue}>
+                    ${riderTotal.commission.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.pricingDivider} />
+                <View style={styles.pricingRow}>
+                  <Text style={styles.pricingTotalLabel}>Total</Text>
+                  <Text style={styles.pricingTotalValue}>
+                    ${riderTotal.total.toFixed(2)}
+                  </Text>
+                </View>
+              </>
+            );
+          })()}
         </View>
 
         {/* Pickup PIN Card - Only show for confirmed bookings */}

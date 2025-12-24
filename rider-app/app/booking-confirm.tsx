@@ -17,6 +17,7 @@ import { useUser } from '@/context/UserContext';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { bookRide, type Ride, getPaymentMethods, type PaymentMethod } from '@/services/api';
 import { useStripe } from '@stripe/stripe-react-native';
+import { calculateRiderTotal } from '@/utils/fees';
 
 interface AddressDetails {
   fullAddress: string;
@@ -60,10 +61,12 @@ export default function BookingConfirmScreen(): React.JSX.Element {
         const rideData = JSON.parse(params.ride as string);
         const pickupData = JSON.parse(params.pickupDetails as string);
         const distance = params.totalDistance ? parseFloat(params.totalDistance as string) : 0;
+        const seats = params.numberOfSeats ? parseInt(params.numberOfSeats as string, 10) : 1;
 
         setRide(rideData);
         setPickupDetails(pickupData);
         setTotalDistance(distance);
+        setNumberOfSeats(seats);
         hasParsedParams.current = true;
       } catch (error) {
         console.error('Error parsing params:', error);
@@ -314,7 +317,10 @@ export default function BookingConfirmScreen(): React.JSX.Element {
 
   const pricePerSeat = ride.price || 0;
   const subtotal = pricePerSeat * numberOfSeats;
-  const total = subtotal; // No tax applied
+  
+  // Calculate platform fees (charged to rider)
+  const riderTotal = calculateRiderTotal(subtotal);
+  const total = riderTotal.total;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -391,6 +397,27 @@ export default function BookingConfirmScreen(): React.JSX.Element {
             <View style={styles.priceSection}>
               <Text style={styles.sectionLabel}>Total</Text>
               <Text style={styles.totalPrice}>${total.toFixed(2)}</Text>
+            </View>
+          </View>
+          
+          {/* Pricing Breakdown */}
+          <View style={styles.pricingBreakdown}>
+            <View style={styles.pricingRow}>
+              <Text style={styles.pricingLabel}>Subtotal</Text>
+              <Text style={styles.pricingValue}>${riderTotal.subtotal.toFixed(2)}</Text>
+            </View>
+            <View style={styles.pricingRow}>
+              <Text style={styles.pricingLabel}>Processing Fee</Text>
+              <Text style={styles.pricingValue}>${riderTotal.processingFee.toFixed(2)}</Text>
+            </View>
+            <View style={styles.pricingRow}>
+              <Text style={styles.pricingLabel}>Platform Fee</Text>
+              <Text style={styles.pricingValue}>${riderTotal.commission.toFixed(2)}</Text>
+            </View>
+            <View style={styles.pricingDivider} />
+            <View style={styles.pricingRow}>
+              <Text style={styles.pricingTotalLabel}>Total</Text>
+              <Text style={styles.pricingTotalValue}>${riderTotal.total.toFixed(2)}</Text>
             </View>
           </View>
         </View>
@@ -963,5 +990,42 @@ const styles = StyleSheet.create({
   },
   modalCardTextDisabled: {
     color: '#666666',
+  },
+  pricingBreakdown: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#2A2A2C',
+  },
+  pricingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pricingLabel: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#999999',
+  },
+  pricingValue: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  pricingDivider: {
+    height: 1,
+    backgroundColor: '#2A2A2C',
+    marginVertical: 8,
+  },
+  pricingTotalLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  pricingTotalValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

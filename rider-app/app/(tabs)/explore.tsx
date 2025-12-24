@@ -16,6 +16,7 @@ import { useFocusEffect } from 'expo-router';
 import { getRiderBookings, type RiderBooking } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, CARDS, RESPONSIVE_SPACING } from '@/constants/designSystem';
+import { calculateRiderTotal } from '@/utils/fees';
 
 type FilterType = 'all' | 'completed' | 'cancelled';
 
@@ -74,7 +75,10 @@ export default function ActivityScreen(): React.JSX.Element {
   const totalSpent = completedBookings.reduce((sum, booking) => {
     const pricePerSeat = booking.ride.pricePerSeat || 0;
     const seats = booking.numberOfSeats || 1;
-    return sum + pricePerSeat * seats;
+    const subtotal = pricePerSeat * seats;
+    // Calculate total including all fees (processing fee + platform fee)
+    const riderTotal = calculateRiderTotal(subtotal);
+    return sum + riderTotal.total;
   }, 0);
 
   const formatDate = (dateString: string): string => {
@@ -115,15 +119,13 @@ export default function ActivityScreen(): React.JSX.Element {
   };
 
   const handleViewRideDetails = (booking: RiderBooking) => {
-    // Navigate to ride details if ride still exists and is available
-    if (booking.ride.status === 'scheduled' && booking.ride.id) {
-      router.push({
-        pathname: '/ride-details',
-        params: {
-          rideId: booking.ride.id.toString(),
-        },
-      });
-    }
+    // Navigate to booking details to show ride information with pricing and status
+    router.push({
+      pathname: '/booking-details',
+      params: {
+        booking: JSON.stringify(booking),
+      },
+    });
   };
 
   if (userLoading || isLoading) {
@@ -234,7 +236,6 @@ export default function ActivityScreen(): React.JSX.Element {
                   style={styles.bookingCard}
                   onPress={() => handleViewRideDetails(booking)}
                   activeOpacity={0.7}
-                  disabled={booking.ride.status !== 'scheduled'}
                 >
                   <View style={styles.bookingHeader}>
                     <View style={styles.bookingRoute}>
@@ -279,7 +280,13 @@ export default function ActivityScreen(): React.JSX.Element {
                     <View style={styles.bookingDetailRow}>
                       <IconSymbol name="dollarsign.circle.fill" size={14} color={COLORS.primary} />
                       <Text style={[styles.bookingDetailText, styles.priceText]}>
-                        ${((booking.ride.pricePerSeat || 0) * (booking.numberOfSeats || 1)).toFixed(2)}
+                        {(() => {
+                          const pricePerSeat = booking.ride.pricePerSeat || 0;
+                          const seats = booking.numberOfSeats || 1;
+                          const subtotal = pricePerSeat * seats;
+                          const riderTotal = calculateRiderTotal(subtotal);
+                          return `$${riderTotal.total.toFixed(2)}`;
+                        })()}
                       </Text>
                     </View>
                   </View>

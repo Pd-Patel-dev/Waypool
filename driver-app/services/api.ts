@@ -638,9 +638,7 @@ export const logout = async (): Promise<LogoutResponse> => {
  */
 export interface EarningsBreakdown {
   grossEarnings: number;
-  processingFee: number;
-  commission: number;
-  totalFees: number;
+  // Note: Platform fees are charged to riders, not deducted from driver earnings
   netEarnings: number;
 }
 

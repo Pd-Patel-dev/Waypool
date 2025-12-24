@@ -290,9 +290,9 @@ export default function BookingScreen(): React.JSX.Element {
   const handleContinue = () => {
     if (!pickupDetails || !ride) return;
     
-    // Navigate to confirmation screen with ride and pickup details
+    // Navigate to ride preview screen first
     router.push({
-      pathname: '/booking-confirm',
+      pathname: '/ride-preview',
       params: {
         ride: JSON.stringify(ride),
         pickupDetails: JSON.stringify(pickupDetails),
