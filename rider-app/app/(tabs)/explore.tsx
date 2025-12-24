@@ -17,6 +17,7 @@ import { getRiderBookings, type RiderBooking } from '@/services/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, CARDS, RESPONSIVE_SPACING } from '@/constants/designSystem';
 import { calculateRiderTotal } from '@/utils/fees';
+import { handleErrorSilently } from '@/utils/errorHandler';
 
 type FilterType = 'all' | 'completed' | 'cancelled';
 
@@ -38,9 +39,9 @@ export default function ActivityScreen(): React.JSX.Element {
       if (response.success && response.bookings) {
         setBookings(response.bookings);
       }
-    } catch (error: any) {
-      console.error('Error fetching bookings:', error);
-      // Silently fail - don't show error to user
+    } catch (error) {
+      // Silently handle errors - don't show error to user for activity screen
+      handleErrorSilently(error, 'fetchBookings');
     } finally {
       setIsLoading(false);
     }
@@ -120,12 +121,12 @@ export default function ActivityScreen(): React.JSX.Element {
 
   const handleViewRideDetails = (booking: RiderBooking) => {
     // Navigate to booking details to show ride information with pricing and status
-    router.push({
+      router.push({
       pathname: '/booking-details',
-      params: {
+        params: {
         booking: JSON.stringify(booking),
-      },
-    });
+        },
+      });
   };
 
   if (userLoading || isLoading) {
@@ -220,13 +221,29 @@ export default function ActivityScreen(): React.JSX.Element {
 
           {filteredBookings.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <IconSymbol name="clock.fill" size={48} color={COLORS.textTertiary} />
-              <Text style={styles.emptyTitle}>No rides found</Text>
+              <View style={styles.emptyIconContainer}>
+                <IconSymbol name="clock.fill" size={72} color={COLORS.textTertiary} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {filter === 'all'
+                  ? 'No ride history yet'
+                  : `No ${filter} rides`}
+              </Text>
               <Text style={styles.emptyText}>
                 {filter === 'all'
-                  ? 'You haven\'t taken any rides yet'
-                  : `No ${filter} rides found`}
+                  ? 'Your completed and cancelled rides will appear here once you start booking rides.'
+                  : `You don't have any ${filter} rides yet.`}
               </Text>
+              {filter === 'all' && (
+                <TouchableOpacity
+                  style={styles.emptyButton}
+                  onPress={() => router.push('/(tabs)/')}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol name="car.fill" size={18} color={COLORS.textPrimary} />
+                  <Text style={styles.emptyButtonText}>Browse Available Rides</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <View style={styles.bookingsList}>
@@ -509,16 +526,45 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xl * 2,
     gap: SPACING.base,
   },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.base,
+  },
   emptyTitle: {
     ...TYPOGRAPHY.h3,
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: COLORS.textPrimary,
+    marginTop: SPACING.base,
   },
   emptyText: {
     ...TYPOGRAPHY.body,
-    fontSize: 14,
+    fontSize: 15,
     color: COLORS.textSecondary,
     textAlign: 'center',
+    paddingHorizontal: RESPONSIVE_SPACING.padding,
+    lineHeight: 22,
+  },
+  emptyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.base,
+    paddingHorizontal: SPACING.xl,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  emptyButtonText: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
 });

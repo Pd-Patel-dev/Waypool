@@ -21,12 +21,12 @@ import { useUser } from '@/context/UserContext';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, BUTTONS, SHADOWS, RESPONSIVE_SPACING, CARDS } from '@/constants/designSystem';
 
 // Conditionally import Location only on native platforms
-let Location: any = null;
+let Location: LocationService | null = null;
 if (Platform.OS !== 'web') {
   try {
     Location = require('expo-location');
   } catch (e) {
-    console.warn('expo-location not available:', e);
+    logger.warn('expo-location not available', e, 'booking');
   }
 }
 
@@ -63,7 +63,7 @@ export default function BookingScreen(): React.JSX.Element {
         const rideData = JSON.parse(params.ride as string);
         setRide(rideData);
       } catch (error) {
-        console.error('Error parsing ride data:', error);
+        logger.error('Error parsing ride data', error, 'booking');
       } finally {
         setIsLoading(false);
       }
@@ -83,11 +83,11 @@ export default function BookingScreen(): React.JSX.Element {
           setSavedAddresses(response.addresses);
         }
       } catch (error: any) {
-        console.error('Error loading saved addresses:', error);
+        logger.error('Error loading saved addresses', error, 'booking');
         // Silently fail - saved addresses are optional for booking flow
         // Only log 401 errors, don't show alert to avoid interrupting booking
         if (error.status !== 401) {
-          console.warn('Failed to load saved addresses:', error.message);
+          logger.warn('Failed to load saved addresses', error.message, 'booking');
         }
       } finally {
         setIsLoadingSavedAddresses(false);
@@ -178,7 +178,17 @@ export default function BookingScreen(): React.JSX.Element {
     if (!ride || !pickupDetails?.latitude || !pickupDetails?.longitude) return;
 
     try {
-      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || 'AIzaSyB3dqyiWNGJLqv_UYA2zQxUdYpiIbmw3k4';
+      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
+      
+      if (!apiKey) {
+        logger.warn('Google Places API key not configured. Route calculation will be limited.', undefined, 'booking');
+        // Fallback: Use simple straight-line distance if API key is missing
+        setRouteCoordinates([
+          { latitude: pickupDetails.latitude, longitude: pickupDetails.longitude },
+          { latitude: ride.toLatitude, longitude: ride.toLongitude },
+        ]);
+        return;
+      }
       
       // Route: Original Pickup → Rider Pickup → Destination
       const origin = `${ride.fromLatitude},${ride.fromLongitude}`; // Start: Original pickup
@@ -206,9 +216,9 @@ export default function BookingScreen(): React.JSX.Element {
           allCoordinates = decodePolyline(overviewPolyline);
         } else {
           // Fallback: combine all route segments if overview not available
-          data.routes[0].legs.forEach((leg: any) => {
+          data.routes[0].legs.forEach((leg) => {
             if (leg.steps) {
-              leg.steps.forEach((step: any) => {
+              leg.steps.forEach((step) => {
                 const points = step.polyline.points;
                 const decoded = decodePolyline(points);
                 allCoordinates.push(...decoded);
@@ -218,7 +228,7 @@ export default function BookingScreen(): React.JSX.Element {
         }
         
         // Sum up distance from all legs
-        data.routes[0].legs.forEach((leg: any) => {
+        data.routes[0].legs.forEach((leg) => {
           if (leg.distance && leg.distance.value) {
             totalDistanceMeters += leg.distance.value;
           }
@@ -245,7 +255,7 @@ export default function BookingScreen(): React.JSX.Element {
          }, 500);
       }
     } catch (error) {
-      console.error('Error fetching route:', error);
+      logger.error('Error fetching route', error, 'booking');
     }
   };
 

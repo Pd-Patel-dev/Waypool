@@ -14,6 +14,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getPaymentMethods, deletePaymentMethod } from '@/services/api';
+import { handleErrorSilently, handleErrorWithAlert } from '@/utils/errorHandler';
+import { Card, Button, LoadingState, EmptyState, ScreenHeader } from '@/components/common';
 
 interface PaymentMethod {
   id: string;
@@ -48,15 +50,14 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
         // If backend returns an error, show empty array (payment methods not available)
         setPaymentMethods([]);
       }
-    } catch (error: any) {
-      console.error('Error loading payment methods:', error);
+    } catch (error) {
+      const appError = handleErrorSilently(error, 'loadPaymentMethods');
       
       // Check if it's a Stripe configuration error
-      const errorMessage = error.message || '';
+      const errorMessage = appError.message || '';
       if (errorMessage.includes('Stripe API key') || errorMessage.includes('STRIPE_SECRET_KEY')) {
         // Backend Stripe is not configured - silently show empty state
         // This is a backend configuration issue, not a user error
-        console.warn('Payment methods unavailable: Stripe not configured on server');
       }
       
       // Set empty array - show empty state to user
@@ -96,9 +97,11 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
               } else {
                 throw new Error(response.message || 'Failed to delete payment method');
               }
-            } catch (error: any) {
-              console.error('Error deleting payment method:', error);
-              Alert.alert('Error', error.message || 'Failed to delete payment method. Please try again.');
+            } catch (error) {
+              handleErrorWithAlert(error, {
+                context: 'deletePaymentMethod',
+                title: 'Delete Payment Method',
+              });
             }
           },
         },
@@ -124,9 +127,7 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="light" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-        </View>
+        <LoadingState />
       </SafeAreaView>
     );
   }
@@ -135,14 +136,7 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol name="chevron.left" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Payment Methods</Text>
-        <View style={styles.placeholder} />
-      </View>
+      <ScreenHeader title="Payment Methods" />
 
       <ScrollView
         style={styles.scrollView}
@@ -153,7 +147,7 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
         {paymentMethods.length > 0 ? (
           <View style={styles.paymentMethodsList}>
             {paymentMethods.map((method) => (
-              <View key={method.id} style={styles.paymentMethodCard}>
+              <Card key={method.id} style={styles.paymentMethodCard}>
                 <View style={styles.paymentMethodIcon}>
                   {method.type === 'card' && (
                     <IconSymbol name="creditcard" size={18} color="#4285F4" />
@@ -178,15 +172,17 @@ export default function PaymentMethodsScreen(): React.JSX.Element {
                 >
                   <IconSymbol name="trash" size={16} color="#999999" />
                 </TouchableOpacity>
-              </View>
+              </Card>
             ))}
           </View>
         ) : (
-          <View style={styles.emptyState}>
-            <IconSymbol name="creditcard" size={48} color="#666666" />
-            <Text style={styles.emptyStateText}>No payment methods saved</Text>
-            <Text style={styles.emptyStateSubtext}>Add a card to get started</Text>
-          </View>
+          <EmptyState
+            icon="creditcard.fill"
+            title="No payment methods saved"
+            description="Add a payment method to book rides quickly. Your card information is securely stored."
+            actionLabel="Add Payment Method"
+            onAction={handleAddCard}
+          />
         )}
 
         {/* Add Payment Method Section */}
@@ -210,36 +206,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 16,
-    backgroundColor: '#000000',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1A1A1A',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  placeholder: {
-    width: 40,
-  },
   scrollView: {
     flex: 1,
   },
@@ -253,12 +219,7 @@ const styles = StyleSheet.create({
   paymentMethodCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1C1C1E',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#2A2A2C',
+    marginBottom: 0,
   },
   paymentMethodIcon: {
     width: 32,
@@ -316,25 +277,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#4285F4',
     width: 16,
-    textAlign: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 20,
-  },
-  emptyStateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: '#999999',
     textAlign: 'center',
   },
 });

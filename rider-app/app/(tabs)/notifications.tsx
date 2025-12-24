@@ -17,6 +17,7 @@ import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead, t
 import { websocketService } from '@/services/websocket';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, RESPONSIVE_SPACING } from '@/constants/designSystem';
+import { handleErrorSilently, handleErrorWithAlert, isAuthenticationError } from '@/utils/errorHandler';
 
 export default function NotificationsScreen(): React.JSX.Element {
   const { user, isLoading: userLoading } = useUser();
@@ -34,20 +35,14 @@ export default function NotificationsScreen(): React.JSX.Element {
       if (response.success && response.notifications) {
         setNotifications(response.notifications);
       }
-    } catch (error: any) {
-      console.error('Error fetching notifications:', error);
-      // Only show error for authentication issues, not network errors
-      // Network errors are often temporary and should be handled silently
-      if (error.status === 401) {
-        // Auth error - user will be redirected by auth context
+    } catch (error) {
+      // Silently handle authentication errors (user will be redirected by auth context)
+      if (isAuthenticationError(error)) {
+        handleErrorSilently(error, 'fetchNotifications');
         return;
       }
-      // Don't show alert for network errors - they're usually temporary
-      // User can pull to refresh if needed
-      if (error.status && error.status !== 0) {
-        // Only show alert for actual server errors, not network failures
-        console.log('Server error fetching notifications:', error.message);
-      }
+      // Silently handle network errors - user can pull to refresh
+      handleErrorSilently(error, 'fetchNotifications');
     } finally {
       setIsLoading(false);
     }
@@ -106,23 +101,33 @@ export default function NotificationsScreen(): React.JSX.Element {
           notif.id === notificationId ? { ...notif, unread: false } : notif
         )
       );
-    } catch (error: any) {
-      console.error('Error marking notification as read:', error);
-      Alert.alert('Error', 'Failed to mark notification as read.');
+      // Refresh notifications to ensure badge count is updated
+      // The WebSocket should emit 'notification:read' from backend, but refresh to be sure
+      fetchNotifications();
+    } catch (error) {
+      handleErrorWithAlert(error, {
+        context: 'markNotificationAsRead',
+        title: 'Error',
+      });
     }
-  }, []);
+  }, [fetchNotifications]);
 
   const handleMarkAllAsRead = useCallback(async () => {
     try {
       await markAllNotificationsAsRead();
       // Update local state
       setNotifications(prev => prev.map(notif => ({ ...notif, unread: false })));
+      // Refresh notifications to ensure badge count is updated
+      // The WebSocket should emit 'notification:badge_update' from backend, but refresh to be sure
+      fetchNotifications();
       Alert.alert('Success', 'All notifications marked as read.');
-    } catch (error: any) {
-      console.error('Error marking all notifications as read:', error);
-      Alert.alert('Error', 'Failed to mark all notifications as read.');
+    } catch (error) {
+      handleErrorWithAlert(error, {
+        context: 'markAllNotificationsAsRead',
+        title: 'Error',
+      });
     }
-  }, []);
+  }, [fetchNotifications]);
 
   const handleNotificationPress = useCallback((notification: Notification) => {
     // Mark as read if unread
@@ -207,11 +212,14 @@ export default function NotificationsScreen(): React.JSX.Element {
         ) : notifications.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIconContainer}>
-              <IconSymbol size={56} name="bell" color={COLORS.textTertiary} />
+              <IconSymbol size={72} name="bell.fill" color={COLORS.textTertiary} />
             </View>
             <Text style={styles.emptyTitle}>No notifications</Text>
             <Text style={styles.emptySubtext}>
-              You'll see notifications about your rides and bookings here
+              You'll receive notifications here about:{'\n'}
+              • Ride confirmations{'\n'}
+              • Driver updates{'\n'}
+              • Booking status changes
             </Text>
           </View>
         ) : (
@@ -315,9 +323,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: RESPONSIVE_SPACING.padding,
   },
   emptyIconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
@@ -325,16 +333,18 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     ...TYPOGRAPHY.h3,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.base,
   },
   emptySubtext: {
-    ...TYPOGRAPHY.bodySmall,
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    paddingHorizontal: SPACING.base,
   },
   notificationsList: {
     paddingHorizontal: RESPONSIVE_SPACING.padding,

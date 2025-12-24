@@ -41,7 +41,7 @@ export default function TabLayout() {
         const unread = response.notifications.filter(n => n.unread).length;
         setUnreadCount(unread);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Silently fail - don't show error for badge count
       // Network errors are common and shouldn't spam the console
       if (error.status === 401) {
@@ -52,6 +52,13 @@ export default function TabLayout() {
       // Don't log to avoid console spam
     }
   }, [user?.id]);
+
+  // Refresh badge count when tab is focused (especially when returning from notifications screen)
+  useFocusEffect(
+    useCallback(() => {
+      fetchUnreadCount();
+    }, [fetchUnreadCount])
+  );
 
   // Setup WebSocket for real-time badge updates
   useEffect(() => {

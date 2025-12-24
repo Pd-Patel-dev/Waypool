@@ -41,7 +41,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
           fetchPickupPIN(bookingData.id);
         }
       } catch (error) {
-        console.error("Error parsing booking data:", error);
+        logger.error('Error parsing booking data', error, 'booking-details');
         Alert.alert("Error", "Invalid booking data");
         router.back();
       } finally {
@@ -66,8 +66,8 @@ export default function BookingDetailsScreen(): React.JSX.Element {
         setPickupPIN(result.pin);
         setPinExpiresAt(result.expiresAt);
       }
-    } catch (error: any) {
-      console.error("Error fetching pickup PIN:", error);
+    } catch (error: unknown) {
+      logger.error('Error fetching pickup PIN', error, 'booking-details');
       setPinError(error.message || "Failed to load pickup PIN");
     } finally {
       setIsLoadingPIN(false);
@@ -152,7 +152,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     const url =
       Platform.OS === "ios" ? `telprompt:${phoneNumber}` : `tel:${phoneNumber}`;
     Linking.openURL(url).catch((err) => {
-      console.error("Error opening phone:", err);
+      logger.error('Error opening phone', err, 'booking-details');
       Alert.alert("Error", "Unable to make phone call");
     });
   };
@@ -162,7 +162,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
     const phoneNumber = booking.ride.driverPhone.replace(/\D/g, "");
     const url = `sms:${phoneNumber}`;
     Linking.openURL(url).catch((err) => {
-      console.error("Error opening messages:", err);
+      logger.error('Error opening messages', err, 'booking-details');
       Alert.alert("Error", "Unable to open messages");
     });
   };
@@ -219,7 +219,7 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                   },
                 ]
               );
-            } catch (error: any) {
+            } catch (error: unknown) {
               Alert.alert(
                 "Error",
                 error.message || "Failed to cancel booking. Please try again."
@@ -453,13 +453,13 @@ export default function BookingDetailsScreen(): React.JSX.Element {
             const riderTotal = calculateRiderTotal(subtotal);
             return (
               <>
-                <View style={styles.pricingRow}>
-                  <Text style={styles.pricingLabel}>
-                    ${booking.ride.pricePerSeat.toFixed(2)} × {booking.numberOfSeats}{" "}
-                    seat
-                    {booking.numberOfSeats !== 1 ? "s" : ""}
-                  </Text>
-                  <Text style={styles.pricingValue}>
+          <View style={styles.pricingRow}>
+            <Text style={styles.pricingLabel}>
+              ${booking.ride.pricePerSeat.toFixed(2)} × {booking.numberOfSeats}{" "}
+              seat
+              {booking.numberOfSeats !== 1 ? "s" : ""}
+            </Text>
+            <Text style={styles.pricingValue}>
                     ${riderTotal.subtotal.toFixed(2)}
                   </Text>
                 </View>
@@ -473,15 +473,15 @@ export default function BookingDetailsScreen(): React.JSX.Element {
                   <Text style={styles.pricingLabel}>Platform Fee</Text>
                   <Text style={styles.pricingValue}>
                     ${riderTotal.commission.toFixed(2)}
-                  </Text>
-                </View>
-                <View style={styles.pricingDivider} />
-                <View style={styles.pricingRow}>
-                  <Text style={styles.pricingTotalLabel}>Total</Text>
-                  <Text style={styles.pricingTotalValue}>
+            </Text>
+          </View>
+          <View style={styles.pricingDivider} />
+          <View style={styles.pricingRow}>
+            <Text style={styles.pricingTotalLabel}>Total</Text>
+            <Text style={styles.pricingTotalValue}>
                     ${riderTotal.total.toFixed(2)}
-                  </Text>
-                </View>
+            </Text>
+          </View>
               </>
             );
           })()}

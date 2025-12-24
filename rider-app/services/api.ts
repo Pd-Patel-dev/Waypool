@@ -1,5 +1,7 @@
 import { API_URL } from '@/config/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logger } from '@/utils/logger';
+import { getErrorMessage, getErrorStatus, isApiError, type TypedError } from '@/types/errors';
 
 export interface ApiError {
   message: string;
@@ -192,7 +194,7 @@ export interface UpcomingRidesResponse {
 
 export async function getUpcomingRides(): Promise<UpcomingRidesResponse> {
   try {
-    console.log('Fetching rides from:', `${API_URL}/api/rider/rides/upcoming`);
+    logger.debug('Fetching rides from:', `${API_URL}/api/rider/rides/upcoming`, 'getUpcomingRides');
     const response = await fetch(`${API_URL}/api/rider/rides/upcoming`, {
       method: 'GET',
       headers: {
@@ -204,7 +206,7 @@ export async function getUpcomingRides(): Promise<UpcomingRidesResponse> {
     try {
       result = await response.json();
     } catch (jsonError) {
-      console.error('Failed to parse JSON response:', jsonError);
+      logger.error('Failed to parse JSON response', jsonError, 'getRiderBookings');
       throw {
         message: `Server error: ${response.status} ${response.statusText}`,
         status: response.status,
@@ -219,16 +221,14 @@ export async function getUpcomingRides(): Promise<UpcomingRidesResponse> {
     }
 
     return result;
-  } catch (error: any) {
-    console.error('getUpcomingRides error:', error);
-    console.error('Error type:', error.constructor.name);
-    console.error('Error details:', JSON.stringify(error, null, 2));
-    if (error.message && error.status !== undefined) {
+  } catch (error: unknown) {
+    logger.error('getUpcomingRides error', error, 'getUpcomingRides');
+    if (isApiError(error)) {
       throw error;
     }
     // Provide more detailed error message
-    const errorMessage = error.message || error.toString() || 'Network error. Please check your connection and try again.';
-    console.error('API URL:', API_URL);
+    const errorMessage = getErrorMessage(error);
+    logger.debug('API URL', API_URL, 'getUpcomingRides');
     throw {
       message: `${errorMessage} (API: ${API_URL})`,
       status: 0,
@@ -308,7 +308,7 @@ export async function getRideById(rideId: number): Promise<{ success: boolean; r
 
     return result;
   } catch (error: any) {
-    console.error('Error fetching ride details:', error);
+    logger.error('Error fetching ride details', error, 'getRideDetails');
     if (error.message && error.status !== undefined) {
       throw error;
     }
@@ -321,7 +321,7 @@ export async function getRideById(rideId: number): Promise<{ success: boolean; r
 
 export async function getRiderBookings(riderId: number): Promise<RiderBookingsResponse> {
   try {
-    console.log('Fetching bookings from:', `${API_URL}/api/rider/rides/bookings?riderId=${riderId}`);
+    logger.debug('Fetching bookings from:', `${API_URL}/api/rider/rides/bookings?riderId=${riderId}`, 'getRiderBookings');
     const response = await fetchWithAuth(`${API_URL}/api/rider/rides/bookings?riderId=${riderId}`, {
       method: 'GET',
       headers: {
@@ -333,7 +333,7 @@ export async function getRiderBookings(riderId: number): Promise<RiderBookingsRe
     try {
       result = await response.json();
     } catch (jsonError) {
-      console.error('Failed to parse JSON response:', jsonError);
+      logger.error('Failed to parse JSON response', jsonError, 'getRiderBookings');
       throw {
         message: `Server error: ${response.status} ${response.statusText}`,
         status: response.status,
@@ -349,15 +349,13 @@ export async function getRiderBookings(riderId: number): Promise<RiderBookingsRe
 
     return result;
   } catch (error: any) {
-    console.error('getRiderBookings error:', error);
-    console.error('Error type:', error.constructor.name);
-    console.error('Error details:', JSON.stringify(error, null, 2));
+    logger.error('getRiderBookings error', error, 'getRiderBookings');
     if (error.message && error.status !== undefined) {
       throw error;
     }
     // Provide more detailed error message
     const errorMessage = error.message || error.toString() || 'Network error. Please check your connection and try again.';
-    console.error('API URL:', API_URL);
+    logger.debug('API URL', API_URL, 'getUpcomingRides');
     throw {
       message: `${errorMessage} (API: ${API_URL})`,
       status: 0,
@@ -1045,14 +1043,14 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
   try {
     // If paymentMethodId is provided, attach it to customer
     if (data.paymentMethodId) {
-      console.log('Calling attach-payment-method API:', {
+      logger.debug('Calling attach-payment-method API', {
         url: `${API_URL}/api/rider/payment/attach-payment-method`,
         body: {
           riderId: data.riderId,
           paymentMethodId: data.paymentMethodId,
           paymentMethodType: data.paymentMethodType,
         },
-      });
+      }, 'savePaymentMethod');
 
       const response = await fetchWithAuth(`${API_URL}/api/rider/payment/attach-payment-method`, {
         method: 'POST',
@@ -1066,14 +1064,14 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
         }),
       });
 
-      console.log('API response status:', response.status, response.statusText);
+      logger.debug('API response status', { status: response.status, statusText: response.statusText }, 'savePaymentMethod');
 
       const result = await response.json();
-      console.log('API response body:', result);
+      logger.debug('API response body', result, 'savePaymentMethod');
 
       if (!response.ok) {
         const errorMessage = result.message || 'Failed to save payment method';
-        console.error('API error:', {
+        logger.error('API error', {
           status: response.status,
           message: errorMessage,
           result,
@@ -1111,7 +1109,7 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
 
     return result;
   } catch (error: any) {
-    console.error('savePaymentMethod error:', error);
+    logger.error('savePaymentMethod error', error, 'savePaymentMethod');
     
     if (error.message && error.status !== undefined) {
       throw error;
@@ -1122,7 +1120,7 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
       status: error.status || 0,
     } as ApiError;
     
-    console.error('Throwing network error:', networkError);
+    logger.error('Throwing network error', networkError, 'savePaymentMethod');
     throw networkError;
   }
 }
@@ -1178,7 +1176,7 @@ export async function getPaymentMethods(riderId: number): Promise<GetPaymentMeth
       throw error;
     }
     // For development, return empty array if endpoint doesn't exist yet
-    console.warn('Get payment methods endpoint not available, using mock response');
+    logger.warn('Get payment methods endpoint not available, using mock response', undefined, 'getPaymentMethods');
     return {
       success: true,
       paymentMethods: [],
@@ -1219,7 +1217,7 @@ export async function deletePaymentMethod(riderId: number, paymentMethodId: stri
       throw error;
     }
     // For development, return success if endpoint doesn't exist yet
-    console.warn('Delete payment method endpoint not available, using mock response');
+    logger.warn('Delete payment method endpoint not available, using mock response', undefined, 'deletePaymentMethod');
     return {
       success: true,
       message: 'Mock response - payment method deleted',
@@ -1350,7 +1348,7 @@ export async function markNotificationAsRead(notificationId: number): Promise<{ 
 
     return result;
   } catch (error: any) {
-    console.error('Error marking notification as read:', error);
+    logger.error('Error marking notification as read', error, 'markNotificationAsRead');
     if (error.message && error.status !== undefined) {
       throw error;
     }
@@ -1381,7 +1379,7 @@ export async function markAllNotificationsAsRead(): Promise<{ success: boolean; 
 
     return result;
   } catch (error: any) {
-    console.error('Error marking all notifications as read:', error);
+    logger.error('Error marking all notifications as read', error, 'markAllNotificationsAsRead');
     if (error.message && error.status !== undefined) {
       throw error;
     }

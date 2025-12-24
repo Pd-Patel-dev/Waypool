@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,15 @@ import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { bookRide, type Ride, getPaymentMethods, type PaymentMethod } from '@/services/api';
+import { bookRide, type Ride, getPaymentMethods, type PaymentMethod, type BookingRequest } from '@/services/api';
 import { useStripe } from '@stripe/stripe-react-native';
 import { calculateRiderTotal } from '@/utils/fees';
+import { handleErrorSilently, handleErrorWithAlert } from '@/utils/errorHandler';
+import RouteInfoCard from '@/components/booking/RouteInfoCard';
+import SeatSelector from '@/components/booking/SeatSelector';
+import PricingBreakdown from '@/components/booking/PricingBreakdown';
+import PaymentMethodSelector, { type PaymentOption } from '@/components/booking/PaymentMethodSelector';
+import PaymentMethodModal from '@/components/booking/PaymentMethodModal';
 
 interface AddressDetails {
   fullAddress: string;
@@ -69,9 +75,11 @@ export default function BookingConfirmScreen(): React.JSX.Element {
         setNumberOfSeats(seats);
         hasParsedParams.current = true;
       } catch (error) {
-        console.error('Error parsing params:', error);
-        Alert.alert('Error', 'Invalid booking data');
-        router.back();
+        handleErrorWithAlert(error, {
+          context: 'parseBookingParams',
+          title: 'Error',
+          onError: () => router.back(),
+        });
       } finally {
         setIsLoading(false);
       }
@@ -80,9 +88,8 @@ export default function BookingConfirmScreen(): React.JSX.Element {
     }
   }, [params.ride, params.pickupDetails, params.totalDistance]);
 
-  useEffect(() => {
     // Load payment methods when user is available
-    const loadPaymentMethods = async () => {
+  const loadPaymentMethods = useCallback(async () => {
       if (!user?.id) return;
       
       setIsLoadingPaymentMethods(true);
@@ -106,51 +113,58 @@ export default function BookingConfirmScreen(): React.JSX.Element {
           }
         }
       } catch (error) {
-        console.error('Error loading payment methods:', error);
-        // Don't show error to user, just continue without payment methods
+      // Silently handle payment method loading errors - continue without payment methods
+      handleErrorSilently(error, 'loadPaymentMethods');
       } finally {
         setIsLoadingPaymentMethods(false);
       }
-    };
-
-    loadPaymentMethods();
   }, [user?.id]);
 
+  useEffect(() => {
+    loadPaymentMethods();
+  }, [loadPaymentMethods]);
+
   // Reload payment methods when screen comes into focus (e.g., after adding a card)
-  useFocusEffect(
-    React.useCallback(() => {
+  const reloadPaymentMethods = useCallback(async () => {
       if (!user?.id) return;
 
-      const reloadPaymentMethods = async () => {
         try {
           const riderId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
           const response = await getPaymentMethods(riderId);
           if (response.success && response.paymentMethods) {
             setPaymentMethods(response.paymentMethods);
             // Auto-select default if no selection and default exists
-            if (!selectedPaymentOption) {
+        setSelectedPaymentOption(prev => {
+          if (prev) return prev; // Don't override existing selection
+          
               const defaultMethod = response.paymentMethods.find(pm => pm.isDefault);
               if (defaultMethod) {
                 const brand = defaultMethod.brand || defaultMethod.card?.brand || 'Card';
                 const last4 = defaultMethod.last4 || defaultMethod.card?.last4 || '0000';
-                setSelectedPaymentOption({
+            return {
                   id: defaultMethod.id,
                   type: 'saved',
                   label: `${brand.toUpperCase()} •••• ${last4}`,
                   paymentMethodId: defaultMethod.id,
+            };
+          }
+          return null;
                 });
-              }
-            }
           }
         } catch (error) {
-          console.error('Error reloading payment methods:', error);
+      // Silently handle payment method reload errors
+      handleErrorSilently(error, 'reloadPaymentMethods');
         }
-      };
+  }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
       reloadPaymentMethods();
-    }, [user?.id])
+    }, [reloadPaymentMethods])
   );
 
-  const formatDate = (dateString: string): string => {
+  // Memoize date formatting functions
+  const formatDate = useCallback((dateString: string): string => {
     try {
       const date = new Date(dateString);
       return date.toLocaleDateString('en-US', {
@@ -162,9 +176,9 @@ export default function BookingConfirmScreen(): React.JSX.Element {
     } catch {
       return 'Invalid date';
     }
-  };
+  }, []);
 
-  const formatTime = (dateString: string): string => {
+  const formatTime = useCallback((dateString: string): string => {
     try {
       const date = new Date(dateString);
       return date.toLocaleTimeString('en-US', {
@@ -175,42 +189,51 @@ export default function BookingConfirmScreen(): React.JSX.Element {
     } catch {
       return 'Invalid time';
     }
-  };
+  }, []);
 
-  const handleIncrementSeats = () => {
+  // Memoize seat handlers to prevent re-renders
+  const handleIncrementSeats = useCallback(() => {
     if (ride && numberOfSeats < ride.availableSeats) {
-      setNumberOfSeats(numberOfSeats + 1);
+      setNumberOfSeats(prev => prev + 1);
     }
-  };
+  }, [ride, numberOfSeats]);
 
-  const handleDecrementSeats = () => {
+  const handleDecrementSeats = useCallback(() => {
     if (numberOfSeats > 1) {
-      setNumberOfSeats(numberOfSeats - 1);
+      setNumberOfSeats(prev => prev - 1);
     }
-  };
+  }, [numberOfSeats]);
 
-  const handlePaymentOptionSelect = (option: PaymentOption) => {
+  const handlePaymentOptionSelect = useCallback((option: PaymentOption) => {
     if (option.type === 'addNew') {
       // Navigate to add-card screen to add new payment method
       router.push('/add-card');
     } else if (option.type === 'applePay' || option.type === 'googlePay') {
       // Navigate to payment screen for wallet payments
+      if (ride && pickupDetails) {
+        // Calculate total on the fly to avoid dependency on memoized value
+        const pricePerSeat = ride.price || 0;
+        const subtotal = pricePerSeat * numberOfSeats;
+        const riderTotal = calculateRiderTotal(subtotal);
+        const totalAmount = riderTotal.total;
+        
       router.push({
         pathname: '/payment',
         params: {
           ride: JSON.stringify(ride),
           pickupDetails: JSON.stringify(pickupDetails),
           numberOfSeats: numberOfSeats.toString(),
-          totalAmount: total.toFixed(2),
+            totalAmount: totalAmount.toFixed(2),
           paymentMethodType: option.type,
         },
       });
+      }
     } else {
       setSelectedPaymentOption(option);
     }
-  };
+  }, [ride, pickupDetails, numberOfSeats]);
 
-  const handleConfirmBooking = async () => {
+  const handleConfirmBooking = useCallback(async () => {
     if (!ride || !pickupDetails || !user?.id) {
       Alert.alert('Error', 'Missing booking information');
       return;
@@ -249,7 +272,7 @@ export default function BookingConfirmScreen(): React.JSX.Element {
       const riderId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
       
       // Prepare booking data with payment method if selected
-      const bookingData: any = {
+      const bookingData: BookingRequest & { paymentMethodId?: string } = {
         rideId: ride.id,
         riderId: riderId,
         pickupAddress: pickupDetails.fullAddress,
@@ -283,12 +306,15 @@ export default function BookingConfirmScreen(): React.JSX.Element {
           ]
         );
       }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to confirm booking. Please try again.');
+    } catch (error) {
+      handleErrorWithAlert(error, {
+        context: 'confirmBooking',
+        title: 'Booking Error',
+      });
     } finally {
       setIsBooking(false);
     }
-  };
+  }, [ride, pickupDetails, numberOfSeats, selectedPaymentOption, user?.id, total]);
 
   if (isLoading) {
     return (
@@ -315,12 +341,19 @@ export default function BookingConfirmScreen(): React.JSX.Element {
     );
   }
 
+  // Memoize price calculations to prevent unnecessary recalculations
+  const priceCalculations = useMemo(() => {
+    if (!ride) return { pricePerSeat: 0, subtotal: 0, riderTotal: null, total: 0 };
+
   const pricePerSeat = ride.price || 0;
   const subtotal = pricePerSeat * numberOfSeats;
-  
-  // Calculate platform fees (charged to rider)
-  const riderTotal = calculateRiderTotal(subtotal);
-  const total = riderTotal.total;
+    const riderTotal = calculateRiderTotal(subtotal);
+    const total = riderTotal.total;
+    
+    return { pricePerSeat, subtotal, riderTotal, total };
+  }, [ride, numberOfSeats]);
+
+  const { pricePerSeat, subtotal, riderTotal, total } = priceCalculations;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -397,9 +430,9 @@ export default function BookingConfirmScreen(): React.JSX.Element {
             <View style={styles.priceSection}>
               <Text style={styles.sectionLabel}>Total</Text>
               <Text style={styles.totalPrice}>${total.toFixed(2)}</Text>
-            </View>
           </View>
-          
+        </View>
+
           {/* Pricing Breakdown */}
           <View style={styles.pricingBreakdown}>
             <View style={styles.pricingRow}>
@@ -409,221 +442,37 @@ export default function BookingConfirmScreen(): React.JSX.Element {
             <View style={styles.pricingRow}>
               <Text style={styles.pricingLabel}>Processing Fee</Text>
               <Text style={styles.pricingValue}>${riderTotal.processingFee.toFixed(2)}</Text>
-            </View>
+                    </View>
             <View style={styles.pricingRow}>
               <Text style={styles.pricingLabel}>Platform Fee</Text>
               <Text style={styles.pricingValue}>${riderTotal.commission.toFixed(2)}</Text>
-            </View>
+                  </View>
             <View style={styles.pricingDivider} />
             <View style={styles.pricingRow}>
               <Text style={styles.pricingTotalLabel}>Total</Text>
               <Text style={styles.pricingTotalValue}>${riderTotal.total.toFixed(2)}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Payment Method Selection */}
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Payment Method</Text>
-          {isLoadingPaymentMethods ? (
-            <View style={styles.paymentMethodLoading}>
-              <ActivityIndicator size="small" color="#4285F4" />
-            </View>
-          ) : (
-            <>
-              {/* Payment Method Dropdown */}
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={() => setShowCardDropdown(true)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.dropdownContent}>
-                  {selectedPaymentOption?.type === 'saved' ? (
-                    <IconSymbol name="creditcard" size={18} color="#4285F4" />
-                  ) : selectedPaymentOption?.type === 'applePay' ? (
-                    <IconSymbol name="applelogo" size={18} color="#FFFFFF" />
-                  ) : selectedPaymentOption?.type === 'googlePay' ? (
-                    <View style={styles.googlePayIcon}>
-                      <Text style={styles.googlePayText}>G</Text>
-                    </View>
-                  ) : (
-                    <IconSymbol name="creditcard" size={18} color="#999999" />
-                  )}
-                  <View style={styles.dropdownTextContainer}>
-                    {selectedPaymentOption ? (
-                      <>
-                        <Text style={styles.dropdownSelectedText}>
-                          {selectedPaymentOption.label}
-                        </Text>
-                        {selectedPaymentOption.type === 'saved' && paymentMethods.find(m => m.id === selectedPaymentOption.paymentMethodId)?.billingDetails?.name && (
-                          <Text style={styles.dropdownSubText}>
-                            {paymentMethods.find(m => m.id === selectedPaymentOption.paymentMethodId)?.billingDetails?.name}
-            </Text>
-                        )}
-                      </>
-                    ) : (
-                      <Text style={styles.dropdownPlaceholder}>Select payment method</Text>
-                    )}
-                  </View>
-                  <IconSymbol name="chevron.down" size={16} color="#999999" />
                 </View>
-              </TouchableOpacity>
-
-              {/* Google Pay - Keep as separate button for Android */}
-              {Platform.OS === 'android' && isGooglePaySupported && (
-                <TouchableOpacity
-                  style={[
-                    styles.paymentMethodOption,
-                    selectedPaymentOption?.type === 'googlePay' && styles.paymentMethodOptionSelected,
-                  ]}
-                  onPress={() => handlePaymentOptionSelect({ id: 'googlePay', type: 'googlePay', label: 'Google Pay' })}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.paymentMethodContent}>
-                    <View style={[styles.googlePayIcon, selectedPaymentOption?.type === 'googlePay' && styles.googlePayIconSelected]}>
-                      <Text style={styles.googlePayText}>G</Text>
           </View>
-                    <Text style={[styles.paymentMethodText, selectedPaymentOption?.type === 'googlePay' && styles.paymentMethodTextSelected]}>
-                      Google Pay
-                    </Text>
-          </View>
-                  {selectedPaymentOption?.type === 'googlePay' && (
-                    <IconSymbol name="checkmark.circle.fill" size={18} color="#4285F4" />
-                  )}
-                </TouchableOpacity>
-              )}
-            </>
-          )}
         </View>
 
-        {/* Payment Method Dropdown Modal */}
-        <Modal
+        <PaymentMethodSelector
+          paymentMethods={paymentMethods}
+          selectedPaymentOption={selectedPaymentOption}
+          isLoading={isLoadingPaymentMethods}
+          isApplePaySupported={isApplePaySupported}
+          isGooglePaySupported={isGooglePaySupported}
+          onSelect={handlePaymentOptionSelect}
+          onShowDropdown={() => setShowCardDropdown(true)}
+        />
+
+        <PaymentMethodModal
           visible={showCardDropdown}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowCardDropdown(false)}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setShowCardDropdown(false)}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Payment Method</Text>
-                <TouchableOpacity
-                  onPress={() => setShowCardDropdown(false)}
-                  style={styles.modalCloseButton}
-                >
-                  <IconSymbol name="xmark" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.modalScrollView}>
-                {/* Saved Cards */}
-                {paymentMethods.map((method) => {
-                  const brand = method.brand || method.card?.brand || 'Card';
-                  const last4 = method.last4 || method.card?.last4 || '0000';
-                  const cardholderName = method.billingDetails?.name;
-                  const isSelected = selectedPaymentOption?.id === method.id && selectedPaymentOption?.type === 'saved';
-                  
-                  const option: PaymentOption = {
-                    id: method.id,
-                    type: 'saved',
-                    label: `${brand.toUpperCase()} •••• ${last4}`,
-                    paymentMethodId: method.id,
-                  };
-                  
-                  return (
-                    <TouchableOpacity
-                      key={method.id}
-                      style={[
-                        styles.modalCardOption,
-                        isSelected && styles.modalCardOptionSelected,
-                      ]}
-                      onPress={() => {
-                        handlePaymentOptionSelect(option);
-                        setShowCardDropdown(false);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.paymentMethodContent}>
-                        <IconSymbol name="creditcard" size={20} color={isSelected ? '#4285F4' : '#999999'} />
-                        <View style={styles.paymentMethodInfo}>
-                          <Text style={[styles.modalCardText, isSelected && styles.modalCardTextSelected]}>
-                            {option.label}
-                          </Text>
-                          {cardholderName && (
-                            <Text style={styles.modalCardName}>{cardholderName}</Text>
-                          )}
-                        </View>
-                      </View>
-                      {isSelected && (
-                        <IconSymbol name="checkmark.circle.fill" size={20} color="#4285F4" />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-
-                {/* Add New Card */}
-                <TouchableOpacity
-                  style={[
-                    styles.modalCardOption,
-                    selectedPaymentOption?.type === 'addNew' && styles.modalCardOptionSelected,
-                  ]}
-                  onPress={() => {
-                    handlePaymentOptionSelect({ id: 'addNew', type: 'addNew', label: 'Add New Card' });
-                    setShowCardDropdown(false);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.paymentMethodContent}>
-                    <IconSymbol name="plus.circle" size={20} color={selectedPaymentOption?.type === 'addNew' ? '#4285F4' : '#999999'} />
-                    <Text style={[styles.modalCardText, selectedPaymentOption?.type === 'addNew' && styles.modalCardTextSelected]}>
-                      Add New Card
-                    </Text>
-                  </View>
-                  {selectedPaymentOption?.type === 'addNew' && (
-                    <IconSymbol name="checkmark.circle.fill" size={20} color="#4285F4" />
-                  )}
-                </TouchableOpacity>
-
-                {/* Apple Pay */}
-                {Platform.OS === 'ios' && (
-                  <TouchableOpacity
-                    style={[
-                      styles.modalCardOption,
-                      selectedPaymentOption?.type === 'applePay' && styles.modalCardOptionSelected,
-                      !isApplePaySupported && styles.modalCardOptionDisabled,
-                    ]}
-                    onPress={() => {
-                      if (isApplePaySupported) {
-                        handlePaymentOptionSelect({ id: 'applePay', type: 'applePay', label: 'Apple Pay' });
-                        setShowCardDropdown(false);
-                      }
-                    }}
-                    activeOpacity={isApplePaySupported ? 0.7 : 1}
-                    disabled={!isApplePaySupported}
-                  >
-                    <View style={styles.paymentMethodContent}>
-                      <IconSymbol name="applelogo" size={20} color={selectedPaymentOption?.type === 'applePay' ? '#FFFFFF' : isApplePaySupported ? '#999999' : '#666666'} />
-                      <View style={styles.paymentMethodInfo}>
-                        <Text style={[styles.modalCardText, selectedPaymentOption?.type === 'applePay' && styles.modalCardTextSelected, !isApplePaySupported && styles.modalCardTextDisabled]}>
-                          Apple Pay
-                        </Text>
-                        {!isApplePaySupported && (
-                          <Text style={styles.modalCardName}>Not available on this device</Text>
-                        )}
-                      </View>
-                    </View>
-                    {selectedPaymentOption?.type === 'applePay' && (
-                      <IconSymbol name="checkmark.circle.fill" size={20} color="#4285F4" />
-                    )}
-                  </TouchableOpacity>
-                )}
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </Modal>
+          paymentMethods={paymentMethods}
+          selectedPaymentOption={selectedPaymentOption}
+          isApplePaySupported={isApplePaySupported}
+          onSelect={handlePaymentOptionSelect}
+          onClose={() => setShowCardDropdown(false)}
+        />
       </ScrollView>
 
       {/* Confirm Button */}

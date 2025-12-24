@@ -64,7 +64,7 @@ export default function PaymentScreen(): React.JSX.Element {
         setTotalAmount(amount);
         hasParsedParams.current = true;
       } catch (error) {
-        console.error('Error parsing params:', error);
+        logger.error('Error parsing params', error, 'payment');
         Alert.alert('Error', 'Invalid payment data');
         router.back();
       } finally {
@@ -110,7 +110,7 @@ export default function PaymentScreen(): React.JSX.Element {
       // Check if we have a valid client secret (not a mock)
       if (!setupIntentResponse.setupIntentClientSecret || setupIntentResponse.setupIntentClientSecret === 'mock_client_secret') {
         // If using mock, skip Stripe and proceed directly to booking
-        console.warn('Using mock payment method - skipping Stripe');
+        logger.warn('Using mock payment method - skipping Stripe', undefined, 'payment');
         await confirmBooking('mock_payment_method_id');
         return;
       }
@@ -146,8 +146,8 @@ export default function PaymentScreen(): React.JSX.Element {
       // The SetupIntent has been confirmed and the payment method is attached to the customer
       // We can proceed with booking - the payment method is already saved
       await confirmBooking('setup_intent_payment_method');
-    } catch (error: any) {
-      console.error('Payment method save error:', error);
+    } catch (error: unknown) {
+      logger.error('Payment method save error', error, 'payment');
       Alert.alert('Error', error.message || 'Failed to save payment method. Please try again.');
       setSelectedPaymentMethod(null);
       setIsProcessing(false);
@@ -192,7 +192,7 @@ export default function PaymentScreen(): React.JSX.Element {
       // Check if we have a valid client secret (not a mock)
       if (!setupIntentResponse.setupIntentClientSecret || setupIntentResponse.setupIntentClientSecret === 'mock_client_secret') {
         // If using mock, skip Stripe and proceed directly to booking
-        console.warn('Using mock payment method - skipping Stripe');
+        logger.warn('Using mock payment method - skipping Stripe', undefined, 'payment');
         await confirmBooking('mock_payment_method_id');
         return;
       }
@@ -231,8 +231,8 @@ export default function PaymentScreen(): React.JSX.Element {
       // The SetupIntent has been confirmed and the payment method is attached to the customer
       // We can proceed with booking - the payment method is already saved
       await confirmBooking('setup_intent_payment_method');
-    } catch (error: any) {
-      console.error('Payment method save error:', error);
+    } catch (error: unknown) {
+      logger.error('Payment method save error', error, 'payment');
       Alert.alert('Error', error.message || 'Failed to save payment method. Please try again.');
       setSelectedPaymentMethod(null);
       setIsProcessing(false);
@@ -274,8 +274,8 @@ export default function PaymentScreen(): React.JSX.Element {
       } else {
         throw new Error('Failed to confirm booking');
       }
-    } catch (error: any) {
-      console.error('Booking confirmation error:', error);
+    } catch (error: unknown) {
+      logger.error('Booking confirmation error', error, 'payment');
       
       // Handle specific error cases
       const errorMessage = error.message || 'Failed to confirm booking';

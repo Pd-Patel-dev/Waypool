@@ -33,7 +33,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyB3dqyiWNGJLqv_UYA2zQxUdYpiIbmw3k4"
+          "apiKey": "${EXPO_PUBLIC_GOOGLE_PLACES_API_KEY}"
         }
       },
       "package": "com.anonymous.riderapp"

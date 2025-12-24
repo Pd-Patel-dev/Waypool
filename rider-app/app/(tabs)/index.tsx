@@ -18,9 +18,11 @@ import { getUpcomingRides, getRiderBookings, cancelBooking, type Ride, type Ride
 import { ActiveBookingCard, ConfirmedBookingCard, RideCard } from '@/components/home';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, RESPONSIVE_SPACING } from '@/constants/designSystem';
+import { handleErrorSilently, handleErrorWithAlert, isAuthenticationError } from '@/utils/errorHandler';
+import type { LocationService, GoogleMapsAddressComponent } from '@/types/common';
 
 // Conditionally import Location only on native platforms
-let Location: any = null;
+let Location: LocationService | null = null;
 if (Platform.OS !== 'web') {
   try {
     Location = require('expo-location');
@@ -142,11 +144,9 @@ export default function HomeScreen(): React.JSX.Element {
                 }
               });
       }
-        } catch (bookingError: any) {
+        } catch (bookingError) {
           // Silently fail bookings fetch - it's optional for filtering
-          if (bookingError.status !== 401) {
-            console.warn('Error fetching bookings for filtering:', bookingError);
-          }
+          handleErrorSilently(bookingError, 'fetchBookingsForFiltering');
         }
         
         // Filter out rides the user has already booked, and ensure all rides have valid IDs
@@ -154,10 +154,13 @@ export default function HomeScreen(): React.JSX.Element {
           .filter(ride => ride && ride.id && !bookedRideIds.has(ride.id));
         setRides(availableRides);
       }
-    } catch (error: any) {
-      // Only log non-401 errors to avoid console clutter
-      if (error.status !== 401) {
-      console.error('Error fetching rides:', error);
+    } catch (error) {
+      // Silently handle authentication errors (user will be redirected by auth context)
+      if (isAuthenticationError(error)) {
+        handleErrorSilently(error, 'fetchRides');
+      } else {
+        // Handle other errors silently for optional operations
+        handleErrorSilently(error, 'fetchRides');
       }
     } finally {
       setIsLoadingRides(false);
@@ -194,7 +197,8 @@ export default function HomeScreen(): React.JSX.Element {
         setConfirmedBookings(confirmed);
       }
     } catch (error) {
-      console.error('Error fetching bookings:', error);
+      // Silently handle errors for optional booking fetch
+      handleErrorSilently(error, 'fetchActiveBooking');
     } finally {
       setIsLoadingActiveBooking(false);
     }
@@ -358,8 +362,11 @@ export default function HomeScreen(): React.JSX.Element {
                             await cancelBooking(booking.id, userId);
                             Alert.alert('Success', 'Booking cancelled successfully.');
                             fetchActiveBooking();
-                          } catch (error: any) {
-                            Alert.alert('Error', error.message || 'Failed to cancel booking.');
+                          } catch (error) {
+                            handleErrorWithAlert(error, {
+                              context: 'cancelBooking',
+                              title: 'Cancel Booking',
+                            });
                           }
                         },
                       },
@@ -391,12 +398,21 @@ export default function HomeScreen(): React.JSX.Element {
           ) : rides.length === 0 ? (
             <View style={styles.emptyState}>
               <View style={styles.emptyIconContainer}>
-                <IconSymbol size={56} name="car" color={COLORS.textTertiary} />
+                <IconSymbol size={72} name="car.fill" color={COLORS.textTertiary} />
               </View>
               <Text style={styles.emptyTitle}>No rides available</Text>
               <Text style={styles.emptySubtext}>
-                New rides will appear here when drivers post them
+                There are no rides available at the moment.{'\n'}
+                Check back soon or pull down to refresh.
               </Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={onRefresh}
+                activeOpacity={0.7}
+              >
+                <IconSymbol name="arrow.clockwise" size={18} color={COLORS.textPrimary} />
+                <Text style={styles.emptyButtonText}>Refresh</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.ridesList}>
@@ -524,9 +540,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
   },
   emptyIconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
@@ -534,15 +550,36 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     ...TYPOGRAPHY.h3,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.base,
   },
   emptySubtext: {
-    ...TYPOGRAPHY.bodySmall,
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    marginTop: SPACING.sm,
+  },
+  emptyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.base,
+    paddingHorizontal: SPACING.xl,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  emptyButtonText: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
   },
 });

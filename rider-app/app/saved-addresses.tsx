@@ -24,10 +24,17 @@ import {
   type SavedAddress,
   type CreateSavedAddressRequest,
 } from '@/services/api';
+import { handleErrorSilently, handleErrorWithAlert, ErrorType } from '@/utils/errorHandler';
+import type { LocationService } from '@/types/common';
 import { Platform } from 'react-native';
+import Card from '@/components/common/Card';
+import Button from '@/components/common/Button';
+import LoadingState from '@/components/common/LoadingState';
+import EmptyState from '@/components/common/EmptyState';
+import ScreenHeader from '@/components/common/ScreenHeader';
 
 // Conditionally import Location only on native platforms
-let Location: any = null;
+let Location: LocationService | null = null;
 if (Platform.OS !== 'web') {
   try {
     Location = require('expo-location');
@@ -101,10 +108,10 @@ export default function SavedAddressesScreen(): React.JSX.Element {
       if (response.success) {
         setAddresses(response.addresses);
       }
-    } catch (error: any) {
-      console.error('Error loading saved addresses:', error);
+    } catch (error) {
+      const appError = handleErrorSilently(error, 'loadSavedAddresses');
       // If unauthorized, redirect to login
-      if (error.status === 401) {
+      if (appError.type === ErrorType.AUTHENTICATION) {
         Alert.alert(
           'Session Expired',
           'Please log in again to access your saved addresses.',
@@ -169,9 +176,11 @@ export default function SavedAddressesScreen(): React.JSX.Element {
         addressDetails: null,
       });
       loadAddresses();
-    } catch (error: any) {
-      console.error('Error saving address:', error);
-      Alert.alert('Error', error.message || 'Failed to save address');
+    } catch (error) {
+      handleErrorWithAlert(error, {
+        context: 'saveAddress',
+        title: 'Save Address',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -243,10 +252,7 @@ export default function SavedAddressesScreen(): React.JSX.Element {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="light" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4285F4" />
-          <Text style={styles.loadingText}>Loading addresses...</Text>
-        </View>
+        <LoadingState message="Loading addresses..." />
       </SafeAreaView>
     );
   }
@@ -255,28 +261,26 @@ export default function SavedAddressesScreen(): React.JSX.Element {
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol name="chevron.left" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Saved Addresses</Text>
-        <TouchableOpacity
-          onPress={() => {
-            setEditingAddress(null);
-            setFormData({
-              label: 'home',
-              customLabel: '',
-              address: '',
-              addressDetails: null,
-            });
-            setShowAddModal(true);
-          }}
-          style={styles.addButton}
-        >
-          <IconSymbol name="plus" size={20} color="#4285F4" />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Saved Addresses"
+        rightAction={
+          <TouchableOpacity
+            onPress={() => {
+              setEditingAddress(null);
+              setFormData({
+                label: 'home',
+                customLabel: '',
+                address: '',
+                addressDetails: null,
+              });
+              setShowAddModal(true);
+            }}
+            style={styles.addButton}
+          >
+            <IconSymbol name="plus" size={20} color="#4285F4" />
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -284,23 +288,16 @@ export default function SavedAddressesScreen(): React.JSX.Element {
         showsVerticalScrollIndicator={false}
       >
         {addresses.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <IconSymbol size={64} name="mappin.circle" color="#666666" />
-            <Text style={styles.emptyTitle}>No saved addresses</Text>
-            <Text style={styles.emptySubtext}>
-              Save your frequently used addresses for faster booking
-            </Text>
-            <TouchableOpacity
-              style={styles.emptyButton}
-              onPress={() => setShowAddModal(true)}
-            >
-              <IconSymbol name="plus" size={18} color="#FFFFFF" />
-              <Text style={styles.emptyButtonText}>Add Address</Text>
-            </TouchableOpacity>
-          </View>
+          <EmptyState
+            icon="mappin.circle.fill"
+            title="No saved addresses"
+            description="Save your home, work, or other frequently used addresses to make booking rides faster and easier."
+            actionLabel="Add Your First Address"
+            onAction={() => setShowAddModal(true)}
+          />
         ) : (
           addresses.map((address) => (
-            <View key={address.id} style={styles.addressCard}>
+            <Card key={address.id} style={styles.addressCard}>
               <View style={styles.addressHeader}>
                 <View style={styles.addressIcon}>
                   <IconSymbol
@@ -351,7 +348,7 @@ export default function SavedAddressesScreen(): React.JSX.Element {
                   <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </Card>
           ))
         )}
       </ScrollView>
@@ -489,24 +486,15 @@ export default function SavedAddressesScreen(): React.JSX.Element {
               />
             </View>
 
-            {/* Save Button */}
-            <TouchableOpacity
-              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+            <Button
+              title={editingAddress ? 'Update Address' : 'Save Address'}
               onPress={handleSave}
               disabled={isSaving}
-              activeOpacity={0.8}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <IconSymbol name="checkmark.circle.fill" size={20} color="#FFFFFF" />
-                  <Text style={styles.saveButtonText}>
-                    {editingAddress ? 'Update Address' : 'Save Address'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
+              loading={isSaving}
+              icon="checkmark.circle.fill"
+              fullWidth
+              style={styles.saveButton}
+            />
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -568,29 +556,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 80,
     paddingHorizontal: 20,
+    gap: 12,
+  },
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginTop: 24,
+    marginTop: 16,
     marginBottom: 8,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '400',
     color: '#999999',
     textAlign: 'center',
-    marginBottom: 32,
+    lineHeight: 22,
+    paddingHorizontal: 16,
+    marginBottom: 24,
   },
   emptyButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     backgroundColor: '#4285F4',
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,
+    minWidth: 200,
   },
   emptyButtonText: {
     fontSize: 16,
@@ -772,22 +774,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#4285F4',
-    paddingVertical: 16,
-    borderRadius: 16,
     marginTop: 8,
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });
 

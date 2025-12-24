@@ -1,12 +1,14 @@
 import io, { Socket } from 'socket.io-client';
 import { API_BASE_URL } from '@/config/api';
+import { logger } from '@/utils/logger';
+import type { EventHandlerWithArgs } from '@/types/common';
 
 class WebSocketService {
   private socket: Socket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
-  private eventHandlers: Map<string, Set<(...args: any[]) => void>> = new Map();
+  private eventHandlers: Map<string, Set<EventHandlerWithArgs>> = new Map();
 
   connect(riderId: number) {
     if (this.socket?.connected) {
@@ -30,25 +32,25 @@ class WebSocketService {
     });
 
     this.socket.on('connect', () => {
-      console.log('WebSocket connected for rider:', riderId);
+      logger.info('WebSocket connected for rider', { riderId }, 'WebSocket');
       this.reconnectAttempts = 0;
     });
 
     this.socket.on('disconnect', () => {
-      console.log('WebSocket disconnected for rider:', riderId);
+      logger.info('WebSocket disconnected for rider', { riderId }, 'WebSocket');
     });
 
     this.socket.on('error', (error) => {
-      console.error('WebSocket error:', error);
+      logger.error('WebSocket error', error, 'WebSocket');
     });
 
     this.socket.on('reconnect_attempt', () => {
       this.reconnectAttempts++;
-      console.log(`WebSocket reconnection attempt ${this.reconnectAttempts}`);
+      logger.info(`WebSocket reconnection attempt ${this.reconnectAttempts}`, undefined, 'WebSocket');
     });
 
     this.socket.on('reconnect_failed', () => {
-      console.error('WebSocket reconnection failed');
+      logger.error('WebSocket reconnection failed', undefined, 'WebSocket');
       this.reconnectAttempts = 0; // Reset for next connection attempt
     });
   }
@@ -70,7 +72,7 @@ class WebSocketService {
     }
   }
 
-  on(event: string, callback: (...args: any[]) => void) {
+  on(event: string, callback: EventHandlerWithArgs) {
     if (this.socket) {
       // Track handlers for cleanup
       if (!this.eventHandlers.has(event)) {
@@ -82,7 +84,7 @@ class WebSocketService {
     }
   }
 
-  off(event: string, callback?: (...args: any[]) => void) {
+  off(event: string, callback?: EventHandlerWithArgs) {
     if (this.socket) {
       if (callback) {
         this.socket.off(event, callback);

@@ -54,7 +54,7 @@ export default function AddressAutocomplete({
   const [showPredictions, setShowPredictions] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const inputRef = useRef<any>(null);
+  const inputRef = useRef<TextInput | null>(null);
 
   // Fetch predictions from Google Places API
   const fetchPredictions = async (input: string) => {
@@ -66,7 +66,7 @@ export default function AddressAutocomplete({
 
     if (!GOOGLE_PLACES_API_KEY) {
       const errorMsg = 'Google Places API key is not configured. Please set EXPO_PUBLIC_GOOGLE_PLACES_API_KEY in your .env file.';
-      console.error(errorMsg);
+      logger.error(errorMsg, undefined, 'AddressAutocomplete');
       setApiKeyError(errorMsg);
       setPredictions([]);
       setIsLoading(false);
@@ -96,7 +96,7 @@ export default function AddressAutocomplete({
         setShowPredictions(false);
       }
     } catch (error) {
-      console.error('Error fetching predictions:', error);
+      logger.error('Error fetching predictions', error, 'AddressAutocomplete');
       setPredictions([]);
       setShowPredictions(false);
     } finally {
@@ -134,7 +134,7 @@ export default function AddressAutocomplete({
         let state = '';
         let zipCode = '';
 
-        addressComponents.forEach((component: any) => {
+        addressComponents.forEach((component: GoogleMapsAddressComponent) => {
           if (component.types.includes('locality')) {
             city = component.long_name;
           } else if (component.types.includes('administrative_area_level_1')) {
@@ -157,7 +157,7 @@ export default function AddressAutocomplete({
         onSelectAddress(addressDetails);
       }
     } catch (error) {
-      console.error('Error fetching place details:', error);
+      logger.error('Error fetching place details', error, 'AddressAutocomplete');
     }
   };
 

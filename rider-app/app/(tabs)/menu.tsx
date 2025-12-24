@@ -26,7 +26,7 @@ export default function MenuScreen(): React.JSX.Element {
               await logout();
               router.replace('/login');
             } catch (error) {
-              console.error('Sign out error:', error);
+              logger.error('Sign out error', error, 'menu');
               Alert.alert('Error', 'Failed to sign out. Please try again.');
             }
           },

@@ -129,7 +129,7 @@ export default function RidePreviewScreen(): React.JSX.Element {
         ]);
       }
     } catch (error) {
-      console.error('Error fetching route:', error);
+      logger.error('Error fetching route', error, 'ride-preview');
       setRouteCoordinates([
         { latitude: pickupData.latitude, longitude: pickupData.longitude },
         { latitude: rideData.toLatitude, longitude: rideData.toLongitude },
@@ -145,23 +145,32 @@ export default function RidePreviewScreen(): React.JSX.Element {
       try {
         const rideData = JSON.parse(params.ride as string);
         const pickupData = JSON.parse(params.pickupDetails as string);
+        
+        // Set the ref guard BEFORE state updates to prevent re-execution
+        hasParsedParams.current = true;
+        
         setRide(rideData);
         setPickupDetails(pickupData);
         if (params.numberOfSeats) {
           setNumberOfSeats(parseInt(params.numberOfSeats as string, 10) || 1);
         }
-        hasParsedParams.current = true;
         setIsLoading(false);
-        // Fetch route after state is set
+        
+        // Fetch route after state is set (using the parsed data directly, not from state)
         fetchRoute(rideData, pickupData);
       } catch (error) {
-        console.error('Error parsing data:', error);
+        logger.error('Error parsing data', error, 'ride-preview');
         setIsLoading(false);
+        hasParsedParams.current = false; // Reset on error to allow retry
       }
     } else {
       setIsLoading(false);
     }
-  }, [params.ride, params.pickupDetails, params.numberOfSeats, fetchRoute]);
+    // Only depend on the actual param values, not the fetchRoute function
+    // fetchRoute is stable (memoized with useCallback), but we don't need it in deps
+    // since we're using the parsed data directly
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.ride, params.pickupDetails, params.numberOfSeats]);
 
   const formatDate = (dateString: string): string => {
     try {
