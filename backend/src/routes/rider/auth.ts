@@ -72,6 +72,7 @@ interface SignupBody {
   firstName: string;
   lastName: string;
   phoneNumber: string;
+  verificationCode: string;
 }
 
 interface LoginBody {
@@ -82,7 +83,7 @@ interface LoginBody {
 // POST /api/rider/auth/signup
 router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, phoneNumber }: SignupBody = req.body;
+    const { email, password, firstName, lastName, phoneNumber, verificationCode }: SignupBody = req.body;
 
     // Validation
     const errors: string[] = [];
@@ -113,13 +114,41 @@ router.post('/signup', async (req: Request, res: Response) => {
       errors.push('Password must be at least 6 characters');
     }
 
-    if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors,
-      });
+    if (!verificationCode || !verificationCode.trim()) {
+      errors.push('Verification code is required');
     }
+
+    if (errors.length > 0) {
+      return sendValidationError(res, 'Validation failed', errors);
+    }
+
+    // Verify email verification code
+    const normalizedEmail = email.trim().toLowerCase();
+    const verificationRecord = await prisma.emailVerificationCodes.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (!verificationRecord) {
+      return sendBadRequest(res, 'No verification code found for this email. Please verify your email first.');
+    }
+
+    // Check if code has expired
+    if (new Date() > verificationRecord.expiresAt) {
+      await prisma.emailVerificationCodes.delete({
+        where: { email: normalizedEmail },
+      });
+      return sendBadRequest(res, 'Verification code has expired. Please request a new code.');
+    }
+
+    // Verify code
+    if (verificationRecord.code !== verificationCode.trim()) {
+      return sendBadRequest(res, 'Invalid verification code. Please try again.');
+    }
+
+    // Code is valid - delete it (one-time use)
+    await prisma.emailVerificationCodes.delete({
+      where: { email: normalizedEmail },
+    });
 
     // Check if user already exists
     const existingUser = await prisma.users.findUnique({
@@ -147,6 +176,7 @@ router.post('/signup', async (req: Request, res: Response) => {
         where: { email: email.trim().toLowerCase() },
         data: {
           isRider: true,
+          emailVerified: true,
           // Update other fields if they're different
           fullName: fullName !== existingUser.fullName ? fullName : existingUser.fullName,
           phoneNumber: phoneNumber.trim() !== existingUser.phoneNumber ? phoneNumber.trim() : existingUser.phoneNumber,
@@ -158,6 +188,7 @@ router.post('/signup', async (req: Request, res: Response) => {
           phoneNumber: true,
           isDriver: true,
           isRider: true,
+          emailVerified: true,
           createdAt: true,
         },
       });
@@ -179,6 +210,7 @@ router.post('/signup', async (req: Request, res: Response) => {
           password: hashedPassword,
           isDriver: false,
           isRider: true,
+          emailVerified: true,
         },
         select: {
           id: true,
@@ -187,25 +219,39 @@ router.post('/signup', async (req: Request, res: Response) => {
           phoneNumber: true,
           isDriver: true,
           isRider: true,
+          emailVerified: true,
           createdAt: true,
         },
       });
     }
 
-    res.status(201).json({
-      success: true,
-      message: 'User created successfully',
+    // Generate JWT tokens for new/updated rider
+    const tokens = generateTokenPair({
+      userId: user.id,
+      email: user.email,
+      role: 'rider',
+      emailVerified: user.emailVerified || false,
+    });
+
+    // Split fullName into firstName and lastName for response
+    const nameParts = user.fullName.split(' ');
+    const userFirstName = nameParts[0] || '';
+    const userLastName = nameParts.slice(1).join(' ') || '';
+
+    return sendSuccess(res, 'User created successfully', {
       user: {
         id: String(user.id),
         email: user.email,
-        role: user.isRider ? 'rider' : 'driver', // Keep for backward compatibility
+        role: 'rider',
         isDriver: user.isDriver,
         isRider: user.isRider,
-        firstName: user.fullName.split(' ')[0],
-        lastName: user.fullName.split(' ').slice(1).join(' '),
+        emailVerified: user.emailVerified,
+        firstName: userFirstName,
+        lastName: userLastName,
         phoneNumber: user.phoneNumber,
       },
-    });
+      tokens,
+    }, 201);
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({
@@ -283,6 +329,7 @@ router.post('/login', async (req: Request, res: Response) => {
         role: 'rider',
         isDriver: user.isDriver,
         isRider: user.isRider,
+        emailVerified: user.emailVerified || false,
         firstName,
         lastName,
         phoneNumber: user.phoneNumber,

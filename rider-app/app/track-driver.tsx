@@ -19,6 +19,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { getDriverLocation, type DriverLocationResponse } from '@/services/api';
 import { calculateDistance } from '@/utils/distance';
 import { type RiderBooking } from '@/services/api';
+import { logger } from '@/utils/logger';
 
 // Conditionally import Location only on native platforms
 let Location: any = null;
@@ -260,11 +261,10 @@ export default function TrackDriverScreen(): React.JSX.Element {
     }
 
     try {
-      const GOOGLE_API_KEY =
-        process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
+      const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
       if (!GOOGLE_API_KEY) {
-        console.warn('Google Maps API key not configured');
-        // Fallback: simple straight line
+        logger.warn('Google Maps API key not configured. Route calculation unavailable.', undefined, 'track-driver');
+        // Fallback: simple straight line (but log the issue)
         setRouteCoordinates([origin, destination]);
         return;
       }

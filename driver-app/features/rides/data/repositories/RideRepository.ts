@@ -78,7 +78,15 @@ export class RideRepository implements IRideRepository {
       const apiRides = await getUpcomingRides();
       return apiRides.map(mapApiRideToEntity);
     } catch (error) {
-      throw new Error(`Failed to fetch rides: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Provide more detailed error information
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : (error && typeof error === 'object' && 'message' in error)
+          ? String(error.message)
+          : 'Unknown error';
+      
+      console.error('RideRepository.findByDriverId error:', error);
+      throw new Error(`Failed to fetch rides: ${errorMessage}`);
     }
   }
 

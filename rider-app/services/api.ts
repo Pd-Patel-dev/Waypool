@@ -1,7 +1,8 @@
 import { API_URL } from '@/config/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '@/utils/logger';
 import { getErrorMessage, getErrorStatus, isApiError, type TypedError } from '@/types/errors';
+import { storeTokens } from '@/utils/tokenStorage';
+import { getValidAccessToken } from '@/utils/tokenRefresh';
 
 export interface ApiError {
   message: string;
@@ -43,7 +44,8 @@ export interface AuthResponse {
 }
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = await AsyncStorage.getItem('token');
+  // Get valid access token (will refresh if expired)
+  const token = await getValidAccessToken();
   
   const headers = {
     'Content-Type': 'application/json',
@@ -55,6 +57,25 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
     ...options,
     headers,
   });
+
+  // If token expired (401), try to refresh and retry once
+  if (response.status === 401 && token) {
+    logger.debug('Received 401, attempting token refresh', undefined, 'fetchWithAuth');
+    const newToken = await getValidAccessToken();
+    
+    if (newToken && newToken !== token) {
+      // Retry request with new token
+      const retryHeaders = {
+        ...headers,
+        'Authorization': `Bearer ${newToken}`,
+      };
+      
+      return fetch(url, {
+        ...options,
+        headers: retryHeaders,
+      });
+    }
+  }
 
   return response;
 }
@@ -91,14 +112,12 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
     // Handle response structure (support both old flat format and new data format)
     const responseData = result.data || result;
     
-    // Save token if provided (support both old 'token' and new 'tokens' format)
+    // Store tokens securely (support both old 'token' and new 'tokens' format)
     if (responseData.tokens?.accessToken) {
-      await AsyncStorage.setItem('token', responseData.tokens.accessToken);
-      if (responseData.tokens.refreshToken) {
-        await AsyncStorage.setItem('refreshToken', responseData.tokens.refreshToken);
-      }
+      await storeTokens(responseData.tokens.accessToken, responseData.tokens.refreshToken);
     } else if (responseData.token) {
-      await AsyncStorage.setItem('token', responseData.token);
+      // Legacy format - store as access token only
+      await storeTokens(responseData.token);
     }
 
     // Return in expected format for frontend
@@ -138,9 +157,12 @@ export async function signup(data: SignupRequest): Promise<AuthResponse> {
       } as ApiError;
     }
 
-    // Save token if provided
-    if (result.token) {
-      await AsyncStorage.setItem('token', result.token);
+    // Store tokens securely
+    if (result.tokens?.accessToken) {
+      await storeTokens(result.tokens.accessToken, result.tokens.refreshToken);
+    } else if (result.token) {
+      // Legacy format - store as access token only
+      await storeTokens(result.token);
     }
 
     return result;

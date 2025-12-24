@@ -163,6 +163,21 @@ export default function BookingConfirmScreen(): React.JSX.Element {
     }, [reloadPaymentMethods])
   );
 
+  // Memoize price calculations to prevent unnecessary recalculations
+  // MUST be called before any conditional returns (Rules of Hooks)
+  const priceCalculations = useMemo(() => {
+    if (!ride) return { pricePerSeat: 0, subtotal: 0, riderTotal: null, total: 0 };
+
+    const pricePerSeat = ride.price || 0;
+    const subtotal = pricePerSeat * numberOfSeats;
+    const riderTotal = calculateRiderTotal(subtotal);
+    const total = riderTotal.total;
+    
+    return { pricePerSeat, subtotal, riderTotal, total };
+  }, [ride, numberOfSeats]);
+
+  const { pricePerSeat, subtotal, riderTotal, total } = priceCalculations;
+
   // Memoize date formatting functions
   const formatDate = useCallback((dateString: string): string => {
     try {
@@ -340,20 +355,6 @@ export default function BookingConfirmScreen(): React.JSX.Element {
       </SafeAreaView>
     );
   }
-
-  // Memoize price calculations to prevent unnecessary recalculations
-  const priceCalculations = useMemo(() => {
-    if (!ride) return { pricePerSeat: 0, subtotal: 0, riderTotal: null, total: 0 };
-
-  const pricePerSeat = ride.price || 0;
-  const subtotal = pricePerSeat * numberOfSeats;
-    const riderTotal = calculateRiderTotal(subtotal);
-    const total = riderTotal.total;
-    
-    return { pricePerSeat, subtotal, riderTotal, total };
-  }, [ride, numberOfSeats]);
-
-  const { pricePerSeat, subtotal, riderTotal, total } = priceCalculations;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

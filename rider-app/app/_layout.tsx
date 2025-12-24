@@ -88,6 +88,7 @@ export default function RootLayout() {
               <Stack.Screen name="welcome" />
               <Stack.Screen name="login" options={{ presentation: 'card' }} />
               <Stack.Screen name="signup" options={{ presentation: 'card' }} />
+              <Stack.Screen name="verify-email" options={{ presentation: 'card', headerShown: false }} />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="ride-details" options={{ presentation: 'card', headerShown: false }} />
               <Stack.Screen name="booking" options={{ presentation: 'card', headerShown: false }} />
@@ -113,6 +114,7 @@ export default function RootLayout() {
           <Stack.Screen name="welcome" />
           <Stack.Screen name="login" options={{ presentation: 'card' }} />
           <Stack.Screen name="signup" options={{ presentation: 'card' }} />
+          <Stack.Screen name="verify-email" options={{ presentation: 'card', headerShown: false }} />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="ride-details" options={{ presentation: 'card', headerShown: false }} />
           <Stack.Screen name="booking" options={{ presentation: 'card', headerShown: false }} />

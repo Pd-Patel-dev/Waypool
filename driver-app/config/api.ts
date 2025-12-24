@@ -1,54 +1,65 @@
 import { Platform } from "react-native";
-import Constants from "expo-constants";
+import * as Device from "expo-device";
 
-// API Configuration from environment variables
-// For development, use your local machine's IP address
-// For Android emulator: use 10.0.2.2 instead of localhost
-// For iOS simulator: use localhost
-// For physical device: use your computer's IP address (e.g., 192.168.1.100)
-//
-// To find your computer's IP address:
-// Mac/Linux: Run `ifconfig | grep "inet " | grep -v 127.0.0.1` or `ipconfig getifaddr en0`
-// Windows: Run `ipconfig` and look for IPv4 Address
-//
-// Set EXPO_PUBLIC_API_URL_IOS_PHYSICAL in your .env file with your IP (e.g., http://192.168.1.100:3000)
+// Production API URL - MUST be set for production builds
+const PRODUCTION_API_URL = process.env.EXPO_PUBLIC_API_URL_PRODUCTION || 'https://api.waypool.com';
 
+// Development configuration
+const LOCAL_IP = "192.168.0.101"; // Update this if your local IP changes
+const BACKEND_PORT = "3000";
+
+// Get the appropriate API URL based on device type and environment
 const getApiUrl = (): string => {
-  // Use environment variables with fallback defaults
-  if (__DEV__) {
-    // Development - adjust based on your setup
-    if (Platform.OS === "android") {
-      // For Android emulator: use 10.0.2.2 to access host machine
-      // For physical Android device: use your computer's IP address
-      return process.env.EXPO_PUBLIC_API_URL_ANDROID || "http://10.0.2.2:3000";
-    } else if (Platform.OS === "ios") {
-      // Check if running on physical device or simulator
-      const isPhysicalDevice = Constants.isDevice;
-      const isSimulator =
-        !isPhysicalDevice || Constants.executionEnvironment === "storeClient";
-
-      if (isPhysicalDevice && !isSimulator) {
-        // For physical iOS device: use environment variable or fallback to localhost
-        // Set EXPO_PUBLIC_API_URL_IOS_PHYSICAL in your .env file with your computer's IP
-        // To find your IP: Mac/Linux: `ipconfig getifaddr en0` or `ifconfig | grep "inet "`
-        const apiUrl =
-          process.env.EXPO_PUBLIC_API_URL_IOS_PHYSICAL ||
-          process.env.EXPO_PUBLIC_API_URL_IOS ||
-          "http://localhost:3000";
-        return apiUrl;
-      } else {
-        // For iOS simulator: use localhost
-        const apiUrl =
-          process.env.EXPO_PUBLIC_API_URL_IOS || "http://localhost:3000";
-        return apiUrl;
-      }
-    } else {
-      // For web or other platforms
-      return process.env.EXPO_PUBLIC_API_URL_WEB || "http://localhost:3000";
-    }
+  // Production: Always use production URL
+  if (!__DEV__) {
+    return PRODUCTION_API_URL;
   }
-  // Production - use environment variable or fallback
-  return process.env.EXPO_PUBLIC_API_URL_PROD || "https://api.waypool.com";
+
+  // Development: Use environment variables with fallback defaults
+  if (Platform.OS === "android") {
+    return process.env.EXPO_PUBLIC_API_URL_ANDROID || "http://10.0.2.2:3000";
+  } else if (Platform.OS === "ios") {
+    // If environment variable is set, use it (highest priority)
+    if (process.env.EXPO_PUBLIC_API_URL_IOS_PHYSICAL || process.env.EXPO_PUBLIC_API_URL_IOS) {
+      const url = process.env.EXPO_PUBLIC_API_URL_IOS_PHYSICAL || process.env.EXPO_PUBLIC_API_URL_IOS;
+      console.log(`[Driver API Config] Using API URL from environment: ${url}`);
+      return url!;
+    }
+    
+    // Auto-detect device type
+    const isPhysicalDevice = Device.isDevice;
+    const deviceName = Device.deviceName || "Unknown";
+    const deviceType = Device.deviceType || "Unknown";
+    const modelName = Device.modelName || "Unknown";
+    
+    let apiUrl: string;
+    
+    if (isPhysicalDevice === true) {
+      // Physical device - use local network IP
+      apiUrl = `http://${LOCAL_IP}:${BACKEND_PORT}`;
+    } else if (isPhysicalDevice === false) {
+      // Simulator - use localhost
+      apiUrl = "http://localhost:3000";
+    } else {
+      // Can't determine - default to IP for safety
+      apiUrl = `http://${LOCAL_IP}:${BACKEND_PORT}`;
+      console.warn("[Driver API Config] Could not determine device type, defaulting to local IP");
+    }
+    
+    // Log device info for debugging (only in development)
+    console.log("=== Driver API Configuration Debug ===");
+    console.log(`Device Name: ${deviceName}`);
+    console.log(`Device Type: ${deviceType}`);
+    console.log(`Model Name: ${modelName}`);
+    console.log(`Is Physical Device: ${isPhysicalDevice}`);
+    console.log(`Selected API URL: ${apiUrl}`);
+    console.log("======================================");
+    
+    return apiUrl;
+  } else {
+    // Web or other platforms
+    return process.env.EXPO_PUBLIC_API_URL_WEB || "http://localhost:3000";
+  }
 };
 
 export const API_BASE_URL = getApiUrl();

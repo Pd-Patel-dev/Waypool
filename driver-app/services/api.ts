@@ -1732,6 +1732,8 @@ export interface Notification {
     pickupCity: string;
     pickupState: string;
     pickupZipCode?: string;
+    pickupLatitude?: number | null;
+    pickupLongitude?: number | null;
     rider: {
       id: number;
       fullName: string;
@@ -1744,6 +1746,10 @@ export interface Notification {
       toAddress: string;
       fromCity: string;
       toCity: string;
+      fromLatitude?: number | null;
+      fromLongitude?: number | null;
+      toLatitude?: number | null;
+      toLongitude?: number | null;
       departureDate: string;
       departureTime: string;
       pricePerSeat: number;
@@ -1935,7 +1941,8 @@ export const acceptBooking = async (
  */
 export const rejectBooking = async (
   bookingId: number,
-  driverId: number
+  driverId: number,
+  rejectionReason?: string
 ): Promise<{ success: boolean; message: string }> => {
   try {
     const url = `${API_BASE_URL}${API_ENDPOINTS.BOOKINGS.REJECT(
@@ -1946,6 +1953,9 @@ export const rejectBooking = async (
       headers: {
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        rejectionReason: rejectionReason && rejectionReason.trim() ? rejectionReason.trim() : undefined,
+      }),
     });
 
     const result = await response.json();

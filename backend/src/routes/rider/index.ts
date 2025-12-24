@@ -7,11 +7,13 @@ import paymentRoutes from './payment';
 import profileRoutes from './profile';
 import savedAddressesRoutes from './savedAddresses';
 import notificationsRoutes from './notifications';
+import emailVerificationRoutes from './emailVerification';
 
 const router = express.Router();
 
 // Rider app routes
 router.use('/auth', riderAuthRoutes);
+router.use('/email-verification', emailVerificationRoutes);
 router.use('/rides', riderRidesRoutes);
 router.use('/bookings', riderBookingsRoutes);
 router.use('/tracking', trackingRoutes);

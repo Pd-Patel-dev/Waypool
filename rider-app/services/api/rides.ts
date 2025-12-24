@@ -45,10 +45,19 @@ export interface UpcomingRidesResponse {
   message?: string;
 }
 
-export async function getUpcomingRides(): Promise<UpcomingRidesResponse> {
+export async function getUpcomingRides(
+  riderLatitude?: number,
+  riderLongitude?: number
+): Promise<UpcomingRidesResponse> {
   try {
-    logger.debug('Fetching rides from:', `${API_URL}/api/rider/rides/upcoming`, 'getUpcomingRides');
-    const response = await fetch(`${API_URL}/api/rider/rides/upcoming`, {
+    // Build URL with optional location query params
+    let url = `${API_URL}/api/rider/rides/upcoming`;
+    if (riderLatitude !== undefined && riderLongitude !== undefined) {
+      url += `?riderLatitude=${riderLatitude}&riderLongitude=${riderLongitude}`;
+    }
+    
+    logger.debug('Fetching rides from:', url, 'getUpcomingRides');
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

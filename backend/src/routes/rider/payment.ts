@@ -93,9 +93,19 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
       });
     }
 
+    // Parse and validate riderId
+    const parsedRiderId = parseInt(riderId);
+    if (isNaN(parsedRiderId) || parsedRiderId <= 0) {
+      console.error('Invalid riderId:', riderId);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid rider ID',
+      });
+    }
+
     // Verify rider exists
     const rider = await prisma.users.findUnique({
-      where: { id: parseInt(riderId) },
+      where: { id: parsedRiderId },
       select: {
         id: true,
         email: true,
@@ -105,16 +115,18 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
     });
 
     if (!rider) {
+      console.error('Rider not found in database:', { riderId: parsedRiderId, providedRiderId: riderId });
       return res.status(404).json({
         success: false,
-        message: 'Rider not found',
+        message: 'Rider not found. Please ensure you are logged in with a valid rider account.',
       });
     }
 
     if (!rider.isRider) {
+      console.error('User is not a rider:', { userId: parsedRiderId, email: rider.email, isRider: rider.isRider });
       return res.status(403).json({
         success: false,
-        message: 'User is not a rider',
+        message: 'User is not registered as a rider. Please use the rider app to sign up.',
       });
     }
 

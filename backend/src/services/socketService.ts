@@ -14,9 +14,15 @@ class SocketService {
   private socketToUser: Map<string, SocketUser> = new Map(); // socketId -> user info
 
   initialize(httpServer: HTTPServer) {
+    // In production, restrict to specific origins for security
+    const isProduction = process.env.NODE_ENV === 'production';
+    const allowedOrigins = isProduction
+      ? (process.env.ALLOWED_ORIGINS?.split(',').map(origin => origin.trim()) || [])
+      : true; // Allow all origins in development
+
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: true, // Allow all origins in development
+        origin: allowedOrigins,
         credentials: true,
         methods: ['GET', 'POST'],
       },
@@ -24,6 +30,10 @@ class SocketService {
       pingTimeout: 60000,
       pingInterval: 25000,
     });
+
+    if (isProduction && allowedOrigins === true) {
+      console.warn('⚠️  WARNING: Socket.IO CORS is allowing all origins in production! Set ALLOWED_ORIGINS environment variable.');
+    }
 
     this.setupMiddleware();
     this.setupEventHandlers();

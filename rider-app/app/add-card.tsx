@@ -105,7 +105,21 @@ export default function AddCardScreen(): React.JSX.Element {
 
   const handleAddCard = async () => {
     if (!user?.id) {
-      Alert.alert('Error', 'User not found');
+      Alert.alert('Error', 'User not found. Please log in and try again.');
+      router.replace('/login');
+      return;
+    }
+    
+    // Validate user ID is a valid number
+    const riderId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+    if (isNaN(riderId) || riderId <= 0) {
+      Alert.alert(
+        'Session Expired',
+        'Your session is invalid. Please log out and log back in.',
+        [
+          { text: 'OK', onPress: () => router.replace('/login') }
+        ]
+      );
       return;
     }
     
@@ -275,10 +289,19 @@ export default function AddCardScreen(): React.JSX.Element {
 
       // Send tokenized payment method ID to backend
       // Backend will securely attach it to the Stripe customer using secret key
+      if (!user?.id) {
+        throw new Error('User not found. Please log in and try again.');
+      }
+      
       const riderId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
+      
+      if (isNaN(riderId) || riderId <= 0) {
+        throw new Error('Invalid user ID. Please log out and log back in.');
+      }
       
       console.log('Saving payment method:', {
         riderId,
+        userEmail: user.email,
         paymentMethodId: paymentMethod.id,
         paymentMethodType: 'card',
       });
@@ -287,7 +310,6 @@ export default function AddCardScreen(): React.JSX.Element {
         riderId,
         paymentMethodId: paymentMethod.id, // Secure tokenized ID (not actual card details)
         paymentMethodType: 'card',
-        rideId: 0,
       });
 
       console.log('Save payment method response:', response);
@@ -314,10 +336,30 @@ export default function AddCardScreen(): React.JSX.Element {
         stack: error.stack,
       });
       
-      // Error message already formatted in the catch block above
-      const errorMessage = error.message || 'Failed to add card. Please try again.';
-      console.error('Showing error alert:', errorMessage);
-      Alert.alert('Error', errorMessage);
+      // Handle specific error cases
+      let errorMessage = error.message || 'Failed to add card. Please try again.';
+      
+      // If rider not found (404), suggest logging out and back in
+      if (error.status === 404 && (error.message?.includes('Rider not found') || error.message?.includes('not found'))) {
+        Alert.alert(
+          'Account Not Found',
+          'Your account is not found in the system. This may happen if the database was reset. Please log out and log back in to refresh your account.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Go to Login', 
+              onPress: () => router.replace('/login')
+            }
+          ]
+        );
+        return; // Don't show additional error message
+      } else if (error.status === 403 && error.message?.includes('not a rider')) {
+        errorMessage = 'Your account is not registered as a rider. Please use the rider app to sign up.';
+        Alert.alert('Error', errorMessage);
+      } else {
+        console.error('Showing error alert:', errorMessage);
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setIsProcessing(false);
     }

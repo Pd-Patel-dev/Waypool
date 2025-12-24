@@ -20,6 +20,7 @@ export interface RiderBooking {
   confirmationNumber: string;
   createdAt: string;
   isPast: boolean;
+  rejectionReason?: string | null;
   ride: {
     id: number;
     driverName: string;
@@ -112,14 +113,26 @@ export interface PickupPINResponse {
 }
 
 export async function getRiderBookings(riderId: number): Promise<RiderBookingsResponse> {
+  const url = `${API_URL}/api/rider/rides/bookings?riderId=${riderId}`;
+  
   try {
-    logger.debug('Fetching bookings from:', `${API_URL}/api/rider/rides/bookings?riderId=${riderId}`, 'getRiderBookings');
-    const response = await fetchWithAuth(`${API_URL}/api/rider/rides/bookings?riderId=${riderId}`, {
+    logger.debug('Fetching bookings from:', url, 'getRiderBookings');
+    logger.debug('API URL configured as:', API_URL, 'getRiderBookings');
+    
+    const response = await fetchWithAuth(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
     });
+
+    // Check if response is valid
+    if (!response) {
+      throw {
+        message: 'No response from server. Please check if the backend server is running.',
+        status: 0,
+      } as ApiError;
+    }
 
     let result;
     try {
@@ -128,7 +141,7 @@ export async function getRiderBookings(riderId: number): Promise<RiderBookingsRe
       logger.error('Failed to parse JSON response', jsonError, 'getRiderBookings');
       throw {
         message: `Server error: ${response.status} ${response.statusText}`,
-        status: response.status,
+        status: response.status || 500,
       } as ApiError;
     }
 
@@ -136,20 +149,36 @@ export async function getRiderBookings(riderId: number): Promise<RiderBookingsRe
       throw {
         message: result.message || 'Failed to fetch bookings',
         status: response.status,
+        errors: result.errors,
       } as ApiError;
     }
 
     return result;
   } catch (error: unknown) {
     logger.error('getRiderBookings error', error, 'getRiderBookings');
+    
+    // Check if it's a network error
+    if (error instanceof TypeError && error.message.includes('Network request failed')) {
+      logger.error('Network connectivity issue. Check:', {
+        apiUrl: API_URL,
+        url,
+        message: 'Ensure backend server is running and API_URL is correct for your device/emulator',
+      }, 'getRiderBookings');
+      
+      throw {
+        message: `Cannot connect to server at ${API_URL}. Please ensure the backend server is running and the API URL is correct for your device.`,
+        status: 0,
+      } as ApiError;
+    }
+    
     if (isApiError(error)) {
       throw error;
     }
+    
     const errorMessage = getErrorMessage(error);
-    logger.debug('API URL', API_URL, 'getRiderBookings');
     throw {
       message: `${errorMessage} (API: ${API_URL})`,
-      status: 0,
+      status: getErrorStatus(error) || 0,
     } as ApiError;
   }
 }

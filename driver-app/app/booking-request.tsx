@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,10 +9,13 @@ import {
   Alert,
   Linking,
   Platform,
+  TextInput,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useUser } from "@/context/UserContext";
 import {
   acceptBooking,
@@ -30,6 +33,11 @@ export default function BookingRequestScreen(): React.JSX.Element {
   const [notification, setNotification] = useState<Notification | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showRejectionModal, setShowRejectionModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
     if (params.notification) {
@@ -53,6 +61,193 @@ export default function BookingRequestScreen(): React.JSX.Element {
       setIsLoading(false);
     }
   }, [params.notification, user]);
+
+  // Decode polyline from Google Directions API
+  const decodePolyline = (encoded: string): { latitude: number; longitude: number }[] => {
+    const points: { latitude: number; longitude: number }[] = [];
+    let index = 0;
+    const len = encoded.length;
+    let lat = 0;
+    let lng = 0;
+
+    while (index < len) {
+      let b: number;
+      let shift = 0;
+      let result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+      lng += dlng;
+
+      points.push({
+        latitude: lat / 1e5,
+        longitude: lng / 1e5,
+      });
+    }
+
+    return points;
+  };
+
+  // Fetch route from Google Directions API
+  const fetchRoute = async () => {
+    if (!notification?.booking?.ride || !notification.booking.ride.fromLatitude || !notification.booking.ride.fromLongitude || !notification.booking.ride.toLatitude || !notification.booking.ride.toLongitude) {
+      return;
+    }
+
+    try {
+      const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || '';
+      if (!GOOGLE_API_KEY) {
+        // Fallback to straight line if no API key
+        const fromCoords = {
+          latitude: notification.booking.ride.fromLatitude,
+          longitude: notification.booking.ride.fromLongitude,
+        };
+        const toCoords = {
+          latitude: notification.booking.ride.toLatitude,
+          longitude: notification.booking.ride.toLongitude,
+        };
+        setRouteCoordinates([fromCoords, toCoords]);
+        calculateMapRegion();
+        return;
+      }
+
+      const origin = `${notification.booking.ride.fromLatitude},${notification.booking.ride.fromLongitude}`;
+      const destination = `${notification.booking.ride.toLatitude},${notification.booking.ride.toLongitude}`;
+      
+      // Include pickup location as waypoint if available
+      let waypoints = '';
+      if (notification.booking.pickupLatitude && notification.booking.pickupLongitude) {
+        waypoints = `&waypoints=${notification.booking.pickupLatitude},${notification.booking.pickupLongitude}`;
+      }
+
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}${waypoints}&key=${GOOGLE_API_KEY}`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.status === 'OK' && data.routes.length > 0) {
+        const route = data.routes[0];
+        let allPoints: { latitude: number; longitude: number }[] = [];
+
+        // Extract all points from route steps
+        if (route.legs && route.legs.length > 0) {
+          route.legs.forEach((leg: any) => {
+            if (leg.steps) {
+              leg.steps.forEach((step: any) => {
+                if (step.polyline && step.polyline.points) {
+                  const stepPoints = decodePolyline(step.polyline.points);
+                  allPoints = allPoints.concat(stepPoints);
+                }
+              });
+            }
+          });
+        }
+
+        // If we couldn't get detailed steps, use overview polyline
+        if (allPoints.length === 0 && route.overview_polyline && route.overview_polyline.points) {
+          allPoints = decodePolyline(route.overview_polyline.points);
+        }
+
+        setRouteCoordinates(allPoints.length > 0 ? allPoints : []);
+        calculateMapRegion();
+      } else {
+        // Fallback to straight line
+        const fromCoords = {
+          latitude: notification.booking.ride.fromLatitude,
+          longitude: notification.booking.ride.fromLongitude,
+        };
+        const toCoords = {
+          latitude: notification.booking.ride.toLatitude,
+          longitude: notification.booking.ride.toLongitude,
+        };
+        setRouteCoordinates([fromCoords, toCoords]);
+        calculateMapRegion();
+      }
+    } catch (error) {
+      console.error('Error fetching route:', error);
+      // Fallback to straight line on error
+      if (notification?.booking?.ride) {
+        const fromCoords = {
+          latitude: notification.booking.ride.fromLatitude!,
+          longitude: notification.booking.ride.fromLongitude!,
+        };
+        const toCoords = {
+          latitude: notification.booking.ride.toLatitude!,
+          longitude: notification.booking.ride.toLongitude!,
+        };
+        setRouteCoordinates([fromCoords, toCoords]);
+        calculateMapRegion();
+      }
+    }
+  };
+
+  // Calculate map region to show all markers
+  const calculateMapRegion = () => {
+    if (!notification?.booking?.ride) return;
+
+    const coords: { latitude: number; longitude: number }[] = [];
+
+    // Add driver route coordinates
+    if (notification.booking.ride.fromLatitude && notification.booking.ride.fromLongitude) {
+      coords.push({
+        latitude: notification.booking.ride.fromLatitude,
+        longitude: notification.booking.ride.fromLongitude,
+      });
+    }
+    if (notification.booking.ride.toLatitude && notification.booking.ride.toLongitude) {
+      coords.push({
+        latitude: notification.booking.ride.toLatitude,
+        longitude: notification.booking.ride.toLongitude,
+      });
+    }
+
+    // Add rider pickup coordinates
+    if (notification.booking.pickupLatitude && notification.booking.pickupLongitude) {
+      coords.push({
+        latitude: notification.booking.pickupLatitude,
+        longitude: notification.booking.pickupLongitude,
+      });
+    }
+
+    if (coords.length === 0) return;
+
+    const minLat = Math.min(...coords.map(c => c.latitude));
+    const maxLat = Math.max(...coords.map(c => c.latitude));
+    const minLng = Math.min(...coords.map(c => c.longitude));
+    const maxLng = Math.max(...coords.map(c => c.longitude));
+
+    const midLat = (minLat + maxLat) / 2;
+    const midLng = (minLng + maxLng) / 2;
+    const latDelta = (maxLat - minLat) * 1.5; // Add 50% padding
+    const lngDelta = (maxLng - minLng) * 1.5;
+
+    setMapRegion({
+      latitude: midLat,
+      longitude: midLng,
+      latitudeDelta: Math.max(latDelta, 0.05),
+      longitudeDelta: Math.max(lngDelta, 0.05),
+    });
+  };
+
+  // Fetch route when notification data is available
+  useEffect(() => {
+    if (notification?.booking?.ride) {
+      fetchRoute();
+    }
+  }, [notification]);
 
   const formatDate = (dateStr: string, timeStr: string): string => {
     try {
@@ -233,7 +428,7 @@ export default function BookingRequestScreen(): React.JSX.Element {
     );
   };
 
-  const handleReject = async () => {
+  const handleReject = () => {
     if (!notification?.booking || !user?.id) {
       Alert.alert("Error", "Unable to reject booking. Please try again.");
       return;
@@ -248,69 +443,67 @@ export default function BookingRequestScreen(): React.JSX.Element {
       return;
     }
 
-    Alert.alert(
-      "Reject Request",
-      `Reject ${notification.booking.rider.fullName}'s request for ${notification.booking.numberOfSeats} seat${notification.booking.numberOfSeats !== 1 ? "s" : ""}?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Reject",
-          style: "destructive",
-          onPress: async () => {
-            setIsProcessing(true);
-            HapticFeedback.action();
-            
-            // Optimistic update: Update UI immediately
-            if (notification) {
-              setNotification({
-                ...notification,
-                booking: notification.booking ? {
-                  ...notification.booking,
-                  status: 'rejected',
-                } : null,
-              });
-            }
-            
-            try {
-              const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
-              await rejectBooking(notification.booking!.id, driverId);
-              
-              HapticFeedback.tap();
-              Alert.alert(
-                "Request Rejected",
-                "The booking request has been rejected.",
-                [
-                  {
-                    text: "OK",
-                    onPress: () => router.back(),
-                  },
-                ]
-              );
-            } catch (error: unknown) {
-              // Revert optimistic update on error
-              if (notification) {
-                setNotification({
-                  ...notification,
-                  booking: notification.booking ? {
-                    ...notification.booking,
-                    status: 'pending',
-                  } : null,
-                });
-              }
-              
-              const errorMessage = error instanceof Error ? error.message : "Failed to reject booking request";
-              HapticFeedback.error();
-              Alert.alert("Error", errorMessage);
-            } finally {
-              setIsProcessing(false);
-            }
+    // Show modal to enter rejection reason
+    setShowRejectionModal(true);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!notification?.booking || !user?.id) {
+      Alert.alert("Error", "Unable to reject booking. Please try again.");
+      return;
+    }
+
+    setShowRejectionModal(false);
+    setIsProcessing(true);
+    HapticFeedback.action();
+    
+    // Optimistic update: Update UI immediately
+    if (notification) {
+      setNotification({
+        ...notification,
+        booking: notification.booking ? {
+          ...notification.booking,
+          status: 'rejected',
+        } : null,
+      });
+    }
+    
+    try {
+      const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
+      await rejectBooking(notification.booking!.id, driverId, rejectionReason.trim() || undefined);
+      
+      HapticFeedback.tap();
+      Alert.alert(
+        "Request Rejected",
+        "The booking request has been rejected.",
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              setRejectionReason(""); // Clear reason for next time
+              router.back();
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    } catch (error: unknown) {
+      // Revert optimistic update on error
+      if (notification) {
+        setNotification({
+          ...notification,
+          booking: notification.booking ? {
+            ...notification.booking,
+            status: 'pending',
+          } : null,
+        });
+      }
+      
+      const errorMessage = error instanceof Error ? error.message : "Failed to reject booking request";
+      HapticFeedback.error();
+      Alert.alert("Error", errorMessage);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (isLoading) {
@@ -410,6 +603,76 @@ export default function BookingRequestScreen(): React.JSX.Element {
             {booking.confirmationNumber}
           </Text>
         </View>
+
+        {/* Route Preview Map */}
+        {booking.ride.fromLatitude && booking.ride.fromLongitude && mapRegion && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Route Preview</Text>
+            <View style={styles.mapContainer}>
+              <MapView
+                ref={mapRef}
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                style={styles.map}
+                initialRegion={mapRegion}
+                scrollEnabled={true}
+                zoomEnabled={true}
+                showsUserLocation={false}
+                showsMyLocationButton={false}
+              >
+                {/* Driver Route Polyline */}
+                {routeCoordinates.length > 0 && (
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeColor="#4285F4"
+                    strokeWidth={5}
+                    lineCap="round"
+                    lineJoin="round"
+                    geodesic={true}
+                  />
+                )}
+
+                {/* Driver Starting Point */}
+                {booking.ride.fromLatitude && booking.ride.fromLongitude && (
+                  <Marker
+                    coordinate={{
+                      latitude: booking.ride.fromLatitude,
+                      longitude: booking.ride.fromLongitude,
+                    }}
+                    title="Your Starting Point"
+                    description={booking.ride.fromAddress}
+                    pinColor="#34C759"
+                  />
+                )}
+
+                {/* Rider Pickup Location */}
+                {booking.pickupLatitude && booking.pickupLongitude && (
+                  <Marker
+                    coordinate={{
+                      latitude: booking.pickupLatitude,
+                      longitude: booking.pickupLongitude,
+                    }}
+                    title="Rider Pickup"
+                    description={booking.pickupAddress}
+                    pinColor="#FF9500"
+                  />
+                )}
+
+                {/* Driver Destination */}
+                {booking.ride.toLatitude && booking.ride.toLongitude && (
+                  <Marker
+                    coordinate={{
+                      latitude: booking.ride.toLatitude,
+                      longitude: booking.ride.toLongitude,
+                    }}
+                    title="Your Destination"
+                    description={booking.ride.toAddress}
+                    pinColor="#FF3B30"
+                  />
+                )}
+              </MapView>
+            </View>
+          </View>
+        )}
 
         {/* Route Card */}
         <View style={styles.card}>
@@ -586,6 +849,61 @@ export default function BookingRequestScreen(): React.JSX.Element {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Rejection Reason Modal */}
+      <Modal
+        visible={showRejectionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRejectionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Reject Booking Request</Text>
+            <Text style={styles.modalSubtitle}>
+              Please provide a reason for rejecting this booking (optional but recommended)
+            </Text>
+            
+            <TextInput
+              style={styles.reasonInput}
+              placeholder="Enter rejection reason..."
+              placeholderTextColor="#999"
+              value={rejectionReason}
+              onChangeText={setRejectionReason}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              maxLength={500}
+            />
+            <Text style={styles.charCount}>
+              {rejectionReason.length}/500 characters
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setShowRejectionModal(false);
+                  setRejectionReason("");
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.rejectButtonModal]}
+                onPress={handleConfirmReject}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.rejectButtonTextModal}>Reject</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -906,6 +1224,85 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#4285F4",
+  },
+  mapContainer: {
+    borderRadius: 12,
+    overflow: "hidden",
+    marginTop: 12,
+  },
+  map: {
+    width: "100%",
+    height: 300,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#1C1C1E",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#999999",
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  reasonInput: {
+    backgroundColor: "#2C2C2E",
+    borderRadius: 12,
+    padding: 16,
+    color: "#FFFFFF",
+    fontSize: 16,
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: "#3A3A3C",
+    marginBottom: 8,
+  },
+  charCount: {
+    fontSize: 12,
+    color: "#666666",
+    textAlign: "right",
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelButton: {
+    backgroundColor: "#2C2C2E",
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  rejectButtonModal: {
+    backgroundColor: "#FF3B30",
+  },
+  rejectButtonTextModal: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });
 

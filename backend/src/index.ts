@@ -27,9 +27,15 @@ socketService.initialize(httpServer);
 const serverStartTime = Date.now();
 
 // Middleware - Enhanced CORS for React Native
+// In production, restrict to specific origins for security
+const isProduction = process.env.NODE_ENV === "production";
+const allowedOrigins = isProduction
+  ? process.env.ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()) || []
+  : true; // Allow all origins in development
+
 app.use(
   cors({
-    origin: true, // Allow all origins in development
+    origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
@@ -41,6 +47,12 @@ app.use(
     exposedHeaders: ["Content-Length", "Content-Type"],
   })
 );
+
+if (isProduction && allowedOrigins === true) {
+  console.warn(
+    "⚠️  WARNING: CORS is allowing all origins in production! Set ALLOWED_ORIGINS environment variable."
+  );
+}
 
 // IMPORTANT: Stripe webhook must be mounted BEFORE express.json()
 // to receive raw body for signature verification

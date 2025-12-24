@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { login, type ApiError } from '@/services/api';
 import { useUser } from '@/context/UserContext';
+import { API_URL } from '@/config/api';
+import * as Device from 'expo-device';
+import { logger } from '@/utils/logger';
 
 export default function LoginScreen(): React.JSX.Element {
   const { setUser } = useUser();
@@ -28,6 +32,56 @@ export default function LoginScreen(): React.JSX.Element {
   }>({});
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [apiInfo, setApiInfo] = useState<string>('');
+
+  // Log API configuration on mount for debugging
+  useEffect(() => {
+    const deviceInfo = {
+      isDevice: Device.isDevice,
+      deviceName: Device.deviceName || 'Unknown',
+      modelName: Device.modelName || 'Unknown',
+      apiUrl: API_URL,
+    };
+    
+    const infoText = `Device: ${deviceInfo.deviceName}\nPhysical: ${deviceInfo.isDevice}\nAPI: ${deviceInfo.apiUrl}`;
+    setApiInfo(infoText);
+    
+    logger.info('Login screen loaded', deviceInfo, 'login');
+    console.log('📱 Device Info:', deviceInfo);
+  }, []);
+
+  // Test backend connection
+  const testConnection = async (): Promise<void> => {
+    try {
+      logger.info(`Testing connection to: ${API_URL}/health`, undefined, 'login');
+      const response = await fetch(`${API_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        Alert.alert(
+          'Connection Successful',
+          `Backend is reachable at:\n${API_URL}\n\nResponse: ${JSON.stringify(result)}`
+        );
+        logger.info('Connection test successful', result, 'login');
+      } else {
+        Alert.alert('Connection Failed', `Status: ${response.status}\n${JSON.stringify(result)}`);
+        logger.error('Connection test failed', { status: response.status, result }, 'login');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert(
+        'Connection Error',
+        `Cannot connect to:\n${API_URL}\n\nError: ${errorMessage}\n\nMake sure:\n1. Backend is running\n2. Same Wi-Fi network\n3. IP is correct`
+      );
+      logger.error('Connection test error', error, 'login');
+    }
+  };
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -149,6 +203,21 @@ export default function LoginScreen(): React.JSX.Element {
             {errors.general && (
               <View style={styles.errorContainer}>
                 <Text style={styles.errorText}>{errors.general}</Text>
+              </View>
+            )}
+
+            {/* Debug Info - Only show in development */}
+            {__DEV__ && apiInfo && (
+              <View style={styles.debugContainer}>
+                <Text style={styles.debugTitle}>🔍 Debug Info</Text>
+                <Text style={styles.debugText}>{apiInfo}</Text>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={testConnection}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.testButtonText}>Test Connection</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -316,6 +385,38 @@ const styles = StyleSheet.create({
     color: '#FF3B30',
     fontSize: 12,
     marginTop: 6,
+  },
+  debugContainer: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+  },
+  debugTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  debugText: {
+    color: '#999999',
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginBottom: 12,
+  },
+  testButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  testButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   footer: {
     marginTop: 'auto',

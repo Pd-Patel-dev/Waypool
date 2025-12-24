@@ -99,22 +99,30 @@ export default function SignupScreen(): React.JSX.Element {
     setErrors({});
 
     try {
-      const response = await signup({
-        email: formData.email.trim(),
-        password: formData.password,
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        phoneNumber: formData.phoneNumber.trim(),
+      // Import sendOTP function
+      const { sendOTP } = await import('@/services/api/emailVerification');
+      
+      // Send OTP to email
+      await sendOTP({
+        email: formData.email.trim().toLowerCase(),
+        fullName: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
       });
 
-      if (response.success && response.user) {
-        // Navigate to login screen after successful signup
-        router.replace('/login');
-      }
+      // Navigate to verify-email screen with signup data
+      router.push({
+        pathname: '/verify-email',
+        params: {
+          email: formData.email.trim().toLowerCase(),
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
+          phoneNumber: formData.phoneNumber.trim(),
+          password: formData.password,
+        },
+      });
     } catch (error) {
       const apiError = error as ApiError;
       setErrors({
-        general: apiError.message || 'Signup failed. Please try again.',
+        general: apiError.message || 'Failed to send verification code. Please try again.',
       });
     } finally {
       setIsLoading(false);

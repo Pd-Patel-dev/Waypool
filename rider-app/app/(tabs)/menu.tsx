@@ -1,13 +1,49 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useUser } from '@/context/UserContext';
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { logger } from '@/utils/logger';
+import { handleErrorWithAlert } from '@/utils/errorHandler';
+import { getRiderProfile } from '@/services/api/profile';
 
 export default function MenuScreen(): React.JSX.Element {
-  const { user, logout } = useUser();
+  const { user, setUser, logout } = useUser();
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+
+  // Refresh user profile if emailVerified is missing
+  useEffect(() => {
+    const refreshProfileIfNeeded = async () => {
+      // Only fetch if user exists but emailVerified is undefined
+      if (user && user.emailVerified === undefined && !isLoadingProfile) {
+        setIsLoadingProfile(true);
+        try {
+          logger.debug('Fetching profile to get emailVerified status', undefined, 'menu');
+          const profileResponse = await getRiderProfile();
+          
+          if (profileResponse.success && profileResponse.user) {
+            // Update user with emailVerified from profile
+            await setUser({
+              ...user,
+              emailVerified: profileResponse.user.emailVerified,
+            });
+            logger.debug('User profile updated with emailVerified', { 
+              emailVerified: profileResponse.user.emailVerified 
+            }, 'menu');
+          }
+        } catch (error) {
+          logger.error('Failed to fetch profile for emailVerified', error, 'menu');
+          // Silently fail - don't show error to user
+        } finally {
+          setIsLoadingProfile(false);
+        }
+      }
+    };
+
+    refreshProfileIfNeeded();
+  }, [user, setUser, isLoadingProfile]);
 
   const handleSignOut = (): void => {
     Alert.alert(
@@ -26,8 +62,7 @@ export default function MenuScreen(): React.JSX.Element {
               await logout();
               router.replace('/login');
             } catch (error) {
-              logger.error('Sign out error', error, 'menu');
-              Alert.alert('Error', 'Failed to sign out. Please try again.');
+              handleErrorWithAlert(error, { context: 'signOut', title: 'Sign Out Error' });
             }
           },
         },
@@ -56,7 +91,22 @@ export default function MenuScreen(): React.JSX.Element {
           <Text style={styles.title}>Menu</Text>
           {user && (
             <View style={styles.userInfo}>
-              <Text style={styles.userName}>{getFullName()}</Text>
+              <View style={styles.userNameRow}>
+                <Text style={styles.userName}>{getFullName()}</Text>
+                {/* Show verified badge if emailVerified is true or undefined (default to verified) */}
+                {/* Only show unverified if explicitly false */}
+                {user.emailVerified === false ? (
+                  <View style={styles.unverifiedBadge}>
+                    <IconSymbol size={12} name="exclamationmark.triangle.fill" color="#FF9500" />
+                    <Text style={styles.unverifiedText}>Unverified</Text>
+                  </View>
+                ) : (
+                  <View style={styles.verifiedBadge}>
+                    <IconSymbol size={12} name="checkmark.seal.fill" color="#34C759" />
+                    <Text style={styles.verifiedText}>Verified</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.userEmail}>{user.email}</Text>
               {user.phoneNumber && (
                 <View style={styles.phoneInfo}>
@@ -160,12 +210,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1A1A1A',
   },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    gap: 8,
+  },
   userName: {
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 6,
+    flex: 1,
     letterSpacing: -0.3,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(52, 199, 89, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  verifiedText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#34C759',
+  },
+  unverifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 149, 0, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  unverifiedText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FF9500',
   },
   userEmail: {
     fontSize: 14,

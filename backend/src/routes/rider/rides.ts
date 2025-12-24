@@ -3,15 +3,25 @@ import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { stripe } from '../../lib/stripe';
 import { calculateRiderTotal } from '../../utils/earnings';
+import { calculateDistanceInMiles } from '../../utils/distance';
 
 const router = express.Router();
 
 /**
  * GET /api/rider/rides/upcoming
  * Get all available upcoming rides for riders to book
+ * Query params (optional): riderLatitude, riderLongitude - if provided, only shows rides within 20 miles
  */
 router.get('/upcoming', async (req: Request, res: Response) => {
   try {
+    // Get rider location from query params (optional)
+    const riderLatitude = req.query.riderLatitude 
+      ? parseFloat(req.query.riderLatitude as string) 
+      : null;
+    const riderLongitude = req.query.riderLongitude 
+      ? parseFloat(req.query.riderLongitude as string) 
+      : null;
+
     // Get all scheduled rides that have available seats
     const rides = await prisma.rides.findMany({
       where: {
@@ -39,6 +49,21 @@ router.get('/upcoming', async (req: Request, res: Response) => {
         createdAt: 'desc',
       },
     });
+
+    // Filter rides based on rider location (20 mile radius from driver's starting point)
+    let filteredRides = rides;
+    if (riderLatitude !== null && riderLongitude !== null && !isNaN(riderLatitude) && !isNaN(riderLongitude)) {
+      const RIDER_RADIUS_MILES = 20; // Show rides within 20 miles of rider
+      filteredRides = rides.filter((ride) => {
+        const distance = calculateDistanceInMiles(
+          riderLatitude,
+          riderLongitude,
+          ride.fromLatitude,
+          ride.fromLongitude
+        );
+        return distance <= RIDER_RADIUS_MILES;
+      });
+    }
 
     // Helper function to parse date and time to ISO string
     const parseDateTimeToISO = (dateStr: string, timeStr: string): string => {
@@ -73,7 +98,7 @@ router.get('/upcoming', async (req: Request, res: Response) => {
     };
     
     // Transform rides to match the frontend format
-    const formattedRides = rides.map((ride) => {
+    const formattedRides = filteredRides.map((ride) => {
       const departureISO = parseDateTimeToISO(ride.departureDate, ride.departureTime);
       
       return {
@@ -128,7 +153,20 @@ router.get('/upcoming', async (req: Request, res: Response) => {
  */
 router.post('/book', async (req: Request, res: Response) => {
   try {
-    const { rideId, riderId, pickupAddress, pickupCity, pickupState, pickupZipCode, pickupLatitude, pickupLongitude, numberOfSeats, paymentMethodId } = req.body;
+    const { 
+      rideId, 
+      riderId, 
+      pickupAddress, 
+      pickupCity, 
+      pickupState, 
+      pickupZipCode, 
+      pickupLatitude, 
+      pickupLongitude,
+      dropoffLatitude,
+      dropoffLongitude,
+      numberOfSeats, 
+      paymentMethodId 
+    } = req.body;
 
     // Validate required fields
     if (!rideId || !riderId || !pickupAddress || pickupLatitude === undefined || pickupLongitude === undefined) {
@@ -174,6 +212,9 @@ router.post('/book', async (req: Request, res: Response) => {
         message: 'Number of seats must be at least 1',
       });
     }
+
+    // Note: Pickup and drop-off location distance restrictions have been removed
+    // Riders can now book rides with any pickup and drop-off locations
 
     // Check if rider already has a pending or confirmed booking for this ride
     const existingBooking = await prisma.bookings.findFirst({

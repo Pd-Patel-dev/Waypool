@@ -30,6 +30,7 @@ model bookings {
   pickupPinLockedUntil DateTime?
   paymentIntentId      String?
   pricePerSeat         Float           // Price per seat at booking time (locked in)
+  rejectionReason      String?         // Reason provided by driver when rejecting the booking
   rides                rides           @relation(fields: [rideId], references: [id], onDelete: Cascade)
   users                users           @relation(fields: [riderId], references: [id], onDelete: Cascade)
   notifications        notifications[]

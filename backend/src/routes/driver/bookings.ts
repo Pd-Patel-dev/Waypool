@@ -280,6 +280,8 @@ router.put('/:id/reject', async (req: Request, res: Response) => {
       });
     }
 
+    const { rejectionReason } = req.body; // Optional rejection reason from driver
+
     const bookingId = parseInt(bookingIdParam);
     const driverId = req.query.driverId && typeof req.query.driverId === 'string' 
       ? parseInt(req.query.driverId) 
@@ -350,17 +352,27 @@ router.put('/:id/reject', async (req: Request, res: Response) => {
       where: { id: bookingId },
       data: {
         status: 'rejected',
+        rejectionReason: rejectionReason && typeof rejectionReason === 'string' && rejectionReason.trim() 
+          ? rejectionReason.trim() 
+          : null,
       },
     });
+
+    // Build notification message with rejection reason if provided
+    let notificationMessage = `Your ride request has been rejected by ${booking.rides.driverName}`;
+    if (rejectionReason && typeof rejectionReason === 'string' && rejectionReason.trim()) {
+      notificationMessage += `\n\nReason: ${rejectionReason.trim()}`;
+    }
 
     // Create notification for the rider
     try {
       await prisma.notifications.create({
         data: {
+          riderId: booking.riderId,
           driverId: booking.rides.driverId,
           type: 'message',
           title: 'Booking Rejected',
-          message: `Your ride request has been rejected by ${booking.rides.driverName}`,
+          message: notificationMessage,
           bookingId: booking.id,
           rideId: booking.rides.id,
           isRead: false,
@@ -370,12 +382,37 @@ router.put('/:id/reject', async (req: Request, res: Response) => {
       console.error('❌ Error creating rejection notification:', notificationError);
     }
 
+    // Send rejection email to rider
+    try {
+      const { sendBookingRejectionEmail } = await import('../../services/emailService');
+      await sendBookingRejectionEmail({
+        riderEmail: booking.users.email,
+        riderName: booking.users.fullName,
+        driverName: booking.rides.driverName || 'Driver',
+        rideDetails: {
+          fromAddress: booking.rides.fromAddress,
+          toAddress: booking.rides.toAddress,
+          departureDate: booking.rides.departureDate,
+          departureTime: booking.rides.departureTime,
+        },
+        rejectionReason: rejectionReason && typeof rejectionReason === 'string' && rejectionReason.trim() 
+          ? rejectionReason.trim() 
+          : null,
+      });
+    } catch (emailError) {
+      console.error('❌ Error sending rejection email:', emailError);
+      // Don't fail the rejection if email fails
+    }
+
     // Emit real-time event to rider
     socketService.emitToRider(booking.riderId, 'booking:rejected', {
       bookingId: booking.id,
       rideId: booking.rides.id,
       driverName: booking.rides.driverName,
-      message: 'Your ride request has been rejected',
+      message: notificationMessage,
+      rejectionReason: rejectionReason && typeof rejectionReason === 'string' && rejectionReason.trim() 
+        ? rejectionReason.trim() 
+        : null,
     });
 
     // Emit real-time event to driver (update their inbox)

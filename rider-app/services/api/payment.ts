@@ -8,6 +8,7 @@ export interface SavePaymentMethodRequest {
   riderId: number;
   paymentMethodId: string;
   paymentMethodType: 'card' | 'applePay' | 'googlePay';
+  rideId?: number; // Optional, for backward compatibility
 }
 
 export interface SavePaymentMethodResponse {

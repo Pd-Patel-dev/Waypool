@@ -112,6 +112,7 @@ export default function HomeScreen(): React.JSX.Element {
   const [isLoadingActiveBooking, setIsLoadingActiveBooking] = useState<boolean>(false);
   const [currentCity, setCurrentCity] = useState<string | null>(null);
   const [currentState, setCurrentState] = useState<string | null>(null);
+  const [riderLocation, setRiderLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   useEffect(() => {
     // If no user is logged in, redirect to welcome screen
@@ -121,12 +122,41 @@ export default function HomeScreen(): React.JSX.Element {
     }
   }, [user, isLoading]);
 
+  // Get rider's current location for filtering rides
+  useEffect(() => {
+    const getRiderLocation = async () => {
+      if (Platform.OS === 'web' || !Location) return;
+      
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const location = await Location.getCurrentPositionAsync({});
+          setRiderLocation({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          });
+        }
+      } catch (error) {
+        // Silently fail - location is optional
+        handleErrorSilently(error, 'getRiderLocation');
+      }
+    };
+
+    if (user) {
+      getRiderLocation();
+    }
+  }, [user]);
+
   const fetchRides = useCallback(async () => {
     if (!user) return;
     
     setIsLoadingRides(true);
     try {
-      const response = await getUpcomingRides();
+      // Pass rider location to filter rides within 20 miles
+      const response = await getUpcomingRides(
+        riderLocation?.latitude,
+        riderLocation?.longitude
+      );
       if (response.success && response.rides) {
         // Also fetch bookings to filter out rides the user has already confirmed
         const userId = typeof user.id === "string" ? parseInt(user.id) : user.id;
@@ -166,7 +196,7 @@ export default function HomeScreen(): React.JSX.Element {
       setIsLoadingRides(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user, riderLocation]);
 
   const fetchActiveBooking = useCallback(async () => {
     if (!user?.id) return;

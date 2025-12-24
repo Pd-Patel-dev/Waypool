@@ -18,6 +18,7 @@ import { cancelBooking, getPickupPIN, type RiderBooking } from "@/services/api";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { calculateDistance } from "@/utils/distance";
 import { calculateRiderTotal } from "@/utils/fees";
+import { logger } from "@/utils/logger";
 
 export default function BookingDetailsScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
@@ -352,6 +353,17 @@ export default function BookingDetailsScreen(): React.JSX.Element {
             {booking.confirmationNumber}
           </Text>
         </View>
+
+        {/* Rejection Reason Card - Only show if booking is rejected and has a reason */}
+        {booking.status === "rejected" && booking.rejectionReason && (
+          <View style={[styles.card, styles.rejectionCard]}>
+            <View style={styles.rejectionHeader}>
+              <IconSymbol name="exclamationmark.triangle.fill" size={20} color="#FF3B30" />
+              <Text style={styles.rejectionTitle}>Rejection Reason</Text>
+            </View>
+            <Text style={styles.rejectionReason}>{booking.rejectionReason}</Text>
+          </View>
+        )}
 
         {/* Route Card */}
         <View style={styles.card}>
@@ -692,6 +704,27 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "#2A2A2C",
+  },
+  rejectionCard: {
+    borderColor: "#FF3B30",
+    backgroundColor: "rgba(255, 59, 48, 0.1)",
+  },
+  rejectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  rejectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FF3B30",
+  },
+  rejectionReason: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: "#FFFFFF",
+    lineHeight: 20,
   },
   cardTitle: {
     fontSize: 16,

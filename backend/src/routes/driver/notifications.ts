@@ -39,6 +39,10 @@ router.get('/', authenticate, requireDriver, async (req: Request, res: Response)
                 toAddress: true,
                 fromCity: true,
                 toCity: true,
+                fromLatitude: true,
+                fromLongitude: true,
+                toLatitude: true,
+                toLongitude: true,
                 departureDate: true,
                 departureTime: true,
                 pricePerSeat: true,
@@ -84,6 +88,10 @@ router.get('/', authenticate, requireDriver, async (req: Request, res: Response)
                 toAddress: true;
                 fromCity: true;
                 toCity: true;
+                fromLatitude: true;
+                fromLongitude: true;
+                toLatitude: true;
+                toLongitude: true;
                 departureDate: true;
                 departureTime: true;
                 pricePerSeat: true;
@@ -123,6 +131,8 @@ router.get('/', authenticate, requireDriver, async (req: Request, res: Response)
               pickupAddress: notification.bookings.pickupAddress,
               pickupCity: notification.bookings.pickupCity,
               pickupState: notification.bookings.pickupState,
+              pickupLatitude: notification.bookings.pickupLatitude,
+              pickupLongitude: notification.bookings.pickupLongitude,
               rider: {
                 id: notification.bookings.users.id,
                 fullName: notification.bookings.users.fullName,
@@ -135,6 +145,10 @@ router.get('/', authenticate, requireDriver, async (req: Request, res: Response)
                 toAddress: notification.bookings.rides.toAddress,
                 fromCity: notification.bookings.rides.fromCity,
                 toCity: notification.bookings.rides.toCity,
+                fromLatitude: notification.bookings.rides.fromLatitude,
+                fromLongitude: notification.bookings.rides.fromLongitude,
+                toLatitude: notification.bookings.rides.toLatitude,
+                toLongitude: notification.bookings.rides.toLongitude,
                 departureDate: notification.bookings.rides.departureDate,
                 departureTime: notification.bookings.rides.departureTime,
                 pricePerSeat: notification.bookings.rides.pricePerSeat,
