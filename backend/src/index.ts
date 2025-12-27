@@ -12,6 +12,7 @@ import { socketService } from "./services/socketService";
 import { testModeMiddleware } from "./middleware/testModeAuth";
 import { isTestModeEnabled } from "./utils/testMode";
 import { initializeWeeklyPayoutScheduler } from "./services/weeklyPayoutService";
+import { apiRateLimiter } from "./middleware/rateLimiter";
 
 // Validate environment variables at startup (before initializing services)
 validateAndLogEnvironment();
@@ -59,6 +60,21 @@ if (isProduction && allowedOrigins === true) {
 app.use("/api/webhooks", stripeWebhookRoutes);
 
 app.use(express.json());
+
+// Apply general API rate limiting to all routes (except webhooks)
+// Note: Specific endpoints (auth, email) have stricter rate limits applied directly
+// Webhooks are excluded as they need to handle Stripe's rate requirements
+app.use((req, res, next) => {
+  // Skip rate limiting for webhook routes
+  if (req.path.startsWith('/api/webhooks')) {
+    return next();
+  }
+  // Apply general rate limiting to all other API routes
+  if (req.path.startsWith('/api')) {
+    return apiRateLimiter(req, res, next);
+  }
+  next();
+});
 
 // Test Mode Middleware (only active in development when enabled)
 if (isTestModeEnabled()) {

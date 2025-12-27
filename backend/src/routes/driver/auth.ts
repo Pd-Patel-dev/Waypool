@@ -12,6 +12,7 @@ import {
   sendInternalError,
 } from '../../utils/apiResponse';
 import { generateTokenPair } from '../../utils/jwt';
+import { authRateLimiter } from '../../middleware/rateLimiter';
 
 const router = express.Router();
 
@@ -78,7 +79,7 @@ interface LoginBody {
 }
 
 // POST /api/driver/auth/signup
-router.post('/signup', async (req: Request, res: Response) => {
+router.post('/signup', authRateLimiter, async (req: Request, res: Response) => {
   try {
     const { fullName, email, phoneNumber, password, photoUrl, city, carMake, carModel, carYear, carColor, verificationCode }: SignupBody = req.body;
 
@@ -278,7 +279,7 @@ router.post('/signup', async (req: Request, res: Response) => {
 });
 
 // POST /api/driver/auth/login
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password }: LoginBody = req.body;
 

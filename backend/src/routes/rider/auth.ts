@@ -11,6 +11,7 @@ import {
   sendValidationError,
   sendConflict,
 } from '../../utils/apiResponse';
+import { authRateLimiter } from '../../middleware/rateLimiter';
 
 const router = express.Router();
 
@@ -81,7 +82,7 @@ interface LoginBody {
 }
 
 // POST /api/rider/auth/signup
-router.post('/signup', async (req: Request, res: Response) => {
+router.post('/signup', authRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password, firstName, lastName, phoneNumber, verificationCode }: SignupBody = req.body;
 
@@ -262,7 +263,7 @@ router.post('/signup', async (req: Request, res: Response) => {
 });
 
 // POST /api/rider/auth/login
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password }: LoginBody = req.body;
 

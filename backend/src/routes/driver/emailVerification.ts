@@ -7,6 +7,7 @@ import {
   sendBadRequest,
   sendInternalError,
 } from '../../utils/apiResponse';
+import { emailRateLimiter } from '../../middleware/rateLimiter';
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ function generateOTP(): string {
 }
 
 // POST /api/driver/email-verification/send
-router.post('/send', async (req: Request, res: Response) => {
+router.post('/send', emailRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email, fullName } = req.body;
 
@@ -127,7 +128,7 @@ router.post('/verify', async (req: Request, res: Response) => {
 });
 
 // POST /api/driver/email-verification/resend
-router.post('/resend', async (req: Request, res: Response) => {
+router.post('/resend', emailRateLimiter, async (req: Request, res: Response) => {
   try {
     const { email, fullName } = req.body;
 

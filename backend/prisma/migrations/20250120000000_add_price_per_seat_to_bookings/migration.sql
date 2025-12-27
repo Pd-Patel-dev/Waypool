@@ -9,3 +9,4 @@ FROM "rides" r
 WHERE b."rideId" = r.id AND b."pricePerSeat" IS NULL;
 
 
+
