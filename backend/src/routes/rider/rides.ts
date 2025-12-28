@@ -430,7 +430,7 @@ router.post('/book', async (req: Request, res: Response) => {
 /**
  * GET /api/rider/rides/bookings
  * Get all bookings for a rider
- * Query params: riderId (required)
+ * Query params: riderId (required), limit (optional, default: 100)
  */
 router.get('/bookings', async (req: Request, res: Response) => {
   try {
@@ -446,14 +446,55 @@ router.get('/bookings', async (req: Request, res: Response) => {
       });
     }
 
-    // Get all bookings for this rider
+    // Optional limit to prevent fetching too many records at once
+    const limit = req.query.limit && typeof req.query.limit === 'string'
+      ? parseInt(req.query.limit)
+      : 100;
+
+    // Get all bookings for this rider with optimized query
+    // Using select instead of include for better performance
     const bookings = await prisma.bookings.findMany({
       where: {
         riderId: riderId,
       },
-      include: {
+      select: {
+        id: true,
+        riderId: true,
+        rideId: true,
+        numberOfSeats: true,
+        status: true,
+        pickupAddress: true,
+        pickupCity: true,
+        pickupState: true,
+        pickupZipCode: true,
+        pickupLatitude: true,
+        pickupLongitude: true,
+        pickupStatus: true,
+        confirmationNumber: true,
+        createdAt: true,
+        rejectionReason: true,
         rides: {
-          include: {
+          select: {
+            id: true,
+            driverName: true,
+            driverPhone: true,
+            fromAddress: true,
+            toAddress: true,
+            fromCity: true,
+            toCity: true,
+            fromLatitude: true,
+            fromLongitude: true,
+            toLatitude: true,
+            toLongitude: true,
+            departureDate: true,
+            departureTime: true,
+            pricePerSeat: true,
+            distance: true,
+            status: true,
+            carMake: true,
+            carModel: true,
+            carYear: true,
+            carColor: true,
             users: {
               select: {
                 id: true,
@@ -469,6 +510,7 @@ router.get('/bookings', async (req: Request, res: Response) => {
       orderBy: {
         createdAt: 'desc',
       },
+      take: limit, // Limit results to prevent large queries
     });
 
     // Helper function to parse date and time to ISO string

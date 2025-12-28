@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import type { RiderBooking } from '@/services/api';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, BUTTONS, RESPONSIVE_SPACING } from '@/constants/designSystem';
+import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '@/constants/designSystem';
 
 interface ConfirmedBookingCardProps {
   booking: RiderBooking;
@@ -56,62 +56,99 @@ export const ConfirmedBookingCard: React.FC<ConfirmedBookingCardProps> = ({
   const canEdit = !isRideStarted && booking.status === 'confirmed' && booking.ride.status !== 'completed' && booking.ride.status !== 'cancelled';
 
   return (
-    <View style={styles.container}>
+    <View style={styles.card}>
+      {/* Header Section */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.badge}>
-            <View style={styles.badgeDot} />
-            <Text style={styles.badgeText}>
-              {isRideStarted ? 'LIVE RIDE' : 'CONFIRMED'}
+          <View style={styles.dateTimeContainer}>
+            <Text style={styles.dateText}>
+              {formatDate(booking.ride.departureTime)}
+            </Text>
+            <View style={styles.timeBadge}>
+              <IconSymbol size={12} name="clock.fill" color={COLORS.textSecondary} />
+              <Text style={styles.timeText}>
+                {formatTime(booking.ride.departureTime)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.headerRight}>
+          <View style={[styles.statusBadge, { backgroundColor: isRideStarted ? 'rgba(66, 133, 244, 0.15)' : 'rgba(52, 199, 89, 0.15)' }]}>
+            <View style={[styles.statusDot, { backgroundColor: isRideStarted ? COLORS.primary : COLORS.success }]} />
+            <Text style={[styles.statusText, { color: isRideStarted ? COLORS.primary : COLORS.success }]}>
+              {isRideStarted ? 'IN PROGRESS' : 'CONFIRMED'}
             </Text>
           </View>
         </View>
-        {canEdit && (
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={onEdit}
-            activeOpacity={0.7}
-          >
-            <IconSymbol size={18} name="pencil" color={COLORS.primary} />
-          </TouchableOpacity>
-        )}
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.dateTimeRow}>
-          <Text style={styles.dateText}>{formatDate(booking.ride.departureTime)}</Text>
-          <Text style={styles.timeText}>{formatTime(booking.ride.departureTime)}</Text>
-        </View>
-
-        <View style={styles.routeContainer}>
-          <View style={styles.routeItem}>
-            <View style={styles.routeDot} />
-            <Text style={styles.routeText} numberOfLines={1}>
+      {/* Route Section */}
+      <View style={styles.routeSection}>
+        <View style={styles.routeItem}>
+          <View style={styles.routeDot} />
+          <View style={styles.routeContent}>
+            <Text style={styles.routeLabel}>Pickup</Text>
+            <Text style={styles.routeAddress} numberOfLines={2}>
               {booking.pickupAddress}
             </Text>
           </View>
-          <View style={styles.routeConnector} />
-          <View style={styles.routeItem}>
-            <View style={[styles.routeDot, styles.routeDotDest]} />
-            <Text style={styles.routeText} numberOfLines={1}>
+        </View>
+
+        <View style={styles.routeLine} />
+
+        <View style={styles.routeItem}>
+          <View style={[styles.routeDot, styles.routeDotDest]} />
+          <View style={styles.routeContent}>
+            <Text style={styles.routeLabel}>Destination</Text>
+            <Text style={styles.routeAddress} numberOfLines={2}>
               {booking.ride.toAddress}
             </Text>
           </View>
         </View>
-
-        <View style={styles.detailsRow}>
-          <View style={styles.detailItem}>
-            <IconSymbol size={12} name="person.2.fill" color={COLORS.textSecondary} />
-            <Text style={styles.detailText}>{booking.numberOfSeats} seat{booking.numberOfSeats !== 1 ? 's' : ''}</Text>
-          </View>
-          <View style={styles.detailItem}>
-            <IconSymbol size={12} name="person.fill" color={COLORS.textSecondary} />
-            <Text style={styles.detailText}>{booking.ride.driverName}</Text>
-          </View>
-        </View>
       </View>
 
-      <View style={styles.actionsRow}>
+      {/* Stats Section */}
+      <View style={styles.statsSection}>
+        <View style={styles.statItem}>
+          <IconSymbol size={14} name="person.2.fill" color={COLORS.textSecondary} />
+          <View style={styles.statContent}>
+            <Text style={styles.statValue} numberOfLines={1}>
+              {booking.numberOfSeats}
+            </Text>
+            <Text style={styles.statLabel} numberOfLines={1}>
+              Seat{booking.numberOfSeats !== 1 ? 's' : ''}
+            </Text>
+          </View>
+        </View>
+
+        {booking.ride.pricePerSeat && (
+          <View style={styles.statItem}>
+            <IconSymbol size={14} name="dollarsign.circle.fill" color={COLORS.primary} />
+            <View style={styles.statContent}>
+              <Text style={[styles.statValue, { color: COLORS.primary }]} numberOfLines={1}>
+                ${(booking.ride.pricePerSeat * booking.numberOfSeats).toFixed(2)}
+              </Text>
+              <Text style={styles.statLabel} numberOfLines={1}>Total</Text>
+            </View>
+          </View>
+        )}
+
+        {booking.ride.driverName && (
+          <View style={styles.statItem}>
+            <IconSymbol size={14} name="person.fill" color={COLORS.textSecondary} />
+            <View style={styles.statContent}>
+              <Text style={styles.statValue} numberOfLines={1}>
+                {booking.ride.driverName.split(' ')[0]}
+              </Text>
+              <Text style={styles.statLabel} numberOfLines={1}>Driver</Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Action Buttons */}
+      <View style={styles.actionsSection}>
         {isRideStarted ? (
           <TouchableOpacity
             style={styles.trackButton}
@@ -125,12 +162,12 @@ export const ConfirmedBookingCard: React.FC<ConfirmedBookingCardProps> = ({
           <>
             {canEdit && (
               <TouchableOpacity
-                style={styles.editActionButton}
+                style={styles.editButton}
                 onPress={onEdit}
                 activeOpacity={0.8}
               >
-                <IconSymbol size={16} name="pencil" color="#4285F4" />
-                <Text style={styles.editActionText}>Edit</Text>
+                <IconSymbol size={16} name="pencil" color={COLORS.primary} />
+                <Text style={styles.editButtonText}>Edit</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -138,7 +175,7 @@ export const ConfirmedBookingCard: React.FC<ConfirmedBookingCardProps> = ({
               onPress={onCancel}
               activeOpacity={0.8}
             >
-              <IconSymbol size={16} name="xmark.circle.fill" color="#FF3B30" />
+              <IconSymbol size={16} name="xmark.circle.fill" color={COLORS.error} />
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
           </>
@@ -149,128 +186,150 @@ export const ConfirmedBookingCard: React.FC<ConfirmedBookingCardProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
+  card: {
     backgroundColor: COLORS.surface,
-    marginHorizontal: RESPONSIVE_SPACING.margin,
-    marginBottom: SPACING.base,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.successTint,
+    borderColor: COLORS.border,
+    marginBottom: 16,
     overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.base,
-    paddingTop: SPACING.base,
-    paddingBottom: SPACING.md,
+    alignItems: 'flex-start',
+    padding: 20,
+    paddingBottom: 16,
   },
   headerLeft: {
     flex: 1,
-    minWidth: 0,
   },
-  badge: {
+  headerRight: {
+    marginLeft: 12,
+  },
+  dateTimeContainer: {
+    gap: 8,
+  },
+  dateText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    letterSpacing: -0.3,
+  },
+  timeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: COLORS.successTint,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.xs + 1,
-    borderRadius: BORDER_RADIUS.sm,
-    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 4,
   },
-  badgeDot: {
+  timeText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  statusDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: COLORS.success,
   },
-  badgeText: {
-    ...TYPOGRAPHY.badge,
-    color: COLORS.success,
+  statusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
-  editButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primaryTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    paddingHorizontal: SPACING.base,
-    paddingBottom: SPACING.base,
-  },
-  dateTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  dateText: {
-    ...TYPOGRAPHY.h3,
-    fontSize: 16,
-    color: COLORS.textPrimary,
-  },
-  timeText: {
-    ...TYPOGRAPHY.bodySmall,
-    color: COLORS.textSecondary,
-  },
-  routeContainer: {
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
+  routeSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
   routeItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm + 2,
+    alignItems: 'flex-start',
+    gap: 12,
   },
   routeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 6,
     backgroundColor: COLORS.primary,
   },
   routeDotDest: {
     backgroundColor: COLORS.error,
   },
-  routeText: {
+  routeContent: {
     flex: 1,
-    minWidth: 0,
-    ...TYPOGRAPHY.bodySmall,
+    gap: 2,
+  },
+  routeLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  routeAddress: {
+    fontSize: 15,
+    fontWeight: '500',
     color: COLORS.textPrimary,
+    lineHeight: 20,
   },
-  routeConnector: {
+  routeLine: {
     width: 2,
-    height: 10,
-    backgroundColor: COLORS.border,
-    marginLeft: 3,
+    height: 16,
+    marginLeft: 4,
+    marginVertical: 8,
     borderRadius: 1,
+    backgroundColor: COLORS.border,
   },
-  detailsRow: {
+  statsSection: {
     flexDirection: 'row',
-    gap: SPACING.base,
-    paddingTop: SPACING.md,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    gap: 8,
   },
-  detailItem: {
+  statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
   },
-  detailText: {
-    ...TYPOGRAPHY.bodySmall,
-    fontSize: 13,
-    color: COLORS.textSecondary,
+  statContent: {
+    flexShrink: 1,
+    minWidth: 0,
   },
-  actionsRow: {
+  statValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    flexShrink: 1,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: COLORS.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    flexShrink: 1,
+  },
+  actionsSection: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.base,
-    paddingVertical: SPACING.base,
-    paddingTop: SPACING.md,
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
@@ -279,30 +338,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,
-    ...BUTTONS.primary,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
   },
   trackButtonText: {
-    ...TYPOGRAPHY.body,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  editActionButton: {
+  editButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: COLORS.primaryTint,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    gap: 8,
+    backgroundColor: 'rgba(66, 133, 244, 0.15)',
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.primary,
   },
-  editActionText: {
-    ...TYPOGRAPHY.body,
+  editButtonText: {
+    fontSize: 15,
     fontWeight: '600',
     color: COLORS.primary,
   },
@@ -311,17 +370,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,
-    backgroundColor: COLORS.errorTint,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    gap: 8,
+    backgroundColor: 'rgba(255, 59, 48, 0.15)',
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.error,
   },
   cancelButtonText: {
-    ...TYPOGRAPHY.body,
+    fontSize: 15,
     fontWeight: '600',
     color: COLORS.error,
   },
 });
-

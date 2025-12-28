@@ -19,38 +19,49 @@ export const ActiveBookingCard: React.FC<ActiveBookingCardProps> = ({
       onPress={onPress}
       activeOpacity={0.9}
     >
-      {/* Status Badge */}
-      <View style={styles.statusBadge}>
-        <View style={styles.statusDot} />
-        <Text style={styles.statusText}>ACTIVE RIDE</Text>
-      </View>
-
-      {/* Route */}
-      <View style={styles.routeSection}>
-        <View style={styles.routeRow}>
-          <View style={styles.routeDot} />
-          <Text style={styles.routeText} numberOfLines={1}>{booking.ride.fromAddress}</Text>
-        </View>
-        <View style={styles.routeRow}>
-          <View style={[styles.routeDot, styles.routeDotDest]} />
-          <Text style={styles.routeText} numberOfLines={1}>{booking.ride.toAddress}</Text>
-        </View>
-      </View>
-
-      {/* Footer with driver and track button */}
-      <View style={styles.footer}>
-        <View style={styles.driverInfo}>
-          <IconSymbol size={12} name="person.fill" color={COLORS.textSecondary} />
-          <Text style={styles.driverText} numberOfLines={1}>{booking.ride.driverName}</Text>
+      <View style={styles.liveHeader}>
+        <View style={styles.liveBadge}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE RIDE</Text>
         </View>
         <TouchableOpacity
-          style={styles.trackButton}
+          style={styles.viewRideButton}
           onPress={onPress}
           activeOpacity={0.7}
         >
-          <Text style={styles.trackButtonText}>Track</Text>
-          <IconSymbol size={14} name="chevron.right" color={COLORS.primary} />
+          <Text style={styles.viewRideButtonText}>View Ride</Text>
+          <IconSymbol size={14} name="chevron.right" color="#4285F4" />
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.info}>
+        <View style={styles.statusRow}>
+          <IconSymbol size={16} name="car.fill" color="#4285F4" />
+          <Text style={styles.statusLabel}>Active Ride</Text>
+        </View>
+        <Text style={styles.routeLabel}>Route</Text>
+        <View style={styles.routeContainer}>
+          <View style={styles.routeItem}>
+            <View style={styles.routeIndicator} />
+            <Text style={styles.routeText} numberOfLines={1}>
+              {booking.ride.fromAddress}
+            </Text>
+          </View>
+          <View style={styles.routeConnector} />
+          <View style={styles.routeItem}>
+            <View style={[styles.routeIndicator, styles.routeIndicatorDest]} />
+            <Text style={styles.routeText} numberOfLines={1}>
+              {booking.ride.toAddress}
+            </Text>
+          </View>
+        </View>
+        
+        <View style={styles.driverInfo}>
+          <IconSymbol size={14} name="person.fill" color="#FFFFFF" />
+          <Text style={styles.driverText}>
+            {booking.ride.driverName}
+          </Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -58,90 +69,126 @@ export const ActiveBookingCard: React.FC<ActiveBookingCardProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.base,
-    borderWidth: 1.5,
-    borderColor: COLORS.primary,
+    backgroundColor: '#0F0F0F',
+    marginHorizontal: 20,
+    marginBottom: 24,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: '#4285F4',
   },
-  statusBadge: {
+  liveHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: COLORS.primaryTint,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs - 1,
-    borderRadius: BORDER_RADIUS.sm,
-    alignSelf: 'flex-start',
-    marginBottom: SPACING.sm,
+    gap: 6,
+    backgroundColor: 'rgba(66, 133, 244, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.primary,
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4285F4',
   },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.primary,
-    letterSpacing: 0.5,
+  liveText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#4285F4',
+    letterSpacing: 1.2,
+  },
+  viewRideButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(66, 133, 244, 0.15)',
+  },
+  viewRideButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4285F4',
+  },
+  info: {
+    marginBottom: 16,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  statusLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    opacity: 0.7,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  routeSection: {
-    gap: SPACING.xs + 2,
-    marginBottom: SPACING.sm,
+  routeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    opacity: 0.6,
+    marginTop: 12,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  routeRow: {
+  routeContainer: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  routeItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: 10,
   },
-  routeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.primary,
+  routeIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4285F4',
   },
-  routeDotDest: {
-    backgroundColor: COLORS.error,
+  routeIndicatorDest: {
+    backgroundColor: '#FF3B30',
   },
   routeText: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
-    color: COLORS.textPrimary,
-    lineHeight: 16,
+    color: '#FFFFFF',
+    opacity: 0.9,
   },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+  routeConnector: {
+    width: 2,
+    height: 12,
+    marginLeft: 3,
+    marginVertical: 2,
+    borderRadius: 1,
+    backgroundColor: '#4285F4',
+    opacity: 0.3,
   },
   driverInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    flex: 1,
+    gap: 8,
+    marginTop: 12,
   },
   driverText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '500',
-    color: COLORS.textSecondary,
-  },
-  trackButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs - 1,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-  },
-  trackButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.primary,
+    color: '#FFFFFF',
+    opacity: 0.9,
   },
 });

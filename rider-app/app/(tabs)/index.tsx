@@ -15,7 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 import { getUpcomingRides, getRiderBookings, cancelBooking, type Ride, type RiderBooking } from '@/services/api';
-import { ActiveBookingCard, ConfirmedBookingCard, RideCard } from '@/components/home';
+import { ActiveBookingCard, ConfirmedBookingCard, RideCard, HomeHeader } from '@/components/home';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, RESPONSIVE_SPACING } from '@/constants/designSystem';
 import { handleErrorSilently, handleErrorWithAlert, isAuthenticationError } from '@/utils/errorHandler';
@@ -173,7 +173,7 @@ export default function HomeScreen(): React.JSX.Element {
                   bookedRideIds.add(b.ride.id);
                 }
               });
-      }
+          }
         } catch (bookingError) {
           // Silently fail bookings fetch - it's optional for filtering
           handleErrorSilently(bookingError, 'fetchBookingsForFiltering');
@@ -294,76 +294,65 @@ export default function HomeScreen(): React.JSX.Element {
         <StatusBar style="light" />
         <View style={styles.initialLoadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   const userName = user.firstName || user.email?.split('@')[0] || 'User';
+  const greeting = (() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  })();
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
-      
-      {/* Simplified Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>
-            {(() => {
-              const hour = new Date().getHours();
-              if (hour < 12) return 'Good morning';
-              if (hour < 18) return 'Good afternoon';
-              return 'Good evening';
-            })()}
-          </Text>
-          <Text style={styles.userName}>{userName}</Text>
-          {(currentCity || currentState) && (
-            <View style={styles.locationRow}>
-              <IconSymbol size={14} name="location.fill" color={COLORS.primary} />
-              <Text style={styles.locationText}>
-                {currentCity && currentState ? `${currentCity}, ${currentState}` : currentCity || currentState}
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
             tintColor={COLORS.primary}
             colors={[COLORS.primary]}
             progressBackgroundColor={COLORS.surface}
           />
         }
       >
-        {/* Active Booking - Priority Display */}
+        {/* Greeting Section */}
+        <HomeHeader
+          userName={userName}
+          greeting={greeting}
+          currentCity={currentCity}
+          currentState={currentState}
+        />
+
+        {/* Current Active Booking */}
         {activeBooking && (
-          <View style={styles.activeBookingWrapper}>
-            <ActiveBookingCard
-              booking={activeBooking}
-              onPress={() => {
-                router.push({
-                  pathname: '/track-driver',
-                  params: {
-                    booking: JSON.stringify(activeBooking),
-                  },
-                });
-              }}
-            />
-                  </View>
+          <ActiveBookingCard
+            booking={activeBooking}
+            onPress={() => {
+              router.push({
+                pathname: '/track-driver',
+                params: {
+                  booking: JSON.stringify(activeBooking),
+                },
+              });
+            }}
+          />
         )}
 
-        {/* Confirmed Bookings - Simplified Section */}
+        {/* Confirmed Bookings Section */}
         {confirmedBookings.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Confirmed Bookings</Text>
+          <View style={styles.ridesContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Confirmed bookings</Text>
+            </View>
             {confirmedBookings.map((booking) => (
               <ConfirmedBookingCard
                 key={booking.id}
@@ -404,32 +393,36 @@ export default function HomeScreen(): React.JSX.Element {
                   );
                 }}
                 onTrack={() => {
-                      router.push({
-                        pathname: '/track-driver',
-                        params: {
+                  router.push({
+                    pathname: '/track-driver',
+                    params: {
                       booking: JSON.stringify(booking),
-                        },
-                      });
-                    }}
+                    },
+                  });
+                }}
               />
             ))}
           </View>
         )}
 
-        {/* Available Rides - Clean Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Available Rides</Text>
-          
+        {/* Available Rides Section */}
+        <View style={styles.ridesContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Available rides</Text>
+          </View>
+
           {isLoadingRides ? (
-            <View style={styles.loadingContainer}>
+            <View style={styles.emptyContainer}>
               <ActivityIndicator size="large" color={COLORS.primary} />
-              <Text style={styles.loadingText}>Loading rides...</Text>
+              <Text style={styles.emptySubtext}>Loading rides...</Text>
             </View>
           ) : rides.length === 0 ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconContainer}>
-                <IconSymbol size={72} name="car.fill" color={COLORS.textTertiary} />
-              </View>
+            <View style={styles.emptyContainer}>
+              <IconSymbol
+                size={48}
+                name="car"
+                color={COLORS.textTertiary}
+              />
               <Text style={styles.emptyTitle}>No rides available</Text>
               <Text style={styles.emptySubtext}>
                 There are no rides available at the moment.{'\n'}
@@ -445,26 +438,24 @@ export default function HomeScreen(): React.JSX.Element {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.ridesList}>
-              {rides
-              .filter(ride => ride && ride.id) // Ensure ride has valid ID
+            rides
+              .filter(ride => ride && ride.id)
               .map((ride) => (
                 <RideCard
-                key={ride.id}
+                  key={ride.id}
                   ride={ride}
-                onPress={() => {
+                  onPress={() => {
                     if (ride && ride.id) {
-                  router.push({
-                    pathname: '/ride-details',
-                    params: {
-                      ride: JSON.stringify(ride),
-                    },
-                  });
+                      router.push({
+                        pathname: '/ride-details',
+                        params: {
+                          ride: JSON.stringify(ride),
+                        },
+                      });
                     }
                   }}
                 />
-              ))}
-                </View>
+              ))
           )}
         </View>
       </ScrollView>
@@ -477,121 +468,55 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  // Simplified Header
-  header: {
-    paddingHorizontal: RESPONSIVE_SPACING.padding,
-    paddingTop: SPACING.base,
-    paddingBottom: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  greeting: {
-    ...TYPOGRAPHY.caption,
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  userName: {
-    ...TYPOGRAPHY.h1,
-    fontSize: 28,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs + 2,
-    marginTop: SPACING.xs,
-  },
-  locationText: {
-    ...TYPOGRAPHY.bodySmall,
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  // Scroll View
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: SPACING.xxxl,
+    paddingBottom: 20,
   },
-  // Active Booking
-  activeBookingWrapper: {
-    marginHorizontal: RESPONSIVE_SPACING.margin,
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.xl,
-  },
-  // Sections
-  section: {
-    marginHorizontal: RESPONSIVE_SPACING.margin,
-    marginBottom: SPACING.xl,
-  },
-  sectionTitle: {
-    ...TYPOGRAPHY.h3,
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.base,
-    letterSpacing: -0.3,
-  },
-  // Rides List
-  ridesList: {
-    gap: SPACING.base,
-  },
-  // Initial Loading State
   initialLoadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     gap: SPACING.base,
   },
-  // Loading State (for rides)
-  loadingContainer: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.xxxl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 180,
-    gap: SPACING.base,
-  },
   loadingText: {
     ...TYPOGRAPHY.bodySmall,
     color: COLORS.textSecondary,
   },
-  // Empty State
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.xxxl,
-    paddingHorizontal: SPACING.lg,
+  ridesContainer: {
+    marginHorizontal: 20,
+    marginBottom: 24,
   },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: COLORS.surface,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.lg,
+    marginBottom: 16,
   },
-  emptyTitle: {
-    ...TYPOGRAPHY.h3,
-    fontSize: 22,
+  sectionTitle: {
+    fontSize: 20,
     fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: SPACING.base,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginTop: 16,
+    marginBottom: 8,
   },
   emptySubtext: {
-    ...TYPOGRAPHY.body,
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '400',
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
-    marginTop: SPACING.sm,
   },
   emptyButton: {
     flexDirection: 'row',

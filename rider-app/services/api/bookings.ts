@@ -157,6 +157,20 @@ export async function getRiderBookings(riderId: number): Promise<RiderBookingsRe
   } catch (error: unknown) {
     logger.error('getRiderBookings error', error, 'getRiderBookings');
     
+    // Check if it's a timeout error
+    if (error instanceof TypeError && error.message.includes('timed out')) {
+      logger.error('Request timed out', {
+        apiUrl: API_URL,
+        url,
+        message: 'The request took too long. The server may be slow or overloaded.',
+      }, 'getRiderBookings');
+      
+      throw {
+        message: 'Request timed out. The server is taking too long to respond. Please try again.',
+        status: 0,
+      } as ApiError;
+    }
+    
     // Check if it's a network error
     if (error instanceof TypeError && error.message.includes('Network request failed')) {
       logger.error('Network connectivity issue. Check:', {

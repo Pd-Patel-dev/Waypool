@@ -1,4 +1,4 @@
-import { API_URL } from '@/config/api';
+import { API_URL, API_CONFIG } from '@/config/api';
 import { logger } from '@/utils/logger';
 import { getErrorMessage, getErrorStatus, isApiError } from '@/types/errors';
 import { storeTokens } from '@/utils/tokenStorage';
@@ -59,6 +59,36 @@ export interface AuthResponse {
   };
 }
 
+/**
+ * Fetch with timeout support using AbortController
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = API_CONFIG.timeout
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error: unknown) {
+    clearTimeout(timeoutId);
+    
+    // Check if it's an abort error (timeout)
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new TypeError('Network request timed out');
+    }
+    
+    throw error;
+  }
+}
+
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   try {
     // Get valid access token (will refresh if expired)
@@ -70,7 +100,8 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
       ...options.headers,
     };
 
-    const response = await fetch(url, {
+    // Use fetchWithTimeout instead of fetch
+    const response = await fetchWithTimeout(url, {
       ...options,
       headers,
     });
@@ -87,7 +118,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
           'Authorization': `Bearer ${newToken}`,
         };
         
-        return fetch(url, {
+        return fetchWithTimeout(url, {
           ...options,
           headers: retryHeaders,
         });
@@ -97,8 +128,12 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
     return response;
   } catch (error: unknown) {
     // Re-throw network errors with more context
-    if (error instanceof TypeError && error.message.includes('Network request failed')) {
-      logger.error('Network request failed', { url, error }, 'fetchWithAuth');
+    if (error instanceof TypeError) {
+      if (error.message.includes('Network request failed')) {
+        logger.error('Network request failed', { url, error }, 'fetchWithAuth');
+      } else if (error.message.includes('timed out')) {
+        logger.error('Request timed out', { url, timeout: API_CONFIG.timeout }, 'fetchWithAuth');
+      }
       throw error; // Re-throw to be handled by caller
     }
     throw error;
