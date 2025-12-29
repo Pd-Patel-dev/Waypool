@@ -28,9 +28,9 @@ export async function checkStripeStatus(): Promise<ServiceStatus> {
       };
     }
 
-    // Try to retrieve account info (lightweight check)
+    // Try to retrieve balance (lightweight check that validates API key)
     try {
-      await stripe.account.retrieve();
+      await stripe.balance.retrieve();
       return {
         name: 'Stripe',
         status: 'healthy',
