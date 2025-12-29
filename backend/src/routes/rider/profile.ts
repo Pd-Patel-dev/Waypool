@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { authenticate, requireRider } from '../../middleware/auth';
+import { validate } from '../../middleware/validation';
+import { updateRiderProfileValidation } from '../../middleware/validators/profileValidators';
 import {
   sendSuccess,
   sendBadRequest,
@@ -63,7 +65,7 @@ router.get('/', authenticate, requireRider, async (req: Request, res: Response) 
  * Requires: JWT token in Authorization header
  * Body: fullName (or firstName/lastName), email, phoneNumber, photoUrl, city (all optional)
  */
-router.put('/', authenticate, requireRider, async (req: Request, res: Response) => {
+router.put('/', authenticate, requireRider, validate(updateRiderProfileValidation), async (req: Request, res: Response) => {
   try {
     // Get user ID from JWT token (already verified by middleware)
     const riderId = req.user!.userId;

@@ -18,6 +18,7 @@ import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { type Ride, getRideById, cancelRide } from "@/services/api";
 import { useUser } from "@/context/UserContext";
 import { calculateTotalDistance } from "@/utils/distance";
+import { calculateBookedSeats, calculateAvailableSeats } from "@/utils/price";
 
 export default function UpcomingRideDetailsScreen(): React.JSX.Element {
   const params = useLocalSearchParams();
@@ -93,10 +94,8 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
   }
 
   const pricePerSeat = rideData.pricePerSeat || rideData.price || 0;
-  const totalSeatsBooked = rideData.passengers?.reduce((sum, passenger) => {
-    const seats = (passenger as any).numberOfSeats || 1;
-    return sum + seats;
-  }, 0) || 0;
+  const totalSeatsBooked = calculateBookedSeats(rideData);
+  const availableSeats = calculateAvailableSeats(rideData);
   const potentialEarnings = totalSeatsBooked * pricePerSeat;
   const passengerCount = rideData.passengers?.length || 0;
 
@@ -493,7 +492,7 @@ export default function UpcomingRideDetailsScreen(): React.JSX.Element {
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Available Seats</Text>
               <Text style={styles.detailValue}>
-                {rideData.availableSeats} of {rideData.totalSeats}
+                {availableSeats} of {rideData.totalSeats}
               </Text>
             </View>
             <View style={styles.detailRow}>

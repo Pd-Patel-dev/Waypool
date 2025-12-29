@@ -8,6 +8,14 @@ import { socketService } from "../../services/socketService";
 import { calculateRideEarnings } from "../../utils/earnings";
 import { authenticate, requireDriver } from "../../middleware/auth";
 import { calculateDistanceInMiles } from "../../utils/distance";
+import { validate } from "../../middleware/validation";
+import {
+  createRideValidation,
+  updateRideValidation,
+  rideIdValidation,
+  startRideValidation,
+  completeRideValidation,
+} from "../../middleware/validators/rideValidators";
 import {
   sendSuccess,
   sendError,
@@ -30,6 +38,7 @@ router.post(
   "/",
   authenticate,
   requireDriver,
+  validate(createRideValidation),
   async (req: Request, res: Response) => {
     try {
       // Get driver ID from JWT token (already verified by middleware)
@@ -1263,6 +1272,7 @@ router.put(
   "/:id",
   authenticate,
   requireDriver,
+  validate(updateRideValidation),
   async (req: Request, res: Response) => {
     try {
       const rideIdParam = req.params.id;
@@ -1461,9 +1471,16 @@ router.put(
               },
             }).catch((error) => {
               console.error(
-                `❌ Error sending modification email to rider ${booking.riderId}:`,
+                `❌ Error sending modification email to rider ${booking.riderId} (${booking.users.email}):`,
                 error
               );
+              console.error(`   Error details:`, {
+                message: error?.message,
+                code: error?.code,
+                stack: error?.stack,
+              });
+              // Re-throw to ensure we see the error in logs
+              throw error;
             });
 
             await Promise.all([notificationPromise, emailPromise]);
@@ -1512,7 +1529,7 @@ router.put(
  * Cancel a ride by ID (updates status to 'cancelled')
  * Query params: driverId (required for security)
  */
-router.put("/:id/cancel", async (req: Request, res: Response) => {
+router.put("/:id/cancel", validate(rideIdValidation), async (req: Request, res: Response) => {
   try {
     const rideIdParam = req.params.id;
     if (!rideIdParam) {
@@ -1677,6 +1694,7 @@ router.put(
   "/:id/start",
   authenticate,
   requireDriver,
+  validate(startRideValidation),
   async (req: Request, res: Response) => {
     try {
       const rideIdParam = req.params.id;
@@ -1796,10 +1814,14 @@ router.put(
         },
       });
 
-      // Create notifications for all confirmed passengers
+      // Create notifications and send emails/push notifications for all confirmed passengers
       if (ride.bookings.length > 0) {
-        const notificationPromises = ride.bookings.map((booking) =>
-          prisma.notifications
+        // Import email service
+        const { sendRideStartedEmail } = await import("../../services/emailService");
+
+        const notificationPromises = ride.bookings.map(async (booking) => {
+          // Create in-app notification
+          const notificationPromise = prisma.notifications
             .create({
               data: {
                 riderId: booking.riderId, // Store notification for the rider
@@ -1817,8 +1839,34 @@ router.put(
                 error
               );
               return null;
-            })
-        );
+            });
+
+          // Send email notification
+          const emailPromise = sendRideStartedEmail({
+            riderEmail: booking.users.email,
+            riderName: booking.users.fullName,
+            driverName: ride.driverName || "Driver",
+            rideDetails: {
+              fromAddress: ride.fromAddress,
+              toAddress: ride.toAddress,
+              departureDate: ride.departureDate || "",
+              departureTime: ride.departureTime || "",
+            },
+          }).catch((error) => {
+            console.error(
+              `❌ Error sending ride started email to rider ${booking.riderId} (${booking.users.email}):`,
+              error
+            );
+            console.error(`   Error details:`, {
+              message: error?.message,
+              code: error?.code,
+              stack: error?.stack,
+            });
+            // Don't throw - email failures shouldn't break the ride start flow
+          });
+
+          await Promise.all([notificationPromise, emailPromise]);
+        });
 
         await Promise.all(notificationPromises);
 
@@ -1873,7 +1921,7 @@ router.put(
  * Complete a ride (update status to 'completed')
  * Query params: driverId (required for security)
  */
-router.put("/:id/complete", async (req: Request, res: Response) => {
+router.put("/:id/complete", validate(completeRideValidation), async (req: Request, res: Response) => {
   try {
     const rideIdParam = req.params.id;
     const { driverLatitude, driverLongitude } = req.body;

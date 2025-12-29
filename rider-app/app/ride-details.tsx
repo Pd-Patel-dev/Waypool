@@ -145,6 +145,20 @@ export default function RideDetailsScreen(): React.JSX.Element {
         setRide(rideData);
         hasFetchedRoute.current = true;
         fetchRoute(rideData);
+        
+        // Fetch full ride details to get vehicle information
+        if (rideData.id) {
+          getRideById(rideData.id)
+            .then((response) => {
+              if (response.success && response.ride) {
+                setRide(response.ride);
+              }
+            })
+            .catch((error) => {
+              // Silently fail - we already have basic ride data
+              console.error('Error fetching full ride details:', error);
+            });
+        }
       } catch (error) {
         console.error('Error parsing ride data:', error);
       } finally {
@@ -178,16 +192,11 @@ export default function RideDetailsScreen(): React.JSX.Element {
   const formatDate = (dateString: string): string => {
     try {
       const date = new Date(dateString);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const dateOnly = new Date(date);
-      dateOnly.setHours(0, 0, 0, 0);
-
-      if (dateOnly.getTime() === today.getTime()) return 'Today';
-      if (dateOnly.getTime() === tomorrow.getTime()) return 'Tomorrow';
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'short', 
+        day: 'numeric', 
+        month: 'short' 
+      });
     } catch {
       return '';
     }
@@ -197,7 +206,7 @@ export default function RideDetailsScreen(): React.JSX.Element {
     try {
       const date = new Date(dateString);
       return date.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
+        hour: '2-digit', 
         minute: '2-digit',
         hour12: true 
       });
@@ -262,196 +271,224 @@ export default function RideDetailsScreen(): React.JSX.Element {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Map Section - Compact */}
-      {ride && (
+        {/* Map Section */}
+        {ride && (
           <View style={styles.mapContainer}>
-              <MapView
-                ref={mapRef}
-                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-                style={styles.map}
-                initialRegion={{
-                  latitude: (ride.fromLatitude + ride.toLatitude) / 2,
-                  longitude: (ride.fromLongitude + ride.toLongitude) / 2,
-                  latitudeDelta: Math.abs(ride.toLatitude - ride.fromLatitude) * 1.8 || 0.1,
-                  longitudeDelta: Math.abs(ride.toLongitude - ride.fromLongitude) * 1.8 || 0.1,
-                }}
-                showsUserLocation={false}
-                showsMyLocationButton={false}
-                showsCompass={false}
-                showsTraffic={false}
-                toolbarEnabled={false}
-                loadingEnabled={true}
+            <MapView
+              ref={mapRef}
+              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              style={styles.map}
+              initialRegion={{
+                latitude: (ride.fromLatitude + ride.toLatitude) / 2,
+                longitude: (ride.fromLongitude + ride.toLongitude) / 2,
+                latitudeDelta: Math.abs(ride.toLatitude - ride.fromLatitude) * 1.8 || 0.1,
+                longitudeDelta: Math.abs(ride.toLongitude - ride.fromLongitude) * 1.8 || 0.1,
+              }}
+              showsUserLocation={false}
+              showsMyLocationButton={false}
+              showsCompass={false}
+              showsTraffic={false}
+              toolbarEnabled={false}
+              loadingEnabled={true}
               loadingBackgroundColor={COLORS.background}
               loadingIndicatorColor={COLORS.primary}
-                onMapReady={() => {
-                  if (mapRef.current && routeCoordinates.length > 0) {
-                    setTimeout(() => {
-                      mapRef.current?.fitToCoordinates(routeCoordinates, {
+              onMapReady={() => {
+                if (mapRef.current && routeCoordinates.length > 0) {
+                  setTimeout(() => {
+                    mapRef.current?.fitToCoordinates(routeCoordinates, {
                       edgePadding: { top: 30, right: 30, bottom: 30, left: 30 },
-                        animated: true,
-                      });
-                    }, 300);
-                  } else if (mapRef.current) {
-                    setTimeout(() => {
-                      mapRef.current?.fitToCoordinates(
-                        [
-                          { latitude: ride.fromLatitude, longitude: ride.fromLongitude },
-                          { latitude: ride.toLatitude, longitude: ride.toLongitude },
-                        ],
-                        {
+                      animated: true,
+                    });
+                  }, 300);
+                } else if (mapRef.current) {
+                  setTimeout(() => {
+                    mapRef.current?.fitToCoordinates(
+                      [
+                        { latitude: ride.fromLatitude, longitude: ride.fromLongitude },
+                        { latitude: ride.toLatitude, longitude: ride.toLongitude },
+                      ],
+                      {
                         edgePadding: { top: 30, right: 30, bottom: 30, left: 30 },
-                          animated: true,
-                        }
-                      );
-                    }, 300);
-                  }
-                }}
-              >
+                        animated: true,
+                      }
+                    );
+                  }, 300);
+                }
+              }}
+            >
               {/* Route Line */}
-                {routeCoordinates.length > 0 ? (
-                  <>
-                    <Polyline
-                      coordinates={routeCoordinates}
-                      strokeColor="rgba(66, 133, 244, 0.3)"
-                    strokeWidth={6}
-                      lineCap="round"
-                      lineJoin="round"
-                    />
-                    <Polyline
-                      coordinates={routeCoordinates}
-                    strokeColor={COLORS.primary}
-                    strokeWidth={4}
-                      lineCap="round"
-                      lineJoin="round"
-                    />
-                  </>
-                ) : (
+              {routeCoordinates.length > 0 ? (
+                <>
                   <Polyline
-                    coordinates={[
-                      { latitude: ride.fromLatitude, longitude: ride.fromLongitude },
-                      { latitude: ride.toLatitude, longitude: ride.toLongitude },
-                    ]}
-                  strokeColor={COLORS.primary}
-                  strokeWidth={4}
+                    coordinates={routeCoordinates}
+                    strokeColor="rgba(66, 133, 244, 0.3)"
+                    strokeWidth={6}
                     lineCap="round"
                     lineJoin="round"
-                  lineDashPattern={[8, 4]}
                   />
-                )}
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeColor={COLORS.primary}
+                    strokeWidth={4}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                </>
+              ) : (
+                <Polyline
+                  coordinates={[
+                    { latitude: ride.fromLatitude, longitude: ride.fromLongitude },
+                    { latitude: ride.toLatitude, longitude: ride.toLongitude },
+                  ]}
+                  strokeColor={COLORS.primary}
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineJoin="round"
+                  lineDashPattern={[8, 4]}
+                />
+              )}
               
               {/* Start Marker */}
-                <Marker 
-                  coordinate={{
-                    latitude: ride.fromLatitude,
-                    longitude: ride.fromLongitude,
-                  }}
-                >
+              <Marker 
+                coordinate={{
+                  latitude: ride.fromLatitude,
+                  longitude: ride.fromLongitude,
+                }}
+              >
                 <View style={styles.markerStart}>
                   <View style={styles.markerDot} />
-                  </View>
-                </Marker>
-                
+                </View>
+              </Marker>
+              
               {/* Destination Marker */}
-                <Marker 
-                  coordinate={{
-                    latitude: ride.toLatitude,
-                    longitude: ride.toLongitude,
-                  }}
-                >
+              <Marker 
+                coordinate={{
+                  latitude: ride.toLatitude,
+                  longitude: ride.toLongitude,
+                }}
+              >
                 <View style={styles.markerEnd}>
                   <View style={styles.markerDotEnd} />
-                  </View>
-                </Marker>
-              </MapView>
-              
-              {/* Distance Badge */}
-              {ride.distance && (
+                </View>
+              </Marker>
+            </MapView>
+            
+            {/* Distance Badge */}
+            {ride.distance && (
               <View style={styles.distanceBadge}>
                 <IconSymbol size={14} name="mappin.circle.fill" color={COLORS.primary} />
                 <Text style={styles.distanceText}>{ride.distance.toFixed(1)} mi</Text>
-                </View>
-              )}
-            </View>
-          )}
-
-        {/* All Info in One Card */}
-        <View style={styles.card}>
-          {/* Route Section */}
-          <View style={styles.routeRow}>
-            <View style={styles.routeDot} />
-            <View style={styles.routeContent}>
-              <Text style={styles.routeLabel}>Pickup</Text>
-              <Text style={styles.routeAddress} numberOfLines={1}>{ride.fromAddress}</Text>
-            </View>
+              </View>
+            )}
           </View>
-          <View style={styles.routeSeparator} />
-          <View style={styles.routeRow}>
-            <View style={[styles.routeDot, styles.routeDotDest]} />
-            <View style={styles.routeContent}>
-              <Text style={styles.routeLabel}>Destination</Text>
-              <Text style={styles.routeAddress} numberOfLines={1}>{ride.toAddress}</Text>
-            </View>
-          </View>
+        )}
 
-          {/* Separator */}
-          <View style={styles.sectionSeparator} />
-
-          {/* Date & Time Row */}
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
-              <IconSymbol size={16} name="calendar" color={COLORS.textSecondary} />
-              <Text style={styles.infoText}>{formatDate(ride.departureTime)}</Text>
-            </View>
-            <View style={styles.infoItem}>
-              <IconSymbol size={16} name="clock.fill" color={COLORS.textSecondary} />
-              <Text style={styles.infoText}>{formatTime(ride.departureTime)}</Text>
+        {/* Departure Card */}
+        <View style={styles.departureCard}>
+          <Text style={styles.departureCardTitle}>Departure</Text>
+          
+          {/* Pick up */}
+          <View style={styles.detailRow}>
+            <Text style={styles.detailRowLabel}>Pick up</Text>
+            <View style={styles.detailRowValue}>
+              <IconSymbol size={16} name="mappin.circle.fill" color={COLORS.primary} />
+              <Text style={styles.detailRowText} numberOfLines={1}>{ride.fromAddress}</Text>
             </View>
           </View>
           
-          {/* Seats & Price Row */}
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
+          {/* Drop off */}
+          <View style={styles.detailRow}>
+            <Text style={styles.detailRowLabel}>Drop off</Text>
+            <View style={styles.detailRowValue}>
+              <IconSymbol size={16} name="mappin.circle.fill" color={COLORS.error} />
+              <Text style={styles.detailRowText} numberOfLines={1}>{ride.toAddress}</Text>
+            </View>
+          </View>
+          
+          {/* Date */}
+          <View style={styles.detailRow}>
+            <View style={styles.detailRowLabelContainer}>
+              <IconSymbol size={16} name="calendar" color={COLORS.textSecondary} />
+              <Text style={styles.detailRowLabel}>Date</Text>
+            </View>
+            <Text style={styles.detailRowText}>{formatDate(ride.departureTime)}</Text>
+          </View>
+          
+          {/* Depart */}
+          <View style={styles.detailRow}>
+            <View style={styles.detailRowLabelContainer}>
+              <IconSymbol size={16} name="clock.fill" color={COLORS.textSecondary} />
+              <Text style={styles.detailRowLabel}>Depart</Text>
+            </View>
+            <Text style={styles.detailRowText}>{formatTime(ride.departureTime)}</Text>
+          </View>
+          
+          {/* Seats available */}
+          <View style={[styles.detailRow, styles.detailRowLast]}>
+            <View style={styles.detailRowLabelContainer}>
               <IconSymbol size={16} name="person.2.fill" color={COLORS.textSecondary} />
-              <Text style={styles.infoText}>{ride.availableSeats} seats</Text>
+              <Text style={styles.detailRowLabel}>Seats available</Text>
             </View>
-            <View style={styles.infoItem}>
-              <IconSymbol size={16} name="dollarsign.circle.fill" color={COLORS.primary} />
-              <Text style={[styles.infoText, styles.priceText]}>${price.toFixed(2)}/seat</Text>
-            </View>
+            <Text style={styles.detailRowText}>{ride.availableSeats}</Text>
           </View>
+        </View>
 
-          {/* Separator */}
-          <View style={styles.sectionSeparator} />
-
-          {/* Driver Row */}
-          <View style={styles.driverRow}>
-            <View style={styles.driverAvatar}>
-              <Text style={styles.driverInitial}>
-                {ride.driverName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.driverInfo}>
-              <Text style={styles.driverName}>{ride.driverName}</Text>
-              {ride.carMake && ride.carModel && (
-                <Text style={styles.carInfo}>
-                  {ride.carYear} {ride.carMake} {ride.carModel}
+        {/* Driver and Vehicle Details Card */}
+        {ride.driverName && (
+          <View style={styles.driverCard}>
+            <Text style={styles.driverCardTitle}>Driver and Vehicle details</Text>
+            <View style={styles.driverCardContent}>
+              <View style={styles.driverCardAvatar}>
+                <Text style={styles.driverCardInitial}>
+                  {ride.driverName.charAt(0).toUpperCase()}
                 </Text>
-              )}
+              </View>
+              <View style={styles.driverCardInfo}>
+                <Text style={styles.driverCardName}>{ride.driverName}</Text>
+                {(() => {
+                  // Check both ride and driver object for vehicle info
+                  const carMake = ride.carMake || (ride.driver as any)?.carMake;
+                  const carModel = ride.carModel || (ride.driver as any)?.carModel;
+                  const carYear = ride.carYear || (ride.driver as any)?.carYear;
+                  const carColor = ride.carColor || (ride.driver as any)?.carColor;
+                  
+                  if (carMake || carModel || carYear) {
+                    const parts = [];
+                    if (carYear) parts.push(carYear.toString());
+                    if (carMake) parts.push(carMake);
+                    if (carModel) parts.push(carModel);
+                    const vehicleText = parts.join(' ');
+                    return (
+                      <Text style={styles.driverCardVehicle}>
+                        {vehicleText}
+                        {carColor && ` • ${carColor}`}
+                      </Text>
+                    );
+                  }
+                  return (
+                    <Text style={styles.driverCardVehiclePlaceholder}>
+                      Vehicle information not available
+                    </Text>
+                  );
+                })()}
+              </View>
             </View>
           </View>
-            </View>
+        )}
       </ScrollView>
 
-      {/* Book Button - Fixed at bottom */}
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={styles.bookButton}
-              onPress={handleBookSeat}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.bookButtonText}>Book Seat</Text>
-          <IconSymbol size={20} name="arrow.right" color={COLORS.textPrimary} />
-            </TouchableOpacity>
+      {/* Booking Bar - Fixed at bottom */}
+      <View style={styles.bookingBar}>
+        <View style={styles.priceContainer}>
+          <Text style={styles.priceText}>${price.toFixed(2)}/Passenger</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.bookNowButton}
+          onPress={handleBookSeat}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.bookNowButtonText}>Book Now</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -525,11 +562,11 @@ const styles = StyleSheet.create({
   },
   // Map
   mapContainer: {
-    height: 240,
+    height: 280,
     backgroundColor: COLORS.background,
     marginHorizontal: RESPONSIVE_SPACING.margin,
     marginTop: SPACING.base,
-    marginBottom: SPACING.base,
+    marginBottom: SPACING.lg,
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
     borderWidth: 1,
@@ -583,136 +620,154 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
-  // Cards
-  card: {
+  // Departure Card
+  departureCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.base,
+    borderRadius: BORDER_RADIUS.lg,
     marginHorizontal: RESPONSIVE_SPACING.margin,
     marginBottom: SPACING.base,
+    padding: SPACING.base,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  // Route Card
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: SPACING.sm,
-  },
-  routeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 6,
-    backgroundColor: COLORS.primary,
-  },
-  routeDotDest: {
-    backgroundColor: COLORS.error,
-  },
-  routeContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-  routeLabel: {
-    ...TYPOGRAPHY.badge,
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs / 2,
-  },
-  routeAddress: {
-    ...TYPOGRAPHY.body,
-    fontSize: 14,
+  departureCardTitle: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 18,
+    fontWeight: '700',
     color: COLORS.textPrimary,
-    lineHeight: 20,
+    marginBottom: SPACING.base,
   },
-  routeSeparator: {
-    width: 2,
-    height: 12,
-    backgroundColor: COLORS.border,
-    marginLeft: 3,
-    marginVertical: SPACING.sm,
-  },
-  sectionSeparator: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: SPACING.base,
-  },
-  // Info Rows
-  infoRow: {
+  detailRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  infoItem: {
+  detailRowLast: {
+    borderBottomWidth: 0,
+  },
+  detailRowLabel: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  detailRowLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  detailRowValue: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
     flex: 1,
+    justifyContent: 'flex-end',
   },
-  infoText: {
-    ...TYPOGRAPHY.bodySmall,
-    fontSize: 13,
+  detailRowText: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
+    fontWeight: '500',
     color: COLORS.textPrimary,
+    textAlign: 'right',
+    flex: 1,
   },
-  priceText: {
-    color: COLORS.primary,
-    fontWeight: '600',
+  // Driver Card
+  driverCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    marginHorizontal: RESPONSIVE_SPACING.margin,
+    marginBottom: SPACING.lg,
+    padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  driverRow: {
+  driverCardTitle: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.base,
+  },
+  driverCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.base,
   },
-  driverAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  driverCardAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  driverInitial: {
-    ...TYPOGRAPHY.h3,
-    fontSize: 20,
+  driverCardInitial: {
+    ...TYPOGRAPHY.h2,
+    fontSize: 24,
+    fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  driverInfo: {
+  driverCardInfo: {
     flex: 1,
     minWidth: 0,
   },
-  driverName: {
+  driverCardName: {
     ...TYPOGRAPHY.body,
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.textPrimary,
     marginBottom: SPACING.xs / 2,
   },
-  carInfo: {
+  driverCardVehicle: {
     ...TYPOGRAPHY.bodySmall,
+    fontSize: 14,
     color: COLORS.textSecondary,
   },
-  // Button
-  buttonContainer: {
+  driverCardVehiclePlaceholder: {
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 14,
+    color: COLORS.textTertiary,
+    fontStyle: 'italic',
+  },
+  // Booking Bar
+  bookingBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: COLORS.background,
     paddingHorizontal: RESPONSIVE_SPACING.padding,
     paddingTop: SPACING.base,
     paddingBottom: SPACING.xl,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    gap: SPACING.base,
   },
-  bookButton: {
-    ...BUTTONS.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
+  priceContainer: {
+    flex: 1,
+  },
+  priceText: {
+    ...TYPOGRAPHY.body,
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  bookNowButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.base,
+    borderRadius: BORDER_RADIUS.md,
+    minHeight: 48,
     justifyContent: 'center',
-    gap: SPACING.sm,
-    minHeight: 52,
+    alignItems: 'center',
   },
-  bookButtonText: {
+  bookNowButtonText: {
     ...TYPOGRAPHY.body,
     fontSize: 16,
     fontWeight: '700',

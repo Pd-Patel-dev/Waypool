@@ -244,13 +244,86 @@ export async function fetchWithRetry(
 ): Promise<Response> {
   return retryApiCall(
     async () => {
-      const response = await fetch(url, options);
+      // Add timeout to fetch request (30 seconds default)
+      const timeoutMs = 30000;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error('Network request timed out');
+        }
+        throw error;
+      }
 
-      // If response is not ok, throw an error with status
+      // If response is not ok, try to parse error message from response body
       if (!response.ok) {
-        const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as Error & { status: number; response: Response };
-        error.status = response.status;
-        error.response = response;
+        let errorMessage = `HTTP ${response.status}: ${response.statusText || ''}`;
+        let errorDetails: any = null;
+        
+        // Try to get error message from response body
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            // Clone response to read body without consuming it
+            const clonedResponse = response.clone();
+            const errorData = await clonedResponse.json();
+            
+            // Extract error message
+            if (errorData.message) {
+              errorMessage = errorData.message;
+            }
+            
+            // Extract validation errors if present
+            if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+              errorMessage = errorData.errors.join(', ');
+              errorDetails = errorData.errors;
+            }
+            
+            // Store full error data for calling code
+            errorDetails = {
+              ...errorData,
+              errors: errorData.errors || [],
+            };
+          } else {
+            // Try to read as text
+            const clonedResponse = response.clone();
+            const text = await clonedResponse.text();
+            if (text) {
+              errorMessage = text;
+            }
+          }
+        } catch (parseError) {
+          // If parsing fails, use default error message
+          console.warn('Failed to parse error response:', parseError);
+        }
+        
+        // Create error object with extended properties
+        const error = Object.assign(
+          new Error(errorMessage),
+          {
+            status: response.status,
+            response: response,
+            ...(errorDetails && {
+              errors: errorDetails.errors || [],
+              errorData: errorDetails,
+            }),
+          }
+        ) as Error & { 
+          status: number; 
+          response: Response;
+          errors?: string[];
+          errorData?: any;
+        };
+        
         throw error;
       }
 

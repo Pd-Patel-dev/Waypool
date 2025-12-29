@@ -153,20 +153,40 @@ router.put('/:id/accept', authenticate, requireDriver, async (req: Request, res:
     const now = new Date();
     const expiryDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
 
+    // Capture payment if payment intent exists and is authorized
+    if (booking.paymentIntentId && booking.paymentStatus === 'authorized') {
+      try {
+        const { capturePaymentIntent } = require('../services/paymentService');
+        await capturePaymentIntent(booking.paymentIntentId);
+        console.log(`✅ Payment captured for booking ${bookingId}`);
+      } catch (captureError) {
+        console.error('❌ Error capturing payment:', captureError);
+        // Continue with booking acceptance even if capture fails (will be handled by webhook)
+      }
+    }
+
     // Accept the booking and decrement available seats in a transaction
     // Accept booking and decrement seats in a transaction
     await prisma.$transaction(async (tx) => {
       // Update booking status to confirmed and set PIN
+      // Also update payment status if it was just captured
+      const updateData: any = {
+        status: 'confirmed',
+        pickupStatus: 'pending',
+        pickupPinHash: pickupPINHash,
+        pickupPinEncrypted: pickupPINEncrypted,
+        pickupPinExpiresAt: expiryDate,
+        pickupPinAttempts: 0,
+      };
+      
+      // If payment was just captured, update payment status
+      if (booking.paymentIntentId && booking.paymentStatus === 'authorized') {
+        updateData.paymentStatus = 'captured';
+      }
+      
       await tx.bookings.update({
         where: { id: bookingId },
-        data: {
-          status: 'confirmed',
-          pickupStatus: 'pending',
-          pickupPinHash: pickupPINHash,
-          pickupPinEncrypted: pickupPINEncrypted,
-          pickupPinExpiresAt: expiryDate,
-          pickupPinAttempts: 0,
-        },
+        data: updateData,
       });
 
       // Decrement available seats now that booking is accepted
@@ -228,9 +248,15 @@ router.put('/:id/accept', authenticate, requireDriver, async (req: Request, res:
           confirmationNumber: booking.confirmationNumber,
         },
       });
+      console.log(`✅ Booking confirmation email sent to rider: ${booking.users.email}`);
     } catch (emailError) {
-      // Don't fail the booking acceptance if email sending fails
-      console.error('❌ Error sending booking confirmation email:', emailError);
+      // Don't fail the booking acceptance if email sending fails, but log the error details
+      const errorMessage = emailError instanceof Error ? emailError.message : String(emailError);
+      console.error('❌ Error sending booking confirmation email to rider:', {
+        riderEmail: booking.users.email,
+        error: errorMessage,
+        stack: emailError instanceof Error ? emailError.stack : undefined,
+      });
     }
 
     // Emit real-time event to rider

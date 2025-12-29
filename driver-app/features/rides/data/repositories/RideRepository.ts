@@ -86,6 +86,13 @@ export class RideRepository implements IRideRepository {
           : 'Unknown error';
       
       console.error('RideRepository.findByDriverId error:', error);
+      
+      // Check if it's an authentication error that requires login
+      if (error && typeof error === 'object' && 'requiresLogin' in error && error.requiresLogin) {
+        // Preserve the authentication error message
+        throw new Error(errorMessage);
+      }
+      
       throw new Error(`Failed to fetch rides: ${errorMessage}`);
     }
   }

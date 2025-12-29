@@ -24,6 +24,7 @@ import {
 } from "@/services/api";
 import { useUser } from "@/context/UserContext";
 import { calculateDistance as calculateDistanceMiles, calculateDistanceMeters } from "@/utils/distance";
+import { calculateAvailableSeats } from "@/utils/price";
 
 // Import new components
 import {
@@ -670,6 +671,9 @@ export default function CurrentRideScreen(): React.JSX.Element {
     );
   }
 
+  // Calculate available seats from total seats minus booked seats
+  const availableSeats = calculateAvailableSeats(rideData);
+
   // RENDER WITH COMPONENTS (replaces 2,400+ lines of JSX)
   return (
     <SafeAreaView style={styles.container}>
@@ -728,7 +732,7 @@ export default function CurrentRideScreen(): React.JSX.Element {
           departureDate={rideData.departureDate || ''}
           departureTime={rideData.departureTime || ''}
           totalSeats={rideData.totalSeats || 0}
-          availableSeats={rideData.availableSeats || 0}
+          availableSeats={availableSeats}
           distance={rideData.distance || null}
           pricePerSeat={rideData.pricePerSeat || null}
           status={rideData.status || 'scheduled'}

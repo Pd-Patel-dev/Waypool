@@ -70,7 +70,9 @@ export default function TabLayout() {
     const riderId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
     
     // Connect to WebSocket
-    websocketService.connect(riderId);
+    websocketService.connect(riderId).catch((error) => {
+      // Silently fail - WebSocket is optional for badge updates
+    });
 
     // Listen for real-time notification events
     const handleNewNotification = () => {

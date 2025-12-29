@@ -1080,7 +1080,7 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          riderId: data.riderId,
+          // riderId is obtained from JWT token on backend, no need to send it
           paymentMethodId: data.paymentMethodId,
           paymentMethodType: data.paymentMethodType,
         }),
@@ -1088,8 +1088,40 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
 
       logger.debug('API response status', { status: response.status, statusText: response.statusText }, 'savePaymentMethod');
 
-      const result = await response.json();
-      logger.debug('API response body', result, 'savePaymentMethod');
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      let result;
+      
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          result = await response.json();
+          logger.debug('API response body', result, 'savePaymentMethod');
+        } catch (jsonError) {
+          // If JSON parsing fails, it might be an HTML error page
+          const text = await response.text();
+          logger.error('Failed to parse JSON response', { 
+            status: response.status, 
+            contentType,
+            textPreview: text.substring(0, 200) 
+          }, 'savePaymentMethod');
+          throw {
+            message: `Server returned invalid response (${response.status} ${response.statusText}). Please try again.`,
+            status: response.status,
+          } as ApiError;
+        }
+      } else {
+        // Response is not JSON (likely HTML error page)
+        const text = await response.text();
+        logger.error('Non-JSON response received', { 
+          status: response.status, 
+          contentType,
+          textPreview: text.substring(0, 200) 
+        }, 'savePaymentMethod');
+        throw {
+          message: `Server error: ${response.status} ${response.statusText}. Please try again.`,
+          status: response.status,
+        } as ApiError;
+      }
 
       if (!response.ok) {
         const errorMessage = result.message || 'Failed to save payment method';
@@ -1120,7 +1152,39 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
       }),
     });
 
-    const result = await response.json();
+    // Check if response is JSON before parsing
+    const contentType = response.headers.get('content-type');
+    let result;
+    
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, it might be an HTML error page
+        const text = await response.text();
+        logger.error('Failed to parse JSON response (setup intent)', { 
+          status: response.status, 
+          contentType,
+          textPreview: text.substring(0, 200) 
+        }, 'savePaymentMethod');
+        throw {
+          message: `Server returned invalid response (${response.status} ${response.statusText}). Please try again.`,
+          status: response.status,
+        } as ApiError;
+      }
+    } else {
+      // Response is not JSON (likely HTML error page)
+      const text = await response.text();
+      logger.error('Non-JSON response received (setup intent)', { 
+        status: response.status, 
+        contentType,
+        textPreview: text.substring(0, 200) 
+      }, 'savePaymentMethod');
+      throw {
+        message: `Server error: ${response.status} ${response.statusText}. Please try again.`,
+        status: response.status,
+      } as ApiError;
+    }
 
     if (!response.ok) {
       throw {
@@ -1176,14 +1240,47 @@ export interface GetPaymentMethodsResponse {
  */
 export async function getPaymentMethods(riderId: number): Promise<GetPaymentMethodsResponse> {
   try {
-    const response = await fetchWithAuth(`${API_URL}/api/rider/payment/payment-methods?riderId=${riderId}`, {
+    // riderId parameter kept for interface compatibility, but backend gets it from JWT token
+    const response = await fetchWithAuth(`${API_URL}/api/rider/payment/payment-methods`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    const result = await response.json();
+    // Check if response is JSON before parsing
+    const contentType = response.headers.get('content-type');
+    let result;
+    
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, it might be an HTML error page
+        const text = await response.text();
+        logger.error('Failed to parse JSON response (getPaymentMethods)', { 
+          status: response.status, 
+          contentType,
+          textPreview: text.substring(0, 200) 
+        }, 'getPaymentMethods');
+        throw {
+          message: `Server returned invalid response (${response.status} ${response.statusText}). Please try again.`,
+          status: response.status,
+        } as ApiError;
+      }
+    } else {
+      // Response is not JSON (likely HTML error page)
+      const text = await response.text();
+      logger.error('Non-JSON response received (getPaymentMethods)', { 
+        status: response.status, 
+        contentType,
+        textPreview: text.substring(0, 200) 
+      }, 'getPaymentMethods');
+      throw {
+        message: `Server error: ${response.status} ${response.statusText}. Please try again.`,
+        status: response.status,
+      } as ApiError;
+    }
 
     if (!response.ok) {
       throw {
@@ -1217,14 +1314,47 @@ export interface DeletePaymentMethodResponse {
  */
 export async function deletePaymentMethod(riderId: number, paymentMethodId: string): Promise<DeletePaymentMethodResponse> {
   try {
-    const response = await fetchWithAuth(`${API_URL}/api/rider/payment/payment-methods/${paymentMethodId}?riderId=${riderId}`, {
+    // riderId parameter kept for interface compatibility, but backend gets it from JWT token
+    const response = await fetchWithAuth(`${API_URL}/api/rider/payment/payment-methods/${paymentMethodId}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    const result = await response.json();
+    // Check if response is JSON before parsing
+    const contentType = response.headers.get('content-type');
+    let result;
+    
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, it might be an HTML error page
+        const text = await response.text();
+        logger.error('Failed to parse JSON response (deletePaymentMethod)', { 
+          status: response.status, 
+          contentType,
+          textPreview: text.substring(0, 200) 
+        }, 'deletePaymentMethod');
+        throw {
+          message: `Server returned invalid response (${response.status} ${response.statusText}). Please try again.`,
+          status: response.status,
+        } as ApiError;
+      }
+    } else {
+      // Response is not JSON (likely HTML error page)
+      const text = await response.text();
+      logger.error('Non-JSON response received (deletePaymentMethod)', { 
+        status: response.status, 
+        contentType,
+        textPreview: text.substring(0, 200) 
+      }, 'deletePaymentMethod');
+      throw {
+        message: `Server error: ${response.status} ${response.statusText}. Please try again.`,
+        status: response.status,
+      } as ApiError;
+    }
 
     if (!response.ok) {
       throw {

@@ -96,6 +96,37 @@ export const apiRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for payment endpoints
+ * Prevents payment fraud and abuse
+ * 
+ * Limits:
+ * - 10 requests per 15 minutes per IP
+ * - Stricter than general API to prevent payment method enumeration
+ */
+export const paymentRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 payment requests per windowMs
+  message: {
+    success: false,
+    message: 'Too many payment requests. Please try again after 15 minutes.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    const resetTime = (req as any).rateLimit?.resetTime;
+    const retryAfter = resetTime ? Math.ceil((resetTime - Date.now()) / 1000) : 900;
+    res.status(429).json({
+      success: false,
+      message: 'Too many payment requests. Please try again after 15 minutes.',
+      retryAfter,
+    });
+  },
+  skip: (req: Request) => {
+    return process.env.ENABLE_TEST_MODE === 'true';
+  },
+});
+
+/**
  * Strict rate limiter for sensitive operations
  * Used for password reset, account deletion, etc.
  * 

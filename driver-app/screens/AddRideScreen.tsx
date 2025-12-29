@@ -298,17 +298,16 @@ export default function AddRideScreen(): React.JSX.Element {
 
     try {
       // driverId is now obtained from JWT token - not needed in request body
-      const rideData = {
+      // Only include zip codes if they are not empty
+      const rideData: any = {
         driverName: user.fullName || 'Driver',
         driverPhone: user.phoneNumber || '',
         fromAddress,
         fromCity,
         fromState,
-        fromZipCode,
         toAddress,
         toCity,
         toState,
-        toZipCode,
         fromLatitude: fromCoords?.latitude || 0,
         fromLongitude: fromCoords?.longitude || 0,
         toLatitude: toCoords?.latitude || 0,
@@ -320,6 +319,14 @@ export default function AddRideScreen(): React.JSX.Element {
         pricePerSeat: parseFloat(pricePerSeat),
         distance: distance || 0,
       };
+      
+      // Only include zip codes if they are not empty (zip codes are optional)
+      if (fromZipCode && fromZipCode.trim().length > 0) {
+        rideData.fromZipCode = fromZipCode.trim();
+      }
+      if (toZipCode && toZipCode.trim().length > 0) {
+        rideData.toZipCode = toZipCode.trim();
+      }
 
       console.log('[AddRideScreen] Creating ride with data:', JSON.stringify(rideData, null, 2));
       
@@ -334,17 +341,33 @@ export default function AddRideScreen(): React.JSX.Element {
       );
     } catch (error: any) {
       console.error('[AddRideScreen] Error creating ride:', error);
-      const apiError = error as ApiError;
       
-      // Show detailed error message
-      const errorMessage = apiError.message || 'Failed to create ride. Please try again.';
-      const errorDetails = apiError.errors && apiError.errors.length > 0 
-        ? `\n\n${apiError.errors.join('\n')}`
-        : '';
+      // Extract error message from various error formats
+      let errorMessage = 'Failed to create ride. Please try again.';
+      let errorDetails = '';
+      
+      // Check if error has errors array (from apiRetry)
+      if (error?.errors && Array.isArray(error.errors) && error.errors.length > 0) {
+        errorMessage = error.errors.join('\n');
+      }
+      // Check if error has errorData with errors
+      else if (error?.errorData?.errors && Array.isArray(error.errorData.errors)) {
+        errorMessage = error.errorData.errors.join('\n');
+      }
+      // Check if it's an ApiError type
+      else if ((error as ApiError)?.errors && Array.isArray((error as ApiError).errors)) {
+        errorMessage = (error as ApiError).message || errorMessage;
+        errorDetails = `\n\n${(error as ApiError).errors!.join('\n')}`;
+      }
+      // Fallback to error message
+      else if (error?.message) {
+        errorMessage = error.message;
+      }
       
       Alert.alert(
-        'Error',
-        errorMessage + errorDetails
+        'Error Creating Ride',
+        errorMessage + errorDetails,
+        [{ text: 'OK' }]
       );
     } finally {
       setIsSubmitting(false);

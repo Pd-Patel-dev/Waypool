@@ -6,6 +6,52 @@
 import type { Response } from 'express';
 
 /**
+ * Error Codes Enum
+ * Standardized error codes for client-side error handling
+ */
+export enum ErrorCode {
+  // General errors
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+  BAD_REQUEST = 'BAD_REQUEST',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  FORBIDDEN = 'FORBIDDEN',
+  NOT_FOUND = 'NOT_FOUND',
+  CONFLICT = 'CONFLICT',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  
+  // Authentication errors
+  INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
+  TOKEN_INVALID = 'TOKEN_INVALID',
+  ACCOUNT_NOT_VERIFIED = 'ACCOUNT_NOT_VERIFIED',
+  
+  // Payment errors
+  PAYMENT_FAILED = 'PAYMENT_FAILED',
+  PAYMENT_METHOD_INVALID = 'PAYMENT_METHOD_INVALID',
+  PAYMENT_METHOD_NOT_FOUND = 'PAYMENT_METHOD_NOT_FOUND',
+  INSUFFICIENT_FUNDS = 'INSUFFICIENT_FUNDS',
+  REFUND_FAILED = 'REFUND_FAILED',
+  
+  // Ride/Booking errors
+  RIDE_NOT_FOUND = 'RIDE_NOT_FOUND',
+  RIDE_FULL = 'RIDE_FULL',
+  RIDE_CANCELLED = 'RIDE_CANCELLED',
+  BOOKING_NOT_FOUND = 'BOOKING_NOT_FOUND',
+  BOOKING_ALREADY_EXISTS = 'BOOKING_ALREADY_EXISTS',
+  BOOKING_CANCELLED = 'BOOKING_CANCELLED',
+  INVALID_PICKUP_PIN = 'INVALID_PICKUP_PIN',
+  PICKUP_PIN_LOCKED = 'PICKUP_PIN_LOCKED',
+  
+  // Rate limiting
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  
+  // Service errors
+  EMAIL_SERVICE_ERROR = 'EMAIL_SERVICE_ERROR',
+  PUSH_NOTIFICATION_ERROR = 'PUSH_NOTIFICATION_ERROR',
+  DATABASE_ERROR = 'DATABASE_ERROR',
+}
+
+/**
  * Standard API Response Structure
  */
 export interface ApiResponse<T = any> {
@@ -65,7 +111,7 @@ export function sendError(
   options?: {
     error?: string; // Detailed error message
     errors?: string[]; // Validation errors
-    code?: string; // Error code
+    code?: string | ErrorCode; // Error code
   }
 ): Response {
   const isDevelopment = process.env.NODE_ENV === 'development';
@@ -74,7 +120,7 @@ export function sendError(
     success: false,
     message,
     ...(options?.errors && { errors: options.errors }),
-    ...(options?.code && { code: options.code }),
+    ...(options?.code && { code: String(options.code) }),
     // Only include detailed error in development
     ...(isDevelopment && options?.error && { error: options.error }),
   };

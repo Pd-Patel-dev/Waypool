@@ -2,84 +2,43 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { stripe } from '../../lib/stripe';
+import { authenticate, requireRider } from '../../middleware/auth';
+import { validate } from '../../middleware/validation';
+import { attachPaymentMethodValidation } from '../../middleware/validators/paymentValidators';
+import { paymentRateLimiter } from '../../middleware/rateLimiter';
+import { retryPayment, getPaymentStatus } from '../../services/paymentService';
 
 const router = express.Router();
 
 /**
- * Helper function to get or create Stripe customer for a rider
+ * POST /api/rider/payment/retry
+ * Retry a failed payment with a new payment method
+ * Body: { bookingId, paymentMethodId }
+ * Note: riderId is obtained from JWT token (authenticated user)
+ * Security: Rate limited to prevent payment retry abuse
  */
-async function getOrCreateStripeCustomer(riderId: number, email: string, name: string): Promise<string> {
-  // Check if user already has a Stripe customer ID stored
-  // For now, we'll create a new customer each time, but you can store stripeCustomerId in users table
-  // For production, add stripeCustomerId field to users table
-  
-  if (!stripe) {
-    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY in environment variables.');
-  }
-
-  // Create or retrieve Stripe customer
-  // In production, you should store stripeCustomerId in your database
-  // For now, we'll search by email or create new
+router.post('/retry', paymentRateLimiter, authenticate, requireRider, async (req: Request, res: Response) => {
   try {
-    // Try to find existing customer by email
-    const customers = await stripe.customers.list({
-      email: email,
-      limit: 1,
-    });
+    // Get rider ID from JWT token (already verified by middleware)
+    const riderId = req.user!.userId;
+    const { bookingId, paymentMethodId } = req.body;
 
-    const existingCustomer = customers.data[0];
-    if (existingCustomer) {
-      return existingCustomer.id;
-    }
-
-    // Create new customer
-    const customer = await stripe.customers.create({
-      email: email,
-      name: name,
-      metadata: {
-        riderId: riderId.toString(),
-      },
-    });
-
-    return customer.id;
-  } catch (error: unknown) {
-    console.error('Error creating/retrieving Stripe customer:', error);
-    
-    // Provide more specific error messages
-    if (error && typeof error === 'object' && 'type' in error && error.type === 'StripeAuthenticationError') {
-      throw new Error('Invalid Stripe API key. Please check your STRIPE_SECRET_KEY environment variable. It should start with "sk_test_" (test mode) or "sk_live_" (production mode).');
-    }
-    
-    if (error instanceof Error) {
-      throw new Error(`Stripe error: ${error.message}`);
-    }
-    
-    throw new Error('Failed to create Stripe customer');
-  }
-}
-
-/**
- * POST /api/rider/payment/attach-payment-method
- * Attach a payment method (tokenized by frontend) to a Stripe customer
- * Body: { riderId, paymentMethodId, paymentMethodType }
- */
-router.post('/attach-payment-method', async (req: Request, res: Response) => {
-  try {
-    const { riderId, paymentMethodId, paymentMethodType } = req.body;
-
-
-    // Validation
-    if (!riderId || !paymentMethodId) {
-      console.error('Missing required fields:', { riderId: !!riderId, paymentMethodId: !!paymentMethodId });
+    if (!bookingId) {
       return res.status(400).json({
         success: false,
-        message: 'riderId and paymentMethodId are required',
+        message: 'Booking ID is required',
       });
     }
-    
-    // Validate paymentMethodId format (should start with pm_)
-    if (!paymentMethodId.startsWith('pm_')) {
-      console.error('Invalid paymentMethodId format:', paymentMethodId.substring(0, 20));
+
+    if (!paymentMethodId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment method ID is required',
+      });
+    }
+
+    // Validate payment method ID format
+    if (!paymentMethodId.startsWith('pm_') || paymentMethodId.length < 27) {
       return res.status(400).json({
         success: false,
         message: 'Invalid payment method ID format',
@@ -93,122 +52,293 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
       });
     }
 
-    // Parse and validate riderId
-    const parsedRiderId = parseInt(riderId);
-    if (isNaN(parsedRiderId) || parsedRiderId <= 0) {
-      console.error('Invalid riderId:', riderId);
-      return res.status(400).json({
+    // Verify booking belongs to this rider
+    const booking = await prisma.bookings.findUnique({
+      where: { id: parseInt(bookingId) },
+      select: {
+        id: true,
+        riderId: true,
+        paymentStatus: true,
+        paymentIntentId: true,
+      },
+    });
+
+    if (!booking) {
+      return res.status(404).json({
         success: false,
-        message: 'Invalid rider ID',
+        message: 'Booking not found',
       });
     }
 
-    // Verify rider exists
-    const rider = await prisma.users.findUnique({
-      where: { id: parsedRiderId },
+    if (booking.riderId !== riderId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to retry payment for this booking',
+      });
+    }
+
+    // Check if payment retry is needed
+    if (booking.paymentStatus !== 'failed' && booking.paymentStatus !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `Payment retry is not needed. Current payment status: ${booking.paymentStatus}`,
+      });
+    }
+
+    // Retry payment
+    const result = await retryPayment(parseInt(bookingId), paymentMethodId);
+
+    return res.json({
+      success: true,
+      message: result.message,
+      paymentIntentId: result.paymentIntentId,
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    console.error('Error retrying payment:', error);
+    return res.status(500).json({
+      success: false,
+      message: errorMessage,
+    });
+  }
+});
+
+/**
+ * GET /api/rider/payment/payment-methods
+ * Get all saved payment methods for the rider
+ * Note: riderId is obtained from JWT token (authenticated user)
+ */
+router.get('/payment-methods', authenticate, requireRider, async (req: Request, res: Response) => {
+  try {
+    // Get rider ID from JWT token (already verified by middleware)
+    const riderId = req.user!.userId;
+
+    if (!stripe) {
+      return res.json({
+        success: true,
+        paymentMethods: [],
+        message: 'Payment processing is not configured',
+      });
+    }
+
+    // Get rider's Stripe customer ID
+    const user = await prisma.users.findUnique({
+      where: { id: riderId },
       select: {
         id: true,
         email: true,
         fullName: true,
-        isRider: true,
+        stripeCustomerId: true,
       },
     });
 
-    if (!rider) {
-      console.error('Rider not found in database:', { riderId: parsedRiderId, providedRiderId: riderId });
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'Rider not found. Please ensure you are logged in with a valid rider account.',
+        message: 'Rider not found',
       });
     }
 
-    if (!rider.isRider) {
-      console.error('User is not a rider:', { userId: parsedRiderId, email: rider.email, isRider: rider.isRider });
-      return res.status(403).json({
+    // If no Stripe customer ID, return empty array
+    if (!user.stripeCustomerId) {
+      return res.json({
+        success: true,
+        paymentMethods: [],
+        message: 'No payment methods found',
+      });
+    }
+
+    try {
+      // Get all payment methods for this customer
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: user.stripeCustomerId,
+        type: 'card',
+      });
+
+      // Get customer to check default payment method
+      const customer = await stripe.customers.retrieve(user.stripeCustomerId);
+      const defaultPaymentMethodId = typeof customer === 'object' && !customer.deleted
+        ? customer.invoice_settings?.default_payment_method
+        : null;
+
+      // Format payment methods for frontend
+      const formattedPaymentMethods = paymentMethods.data.map((pm) => {
+        const isDefault = pm.id === defaultPaymentMethodId || paymentMethods.data.length === 1;
+        const card = pm.card;
+
+        return {
+          id: pm.id,
+          type: 'card' as const,
+          last4: card?.last4 || '0000',
+          brand: card?.brand || 'unknown',
+          isDefault,
+          card: {
+            brand: card?.brand || 'unknown',
+            last4: card?.last4 || '0000',
+            expMonth: card?.exp_month || null,
+            expYear: card?.exp_year || null,
+          },
+        };
+      });
+
+      return res.json({
+        success: true,
+        paymentMethods: formattedPaymentMethods,
+        message: formattedPaymentMethods.length > 0 
+          ? `${formattedPaymentMethods.length} payment method${formattedPaymentMethods.length !== 1 ? 's' : ''} found`
+          : 'No payment methods found',
+      });
+    } catch (stripeError: any) {
+      console.error('❌ Error fetching payment methods from Stripe:', stripeError);
+      
+      // If customer doesn't exist in Stripe, return empty array
+      if (stripeError.code === 'resource_missing') {
+        // Clear invalid customer ID from database
+        await prisma.users.update({
+          where: { id: riderId },
+          data: { stripeCustomerId: null },
+        });
+
+        return res.json({
+          success: true,
+          paymentMethods: [],
+          message: 'No payment methods found',
+        });
+      }
+
+      return res.status(500).json({
         success: false,
-        message: 'User is not registered as a rider. Please use the rider app to sign up.',
+        message: 'Failed to fetch payment methods',
+        error: stripeError.message,
+      });
+    }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    console.error('Error getting payment methods:', error);
+    return res.status(500).json({
+      success: false,
+      message: errorMessage,
+    });
+  }
+});
+
+/**
+ * POST /api/rider/payment/attach-payment-method
+ * Attach a payment method to the rider's Stripe customer
+ * Body: { paymentMethodId, paymentMethodType }
+ * Note: riderId is obtained from JWT token (authenticated user)
+ * Security: Rate limited to prevent abuse
+ */
+router.post('/attach-payment-method', paymentRateLimiter, authenticate, requireRider, validate(attachPaymentMethodValidation), async (req: Request, res: Response) => {
+  try {
+    // Get rider ID from JWT token (already verified by middleware)
+    const riderId = req.user!.userId;
+    const { paymentMethodId, paymentMethodType = 'card' } = req.body;
+
+    if (!stripe) {
+      return res.status(500).json({
+        success: false,
+        message: 'Payment processing is not configured',
       });
     }
 
-    // Get or create Stripe customer
-    const stripeCustomerId = await getOrCreateStripeCustomer(
-      rider.id,
-      rider.email,
-      rider.fullName
-    );
+    // Get or create Stripe customer for this rider
+    const user = await prisma.users.findUnique({
+      where: { id: riderId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        stripeCustomerId: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Rider not found',
+      });
+    }
+
+    let stripeCustomerId = user.stripeCustomerId;
+
+    // Create Stripe customer if doesn't exist
+    if (!stripeCustomerId) {
+      try {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: user.fullName,
+          metadata: {
+            userId: String(user.id),
+            userType: 'rider',
+          },
+        });
+
+        stripeCustomerId = customer.id;
+
+        // Save Stripe customer ID to database
+        await prisma.users.update({
+          where: { id: riderId },
+          data: { stripeCustomerId: customer.id },
+        });
+      } catch (stripeError: any) {
+        console.error('❌ Error creating Stripe customer:', stripeError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to create payment account. Please try again.',
+          error: stripeError.message,
+        });
+      }
+    }
 
     // Attach payment method to customer
     try {
-      // First, verify the payment method exists and is valid
-      const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
-      
-      
-      // Check if payment method is already attached to a customer
-      if (paymentMethod.customer) {
-        if (paymentMethod.customer === stripeCustomerId) {
-          // Already attached to this customer
-          return res.json({
-            success: true,
-            message: 'Payment method already saved',
-            paymentMethodId: paymentMethodId,
-          });
-        } else {
-          // Attached to different customer - detach first
-          await stripe.paymentMethods.detach(paymentMethodId);
-        }
-      }
-      
-      // Attach payment method to customer
       await stripe.paymentMethods.attach(paymentMethodId, {
         customer: stripeCustomerId,
       });
 
-      // Optionally set as default payment method
-      await stripe.customers.update(stripeCustomerId, {
-        invoice_settings: {
-          default_payment_method: paymentMethodId,
-        },
+      // Set as default payment method if it's the first one
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: stripeCustomerId,
+        type: paymentMethodType,
       });
 
+      if (paymentMethods.data.length === 1) {
+        await stripe.customers.update(stripeCustomerId, {
+          invoice_settings: {
+            default_payment_method: paymentMethodId,
+          },
+        });
+      }
 
       return res.json({
         success: true,
-        message: 'Payment method saved successfully',
-        paymentMethodId: paymentMethodId,
+        message: 'Payment method attached successfully',
+        paymentMethodId,
+        customerId: stripeCustomerId,
       });
-    } catch (stripeError: unknown) {
-      const errorObj = stripeError && typeof stripeError === 'object' ? stripeError : {};
-      const errorCode = 'code' in errorObj && typeof errorObj.code === 'string' ? errorObj.code : undefined;
-      const errorMessage = 'message' in errorObj && typeof errorObj.message === 'string' ? errorObj.message : 'Unknown error';
-      const errorType = 'type' in errorObj && typeof errorObj.type === 'string' ? errorObj.type : undefined;
-      const statusCode = 'statusCode' in errorObj && typeof errorObj.statusCode === 'number' ? errorObj.statusCode : undefined;
-      
-      console.error('Stripe error attaching payment method:', {
-        code: errorCode,
-        message: errorMessage,
-        type: errorType,
-        statusCode,
-      });
+    } catch (stripeError: any) {
+      console.error('❌ Error attaching payment method:', stripeError);
       
       // Handle specific Stripe errors
-      if (errorCode === 'resource_already_exists') {
+      if (stripeError.code === 'resource_already_exists') {
         return res.status(409).json({
           success: false,
-          message: 'This payment method is already saved',
+          message: 'This payment method is already attached to your account',
         });
       }
-      
-      if (errorCode === 'resource_missing') {
+
+      if (stripeError.code === 'resource_missing') {
         return res.status(404).json({
           success: false,
           message: 'Payment method not found. Please try adding the card again.',
         });
       }
 
-      return res.status(400).json({
+      return res.status(500).json({
         success: false,
-        message: errorMessage || 'Failed to save payment method',
-        ...(errorCode && { errorCode }),
+        message: 'Failed to attach payment method. Please try again.',
+        error: stripeError.message,
       });
     }
   } catch (error: unknown) {
@@ -222,113 +352,15 @@ router.post('/attach-payment-method', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/rider/payment/payment-methods
- * Get all saved payment methods for a rider
- * Query params: riderId (required)
- */
-router.get('/payment-methods', async (req: Request, res: Response) => {
-  try {
-    const riderId = req.query.riderId ? parseInt(req.query.riderId as string) : null;
-
-    if (!riderId || isNaN(riderId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'riderId is required',
-        paymentMethods: [],
-      });
-    }
-
-    if (!stripe) {
-      return res.status(500).json({
-        success: false,
-        message: 'Payment processing is not configured',
-        paymentMethods: [],
-      });
-    }
-
-    // Verify rider exists
-    const rider = await prisma.users.findUnique({
-      where: { id: riderId },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        isRider: true,
-      },
-    });
-
-    if (!rider || !rider.isRider) {
-      return res.status(404).json({
-        success: false,
-        message: 'Rider not found',
-        paymentMethods: [],
-      });
-    }
-
-    // Get or create Stripe customer
-    const stripeCustomerId = await getOrCreateStripeCustomer(
-      rider.id,
-      rider.email,
-      rider.fullName
-    );
-
-    // List all payment methods for this customer
-    const paymentMethods = await stripe.paymentMethods.list({
-      customer: stripeCustomerId,
-      type: 'card',
-    });
-
-    // Get customer to find default payment method
-    const customer = await stripe.customers.retrieve(stripeCustomerId);
-    let defaultPaymentMethodId: string | null = null;
-    
-    if (customer && !('deleted' in customer) && customer.invoice_settings?.default_payment_method) {
-      defaultPaymentMethodId = customer.invoice_settings.default_payment_method as string;
-    }
-
-    // Format payment methods for response
-    const formattedMethods = paymentMethods.data.map((pm) => ({
-      id: pm.id,
-      type: pm.type as 'card' | 'applePay' | 'googlePay',
-      last4: pm.card?.last4,
-      brand: pm.card?.brand,
-      isDefault: pm.id === defaultPaymentMethodId,
-      card: pm.card ? {
-        brand: pm.card.brand,
-        last4: pm.card.last4,
-        expMonth: pm.card.exp_month,
-        expYear: pm.card.exp_year,
-      } : undefined,
-      billingDetails: pm.billing_details ? {
-        name: pm.billing_details.name || undefined,
-        email: pm.billing_details.email || undefined,
-      } : undefined,
-    }));
-
-    return res.json({
-      success: true,
-      paymentMethods: formattedMethods,
-    });
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    console.error('Error fetching payment methods:', error);
-    return res.status(500).json({
-      success: false,
-      message: errorMessage,
-      paymentMethods: [],
-    });
-  }
-});
-
-/**
  * DELETE /api/rider/payment/payment-methods/:paymentMethodId
  * Delete a saved payment method
- * Query params: riderId (required)
+ * Note: riderId is obtained from JWT token (authenticated user)
  */
-router.delete('/payment-methods/:paymentMethodId', async (req: Request, res: Response) => {
+router.delete('/payment-methods/:paymentMethodId', authenticate, requireRider, async (req: Request, res: Response) => {
   try {
-    const paymentMethodId = req.params.paymentMethodId;
-    const riderId = req.query.riderId ? parseInt(req.query.riderId as string) : null;
+    // Get rider ID from JWT token (already verified by middleware)
+    const riderId = req.user!.userId;
+    const { paymentMethodId } = req.params;
 
     if (!paymentMethodId) {
       return res.status(400).json({
@@ -337,13 +369,6 @@ router.delete('/payment-methods/:paymentMethodId', async (req: Request, res: Res
       });
     }
 
-    if (!riderId || isNaN(riderId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'riderId is required',
-      });
-    }
-
     if (!stripe) {
       return res.status(500).json({
         success: false,
@@ -351,70 +376,66 @@ router.delete('/payment-methods/:paymentMethodId', async (req: Request, res: Res
       });
     }
 
-    // Verify rider exists
-    const rider = await prisma.users.findUnique({
+    // Get rider's Stripe customer ID
+    const user = await prisma.users.findUnique({
       where: { id: riderId },
       select: {
         id: true,
-        email: true,
-        fullName: true,
-        isRider: true,
+        stripeCustomerId: true,
       },
     });
 
-    if (!rider || !rider.isRider) {
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: 'Rider not found',
       });
     }
 
-    // Verify payment method belongs to this customer
-    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
-    
-    if (!paymentMethod.customer) {
+    if (!user.stripeCustomerId) {
       return res.status(404).json({
         success: false,
-        message: 'Payment method not found',
+        message: 'No payment methods found for this account',
       });
     }
 
-    // Get or create Stripe customer to verify ownership
-    const stripeCustomerId = await getOrCreateStripeCustomer(
-      rider.id,
-      rider.email,
-      rider.fullName
-    );
+    try {
+      // Verify the payment method belongs to this customer
+      const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+      
+      if (paymentMethod.customer !== user.stripeCustomerId) {
+        return res.status(403).json({
+          success: false,
+          message: 'You do not have permission to delete this payment method',
+        });
+      }
 
-    if (paymentMethod.customer !== stripeCustomerId) {
-      return res.status(403).json({
+      // Detach payment method from customer (this doesn't delete it, just removes the association)
+      await stripe.paymentMethods.detach(paymentMethodId);
+
+      return res.json({
+        success: true,
+        message: 'Payment method deleted successfully',
+      });
+    } catch (stripeError: any) {
+      console.error('❌ Error deleting payment method:', stripeError);
+      
+      if (stripeError.code === 'resource_missing') {
+        return res.status(404).json({
+          success: false,
+          message: 'Payment method not found',
+        });
+      }
+
+      return res.status(500).json({
         success: false,
-        message: 'Payment method does not belong to this rider',
+        message: 'Failed to delete payment method. Please try again.',
+        error: stripeError.message,
       });
     }
-
-    // Detach payment method (removes from customer but doesn't delete it)
-    await stripe.paymentMethods.detach(paymentMethodId);
-
-
-    return res.json({
-      success: true,
-      message: 'Payment method deleted successfully',
-    });
   } catch (error: unknown) {
-    const errorObj = error && typeof error === 'object' ? error : {};
-    const errorCode = 'code' in errorObj && typeof errorObj.code === 'string' ? errorObj.code : undefined;
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    
     console.error('Error deleting payment method:', error);
-    
-    if (errorCode === 'resource_missing') {
-      return res.status(404).json({
-        success: false,
-        message: 'Payment method not found',
-      });
-    }
-
     return res.status(500).json({
       success: false,
       message: errorMessage,
@@ -423,68 +444,65 @@ router.delete('/payment-methods/:paymentMethodId', async (req: Request, res: Res
 });
 
 /**
- * POST /api/rider/payment/create-setup-intent
- * Create a SetupIntent for saving payment methods (alternative flow using PaymentSheet)
- * Body: { riderId, paymentMethodType, rideId }
+ * GET /api/rider/payment/status/:bookingId
+ * Get payment status for a booking
+ * Note: riderId is obtained from JWT token (authenticated user)
  */
-router.post('/create-setup-intent', async (req: Request, res: Response) => {
+router.get('/status/:bookingId', authenticate, requireRider, async (req: Request, res: Response) => {
   try {
-    const { riderId, paymentMethodType, rideId } = req.body;
-
-    if (!riderId) {
+    // Get rider ID from JWT token (already verified by middleware)
+    const riderId = req.user!.userId;
+    
+    // Validate bookingId parameter
+    const bookingIdParam = req.params.bookingId;
+    if (!bookingIdParam) {
       return res.status(400).json({
         success: false,
-        message: 'riderId is required',
+        message: 'Booking ID is required',
       });
     }
-
-    if (!stripe) {
-      return res.status(500).json({
+    
+    const bookingId = parseInt(bookingIdParam);
+    if (isNaN(bookingId)) {
+      return res.status(400).json({
         success: false,
-        message: 'Payment processing is not configured',
+        message: 'Invalid booking ID',
       });
     }
 
-    // Verify rider exists
-    const rider = await prisma.users.findUnique({
-      where: { id: parseInt(riderId) },
+    // Verify booking belongs to this rider
+    const booking = await prisma.bookings.findUnique({
+      where: { id: bookingId },
       select: {
         id: true,
-        email: true,
-        fullName: true,
-        isRider: true,
+        riderId: true,
       },
     });
 
-    if (!rider || !rider.isRider) {
+    if (!booking) {
       return res.status(404).json({
         success: false,
-        message: 'Rider not found',
+        message: 'Booking not found',
       });
     }
 
-    // Get or create Stripe customer
-    const stripeCustomerId = await getOrCreateStripeCustomer(
-      rider.id,
-      rider.email,
-      rider.fullName
-    );
+    if (booking.riderId !== riderId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view payment status for this booking',
+      });
+    }
 
-    // Create SetupIntent (for PaymentSheet flow)
-    const setupIntent = await stripe.setupIntents.create({
-      customer: stripeCustomerId,
-      payment_method_types: ['card'],
-      usage: 'off_session', // For future payments
-    });
+    // Get payment status
+    const paymentStatus = await getPaymentStatus(bookingId);
 
     return res.json({
       success: true,
-      setupIntentClientSecret: setupIntent.client_secret,
-      paymentMethodId: setupIntent.payment_method as string | undefined,
+      paymentStatus,
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    console.error('Error creating setup intent:', error);
+    console.error('Error getting payment status:', error);
     return res.status(500).json({
       success: false,
       message: errorMessage,
@@ -492,5 +510,5 @@ router.post('/create-setup-intent', async (req: Request, res: Response) => {
   }
 });
 
-export default router;
 
+export default router;

@@ -4,6 +4,8 @@ import { prisma } from '../../lib/prisma';
 import { stripe } from '../../lib/stripe';
 import { calculateRiderTotal } from '../../utils/earnings';
 import { calculateDistanceInMiles } from '../../utils/distance';
+import { validate } from '../../middleware/validation';
+import { createBookingValidation } from '../../middleware/validators/bookingValidators';
 
 const router = express.Router();
 
@@ -151,7 +153,7 @@ router.get('/upcoming', async (req: Request, res: Response) => {
  * POST /api/rider/rides/book
  * Book a seat on a ride
  */
-router.post('/book', async (req: Request, res: Response) => {
+router.post('/book', validate(createBookingValidation), async (req: Request, res: Response) => {
   try {
     const { 
       rideId, 
@@ -253,6 +255,7 @@ router.post('/book', async (req: Request, res: Response) => {
 
     // Authorize payment if paymentMethodId is provided
     let paymentIntentId: string | null = null;
+    let paymentStatus: string | null = null;
     if (paymentMethodId && stripe) {
       try {
         // Get rider information for Stripe customer
@@ -262,22 +265,78 @@ router.post('/book', async (req: Request, res: Response) => {
         });
 
         if (rider) {
-          // Get or create Stripe customer (reuse logic from payment.ts)
+          // Import the shared function (or define it locally if needed)
+          // For now, using the same logic but storing customer ID in database
           let stripeCustomerId: string;
-          const customers = await stripe.customers.list({
-            email: rider.email,
-            limit: 1,
-          });
-          const existingCustomer = customers.data[0];
-          if (existingCustomer) {
-            stripeCustomerId = existingCustomer.id;
+          
+          // Check if user already has a Stripe customer ID stored
+          // Use try-catch to handle case where column doesn't exist yet (during migration)
+          let storedCustomerId: string | null = null;
+          try {
+            const userWithCustomer = await prisma.users.findUnique({
+              where: { id: parseInt(riderId) },
+              select: { stripeCustomerId: true },
+            });
+            storedCustomerId = userWithCustomer?.stripeCustomerId || null;
+          } catch (dbError: any) {
+            // If column doesn't exist yet, continue without stored customer ID
+            if (dbError?.code === 'P2022' || dbError?.message?.includes('does not exist')) {
+              console.warn('stripeCustomerId column not found, will create new customer');
+              storedCustomerId = null;
+            } else {
+              throw dbError;
+            }
+          }
+
+          if (storedCustomerId) {
+            // Verify the customer still exists in Stripe
+            try {
+              await stripe.customers.retrieve(storedCustomerId);
+              stripeCustomerId = storedCustomerId;
+            } catch (error) {
+              // Customer doesn't exist in Stripe anymore, create a new one
+              console.warn(`Stripe customer ${storedCustomerId} not found, creating new customer`);
+              const customer = await stripe.customers.create({
+                email: rider.email,
+                name: rider.fullName,
+                metadata: { riderId: riderId.toString() },
+              });
+              stripeCustomerId = customer.id;
+              // Store customer ID in database (if column exists)
+              try {
+                await prisma.users.update({
+                  where: { id: parseInt(riderId) },
+                  data: { stripeCustomerId: customer.id },
+                });
+              } catch (dbError: any) {
+                if (dbError?.code === 'P2022' || dbError?.message?.includes('does not exist')) {
+                  console.warn('stripeCustomerId column not found, customer ID not stored. Please run database migration.');
+                } else {
+                  throw dbError;
+                }
+              }
+            }
           } else {
+            // Create new Stripe customer
             const customer = await stripe.customers.create({
               email: rider.email,
               name: rider.fullName,
               metadata: { riderId: riderId.toString() },
             });
             stripeCustomerId = customer.id;
+            // Store customer ID in database (if column exists)
+            try {
+              await prisma.users.update({
+                where: { id: parseInt(riderId) },
+                data: { stripeCustomerId: customer.id },
+              });
+            } catch (dbError: any) {
+              if (dbError?.code === 'P2022' || dbError?.message?.includes('does not exist')) {
+                console.warn('stripeCustomerId column not found, customer ID not stored. Please run database migration.');
+              } else {
+                throw dbError;
+              }
+            }
           }
 
           // Create PaymentIntent with manual capture (authorize only)
@@ -299,6 +358,23 @@ router.post('/book', async (req: Request, res: Response) => {
           });
 
           paymentIntentId = paymentIntent.id;
+          
+          // Determine payment status based on PaymentIntent status
+          paymentStatus = 'pending';
+          if (paymentIntent.status === 'requires_capture') {
+            paymentStatus = 'authorized';
+          } else if (paymentIntent.status === 'succeeded') {
+            paymentStatus = 'captured';
+          } else if (paymentIntent.status === 'canceled') {
+            paymentStatus = 'failed';
+          } else if (paymentIntent.status === 'requires_payment_method' || 
+                     paymentIntent.status === 'requires_confirmation' ||
+                     paymentIntent.status === 'requires_action' ||
+                     paymentIntent.status === 'processing') {
+            paymentStatus = 'failed';
+          }
+          
+          // Note: We'll update the payment intent metadata with the actual booking ID after booking is created
         }
       } catch (paymentError: unknown) {
         const errorMessage = paymentError instanceof Error ? paymentError.message : 'Failed to authorize payment. Please try again.';
@@ -327,6 +403,9 @@ router.post('/book', async (req: Request, res: Response) => {
         pricePerSeat: ride.pricePerSeat, // Lock in the price at booking time
         status: 'pending', // Start as pending request
         paymentIntentId: paymentIntentId || null,
+        paymentStatus: paymentIntentId ? paymentStatus : null,
+        paymentAmount: paymentIntentId ? totalAmount / 100 : null, // Convert cents to dollars
+        paymentCurrency: paymentIntentId ? 'usd' : null,
       },
       include: {
         rides: {
@@ -389,9 +468,15 @@ router.post('/book', async (req: Request, res: Response) => {
           confirmationNumber: booking.confirmationNumber,
         },
       });
+      console.log(`✅ Booking request email sent to driver: ${booking.rides.users.email}`);
     } catch (emailError) {
-      // Don't fail the booking if email sending fails
-      console.error('❌ Error sending booking request email:', emailError);
+      // Don't fail the booking if email sending fails, but log the error details
+      const errorMessage = emailError instanceof Error ? emailError.message : String(emailError);
+      console.error('❌ Error sending booking request email to driver:', {
+        driverEmail: booking.rides.users.email,
+        error: errorMessage,
+        stack: emailError instanceof Error ? emailError.stack : undefined,
+      });
     }
 
     return res.json({

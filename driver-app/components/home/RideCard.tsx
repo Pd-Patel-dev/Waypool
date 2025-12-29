@@ -4,7 +4,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { theme } from '@/design-system';
 import { RideStatusService } from '@/features/rides/domain';
 import { calculateTotalDistance } from '@/utils/distance';
-import { calculateRideEarnings } from '@/utils/price';
+import { calculateRideEarnings, calculateBookedSeats, calculateAvailableSeats } from '@/utils/price';
 import { formatDate, formatTime, safeParseDate } from '@/utils/date';
 import type { Ride } from '@/services/api';
 
@@ -61,7 +61,8 @@ export const RideCard: React.FC<RideCardProps> = ({
 
   const totalDistance = calculateTotalDistance(ride);
   const earnings = calculateRideEarnings(ride);
-  const bookedSeats = ride.totalSeats - (ride.availableSeats || 0);
+  const bookedSeats = calculateBookedSeats(ride);
+  const availableSeats = calculateAvailableSeats(ride);
   const isToday = new Date(ride.departureTime).toDateString() === new Date().toDateString();
   const canStart = (ride.status === 'scheduled' || !ride.status) && isToday;
 
@@ -137,7 +138,7 @@ export const RideCard: React.FC<RideCardProps> = ({
           <IconSymbol size={14} name="person.2.fill" color={theme.colors.text.secondary} />
           <View style={styles.statContent}>
             <Text style={[styles.statValue, { color: theme.colors.text.primary }]} numberOfLines={1}>
-              {bookedSeats > 0 ? bookedSeats : (ride.availableSeats || 0)}
+              {bookedSeats > 0 ? bookedSeats : availableSeats}
             </Text>
             <Text style={[styles.statLabel, { color: theme.colors.text.tertiary }]} numberOfLines={1}>
               {bookedSeats > 0 ? 'Booked' : 'Available'}

@@ -1,5 +1,6 @@
 import io, { Socket } from 'socket.io-client';
 import { API_BASE_URL } from '@/config/api';
+import { getValidAccessToken } from '@/utils/tokenRefresh';
 
 class WebSocketService {
   private socket: Socket | null = null;
@@ -8,7 +9,7 @@ class WebSocketService {
   private reconnectDelay = 1000;
   private eventHandlers: Map<string, Set<(...args: any[]) => void>> = new Map();
 
-  connect(driverId: number) {
+  async connect(driverId: number) {
     if (this.socket?.connected) {
       return;
     }
@@ -18,11 +19,23 @@ class WebSocketService {
       this.disconnect();
     }
 
+    // Get valid JWT access token for authentication (refreshes if expired)
+    const token = await getValidAccessToken();
+    
+    if (!token) {
+      console.error('❌ Cannot connect WebSocket: No valid access token found. Please log in first.');
+      return;
+    }
+
     this.socket = io(API_BASE_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: this.reconnectDelay,
       reconnectionAttempts: this.maxReconnectAttempts,
+      auth: {
+        token: token, // JWT token for authentication
+      },
+      // Keep query params for backward compatibility in test mode
       query: {
         driverId: driverId.toString(),
         role: 'driver',

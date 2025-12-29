@@ -21,6 +21,10 @@ import { calculateDistance } from '@/utils/distance';
 import { type RiderBooking } from '@/services/api';
 import { logger } from '@/utils/logger';
 
+// Use Google Maps only on Android, default provider (Apple Maps) on iOS
+// Google Maps on iOS requires additional native setup not available in managed Expo
+const MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
+
 // Conditionally import Location only on native platforms
 let Location: any = null;
 if (Platform.OS !== 'web') {
@@ -501,7 +505,7 @@ export default function TrackDriverScreen(): React.JSX.Element {
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
-          provider={PROVIDER_GOOGLE}
+          provider={MAP_PROVIDER}
           style={styles.map}
           initialRegion={initialRegion}
           showsUserLocation={false}

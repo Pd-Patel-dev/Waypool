@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcrypt';
 import { authenticate, requireDriver } from '../../middleware/auth';
+import { validate } from '../../middleware/validation';
+import { updateDriverProfileValidation } from '../../middleware/validators/profileValidators';
 import {
   sendSuccess,
   sendBadRequest,
@@ -53,7 +55,7 @@ router.get('/', authenticate, requireDriver, async (req: Request, res: Response)
  * Requires: JWT token in Authorization header
  * Body: fullName, email, phoneNumber, photoUrl, city (all optional)
  */
-router.put('/', authenticate, requireDriver, async (req: Request, res: Response) => {
+router.put('/', authenticate, requireDriver, validate(updateDriverProfileValidation), async (req: Request, res: Response) => {
   try {
     // Get user ID from JWT token (already verified by middleware)
     const driverId = req.user!.userId;

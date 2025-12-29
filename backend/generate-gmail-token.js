@@ -15,21 +15,38 @@
 const { google } = require("googleapis");
 const readline = require("readline");
 
+// Load credentials from .env file if available
+require('dotenv').config();
+
 // ⚠️  REPLACE THESE WITH YOUR VALUES FROM GOOGLE CLOUD CONSOLE
 // Get them from: https://console.cloud.google.com/apis/credentials
-const CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
-const CLIENT_SECRET = "GOCSPX-YOUR_CLIENT_SECRET";
+// Or they will be loaded from .env file if available
+const CLIENT_ID = process.env.GMAIL_CLIENT_ID || "YOUR_CLIENT_ID.apps.googleusercontent.com";
+const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET || "GOCSPX-YOUR_CLIENT_SECRET";
 const REDIRECT_URI = "http://localhost";
 const SCOPES = ["https://www.googleapis.com/auth/gmail.send"];
 
-// ⚠️  IMPORTANT: Before running this script, make sure you've added
-//     "http://localhost" to your OAuth 2.0 Client ID's "Authorized redirect URIs"
-//     in Google Cloud Console. Otherwise you'll get a redirect_uri_mismatch error.
+// ⚠️  IMPORTANT: Before running this script, you MUST add "http://localhost" 
+//     to your OAuth 2.0 Client ID's "Authorized redirect URIs" in Google Cloud Console.
+//     
+//     Steps:
+//     1. Go to: https://console.cloud.google.com/apis/credentials
+//     2. Click on your OAuth 2.0 Client ID
+//     3. Scroll to "Authorized redirect URIs"
+//     4. Click "+ ADD URI"
+//     5. Add exactly: http://localhost (no trailing slash, no port)
+//     6. Click SAVE
+//     7. Wait 1-2 minutes for changes to propagate
+//     
+//     Otherwise you'll get a redirect_uri_mismatch error.
 
 // Validate that user has set their credentials
 if (CLIENT_ID.includes("YOUR_CLIENT_ID") || CLIENT_SECRET.includes("YOUR_CLIENT_SECRET")) {
-  console.error("\n❌ Error: Please update CLIENT_ID and CLIENT_SECRET in this file first!\n");
-  console.log("📖 See NODEMAILER_SETUP_GUIDE.md for instructions on how to get these values.\n");
+  console.error("\n❌ Error: Gmail credentials not found!\n");
+  console.log("📖 Options:");
+  console.log("   1. Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in your .env file");
+  console.log("   2. Or update CLIENT_ID and CLIENT_SECRET directly in this script\n");
+  console.log("📖 See REGENERATE_GMAIL_TOKEN.md for detailed instructions.\n");
   process.exit(1);
 }
 

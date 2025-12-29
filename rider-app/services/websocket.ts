@@ -1,6 +1,7 @@
 import io, { Socket } from 'socket.io-client';
 import { API_BASE_URL } from '@/config/api';
 import { logger } from '@/utils/logger';
+import { getValidAccessToken } from '@/utils/tokenRefresh';
 import type { EventHandlerWithArgs } from '@/types/common';
 
 class WebSocketService {
@@ -10,7 +11,7 @@ class WebSocketService {
   private reconnectDelay = 1000;
   private eventHandlers: Map<string, Set<EventHandlerWithArgs>> = new Map();
 
-  connect(riderId: number) {
+  async connect(riderId: number) {
     if (this.socket?.connected) {
       return;
     }
@@ -20,11 +21,23 @@ class WebSocketService {
       this.disconnect();
     }
 
+    // Get valid JWT access token for authentication (refreshes if expired)
+    const token = await getValidAccessToken();
+    
+    if (!token) {
+      logger.error('Cannot connect WebSocket: No valid access token found', undefined, 'WebSocket');
+      return;
+    }
+
     this.socket = io(API_BASE_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: this.reconnectDelay,
       reconnectionAttempts: this.maxReconnectAttempts,
+      auth: {
+        token: token, // JWT token for authentication
+      },
+      // Keep query params for backward compatibility in test mode
       query: {
         riderId: riderId.toString(),
         role: 'rider',

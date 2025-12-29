@@ -2,6 +2,11 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import crypto from 'crypto';
+import { validate } from '../../middleware/validation';
+import {
+  updateBookingValidation,
+  bookingIdValidation,
+} from '../../middleware/validators/bookingValidators';
 
 const router = express.Router();
 
@@ -39,7 +44,7 @@ const decryptPIN = (encrypted: string): string => {
  * Update a booking (pickup location, number of seats)
  * Query params: riderId (required for security)
  */
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', validate(updateBookingValidation), async (req: Request, res: Response) => {
   try {
     const bookingIdParam = req.params.id;
     if (!bookingIdParam) {
@@ -271,7 +276,7 @@ router.put('/:id', async (req: Request, res: Response) => {
  * Cancel a booking by ID
  * Query params: riderId (required for security)
  */
-router.put('/:id/cancel', async (req: Request, res: Response) => {
+router.put('/:id/cancel', validate(bookingIdValidation), async (req: Request, res: Response) => {
   try {
     const bookingIdParam = req.params.id;
     if (!bookingIdParam) {
@@ -353,6 +358,29 @@ router.put('/:id/cancel', async (req: Request, res: Response) => {
         success: false,
         message: 'Cannot cancel booking for a cancelled or completed ride',
       });
+    }
+
+    // Process refund if payment was made
+    let refundProcessed = false;
+    if (booking.paymentIntentId && booking.paymentStatus && 
+        (booking.paymentStatus === 'authorized' || booking.paymentStatus === 'captured')) {
+      try {
+        const { refundPayment } = require('../services/paymentService');
+        
+        // For authorized payments, cancel the payment intent (no charge yet)
+        if (booking.paymentStatus === 'authorized') {
+          const { cancelPaymentIntent } = require('../services/paymentService');
+          await cancelPaymentIntent(booking.paymentIntentId);
+        } else {
+          // For captured payments, process refund
+          await refundPayment(booking.paymentIntentId, booking.paymentAmount, 'requested_by_customer');
+        }
+        refundProcessed = true;
+        console.log(`✅ Refund processed for booking ${bookingId}`);
+      } catch (refundError) {
+        console.error('❌ Error processing refund:', refundError);
+        // Continue with cancellation even if refund fails (will be handled by webhook)
+      }
     }
 
     // Cancel the booking and restore available seats in a transaction (only if booking was confirmed)

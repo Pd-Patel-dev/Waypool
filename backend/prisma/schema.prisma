@@ -29,8 +29,13 @@ model bookings {
   pickupPinAttempts    Int             @default(0)
   pickupPinLockedUntil DateTime?
   paymentIntentId      String?
-  pricePerSeat         Float           // Price per seat at booking time (locked in)
-  rejectionReason      String?         // Reason provided by driver when rejecting the booking
+  paymentStatus        String?         @default("pending") // 'pending', 'authorized', 'captured', 'failed', 'refunded', 'partially_refunded'
+  paymentAmount        Float? // Total amount charged (in dollars)
+  paymentCurrency      String?         @default("usd")
+  refundAmount         Float? // Amount refunded (in dollars)
+  refundedAt           DateTime?
+  pricePerSeat         Float // Price per seat at booking time (locked in)
+  rejectionReason      String? // Reason provided by driver when rejecting the booking
   rides                rides           @relation(fields: [rideId], references: [id], onDelete: Cascade)
   users                users           @relation(fields: [riderId], references: [id], onDelete: Cascade)
   notifications        notifications[]
@@ -141,6 +146,8 @@ model users {
   bankAccountType                             String? // 'checking' or 'savings'
   bankAccountStatus                           String? // 'new', 'validated', 'verified', 'errored'
   payoutsEnabled                              Boolean          @default(false)
+  // Stripe Customer ID for rider payments
+  stripeCustomerId                            String?          @unique // Stripe customer ID for payment methods
   emailVerified                               Boolean          @default(false)
   bookings                                    bookings[]
   notifications_notifications_driverIdTousers notifications[]  @relation("notifications_driverIdTousers")

@@ -11,10 +11,15 @@ const getGmailClient = () => {
     return null;
   }
 
+  // Use the same redirect URI that was used to generate the token
+  // This must match the redirect URI in Google Cloud Console OAuth 2.0 Client settings
+  // Default to OAuth Playground URI if not specified (most common for token generation)
+  const redirectUri = process.env.GMAIL_REDIRECT_URI || 'https://developers.google.com/oauthplayground';
+  
   const oauth2Client = new google.auth.OAuth2(
     clientId,
     clientSecret,
-    'urn:ietf:wg:oauth:2.0:oob' // Redirect URI for installed apps
+    redirectUri
   );
 
   oauth2Client.setCredentials({
@@ -32,15 +37,16 @@ async function sendEmailViaGmail(to: string, subject: string, html: string, text
   const gmailClient = getGmailClient();
   
   if (!gmailClient) {
-    const isProduction = process.env.NODE_ENV === 'production';
-    if (isProduction) {
-      throw new Error(
-        'Gmail API not configured. Please set GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, and GMAIL_SENDER_EMAIL environment variables.'
-      );
-    }
-    console.warn('⚠️  Gmail API credentials not configured. Email sending is disabled.');
-    console.warn(`   Would send email to ${to} with subject: ${subject}`);
-    return;
+    const missingVars = [];
+    if (!process.env.GMAIL_CLIENT_ID) missingVars.push('GMAIL_CLIENT_ID');
+    if (!process.env.GMAIL_CLIENT_SECRET) missingVars.push('GMAIL_CLIENT_SECRET');
+    if (!process.env.GMAIL_REFRESH_TOKEN) missingVars.push('GMAIL_REFRESH_TOKEN');
+    if (!process.env.GMAIL_SENDER_EMAIL) missingVars.push('GMAIL_SENDER_EMAIL');
+    
+    const errorMessage = `Gmail API not configured. Missing: ${missingVars.join(', ')}`;
+    console.error(`❌ ${errorMessage}`);
+    console.error(`   Would send email to ${to} with subject: ${subject}`);
+    throw new Error(errorMessage);
   }
 
   const { gmail, senderEmail } = gmailClient;
@@ -87,10 +93,47 @@ async function sendEmailViaGmail(to: string, subject: string, html: string, text
       },
     });
 
-    console.log(`✅ Email sent successfully to ${to}`);
-  } catch (error) {
-    console.error('❌ Error sending email via Gmail API:', error);
-    throw new Error('Failed to send email. Please try again.');
+    console.log(`✅ Email sent successfully to ${to} with subject: ${subject}`);
+  } catch (error: any) {
+    const errorDetails = {
+      message: error?.message || 'Unknown error',
+      code: error?.code,
+      status: error?.response?.status,
+      statusText: error?.response?.statusText,
+      data: error?.response?.data,
+    };
+    console.error('❌ Error sending email via Gmail API:', {
+      to,
+      subject,
+      error: errorDetails,
+    });
+    
+    // Provide more specific error messages
+    if (error?.code === 401 || error?.response?.status === 401) {
+      const errorType = error?.response?.data?.error || error?.data?.error;
+      if (errorType === 'unauthorized_client') {
+        console.error('❌ Gmail OAuth client authorization failed!');
+        console.error('📝 This usually means:');
+        console.error('   1. Client ID and Client Secret don\'t match');
+        console.error('   2. Redirect URI mismatch (check GMAIL_REDIRECT_URI in .env)');
+        console.error('   3. OAuth app type mismatch (web app vs installed app)');
+        console.error('📝 To fix: Regenerate token with: node generate-gmail-token.js');
+        throw new Error('Gmail OAuth client authorization failed. Please regenerate your refresh token using: node generate-gmail-token.js');
+      }
+      throw new Error('Gmail API authentication failed. Please check your Gmail credentials and refresh token.');
+    } else if (error?.code === 400 && error?.response?.data?.error === 'invalid_grant') {
+      // Token expired or revoked
+      console.error('❌ Gmail refresh token has expired or been revoked!');
+      console.error('📝 To fix this, run: node generate-gmail-token.js');
+      console.error('📝 Then update GMAIL_REFRESH_TOKEN in your .env file');
+      throw new Error('Gmail refresh token expired. Please regenerate it using: node generate-gmail-token.js');
+    } else if (error?.code === 403 || error?.response?.status === 403) {
+      throw new Error('Gmail API access denied. Please check your Gmail API permissions.');
+    } else if (error?.code === 429 || error?.response?.status === 429) {
+      throw new Error('Gmail API rate limit exceeded. Please try again later.');
+    }
+    
+    throw new Error(`Failed to send email: ${errorDetails.message}`);
   }
 }
 
@@ -308,10 +351,15 @@ This is an automated notification. Please do not reply to this email.
 
     await sendEmailViaGmail(driverEmail, subject, html, text);
     console.log(`✅ Booking request email sent to driver ${driverEmail}`);
-  } catch (error) {
-    console.error('❌ Error sending booking request email:', error);
-    // Don't throw - email failures shouldn't break the booking flow
-    console.warn('⚠️  Booking was created but email notification failed');
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    console.error('❌ Error sending booking request email to driver:', {
+      driverEmail,
+      error: errorMessage,
+      stack: error?.stack,
+    });
+    // Re-throw so calling code knows email failed
+    throw new Error(`Failed to send booking request email: ${errorMessage}`);
   }
 }
 
@@ -559,10 +607,15 @@ We'll send you updates about your ride. See you soon!
 
     await sendEmailViaGmail(riderEmail, subject, html, text);
     console.log(`✅ Booking confirmation email sent to rider ${riderEmail} with PIN ${pickupPIN}`);
-  } catch (error) {
-    console.error('❌ Error sending booking confirmation email:', error);
-    // Don't throw - email failures shouldn't break the booking acceptance flow
-    console.warn('⚠️  Booking was accepted but confirmation email failed');
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    console.error('❌ Error sending booking confirmation email to rider:', {
+      riderEmail,
+      error: errorMessage,
+      stack: error?.stack,
+    });
+    // Re-throw so calling code knows email failed
+    throw new Error(`Failed to send booking confirmation email: ${errorMessage}`);
   }
 }
 
@@ -1015,10 +1068,205 @@ Safe rides, better connections.
     `.trim();
 
     await sendEmailViaGmail(riderEmail, subject, html, text);
-    console.log(`✅ Ride modification email sent to rider ${riderEmail}`);
+    console.log(`✅ Ride modification email sent successfully to ${riderEmail}`);
   } catch (error: any) {
-    console.error(`❌ Error sending ride modification email to ${riderEmail}:`, error);
-    // Don't throw - email failures shouldn't break the ride update flow
+    const errorMessage = error?.message || 'Unknown error';
+    const errorCode = error?.code || 'N/A';
+    console.error(`❌ Error sending ride modification email to ${riderEmail}:`);
+    console.error(`   Error message: ${errorMessage}`);
+    console.error(`   Error code: ${errorCode}`);
+    if (error?.stack) {
+      console.error(`   Stack trace:`, error.stack);
+    }
+    // Re-throw the error so it can be properly logged in the route handler
+    // This ensures errors are visible in logs
+    throw error;
+  }
+}
+
+interface SendRideStartedEmailParams {
+  riderEmail: string;
+  riderName: string;
+  driverName: string;
+  rideDetails: {
+    fromAddress: string;
+    toAddress: string;
+    departureDate: string;
+    departureTime: string;
+  };
+}
+
+/**
+ * Send email to rider when a ride they booked is started
+ */
+export async function sendRideStartedEmail({
+  riderEmail,
+  riderName,
+  driverName,
+  rideDetails,
+}: SendRideStartedEmailParams): Promise<void> {
+  try {
+    const subject = `🚗 Ride Started - ${rideDetails.fromAddress} to ${rideDetails.toAddress}`;
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Ride Started</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fa;">
+          <table role="presentation" style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 40px 20px; text-align: center;">
+                <!-- Header -->
+                <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                  <tr>
+                    <td style="padding: 50px 30px 40px; text-align: center; background: linear-gradient(135deg, #34C759 0%, #28A745 100%); border-radius: 12px 12px 0 0;">
+                      <div style="background-color: rgba(255, 255, 255, 0.25); border-radius: 50%; width: 96px; height: 96px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                        <!-- Car Icon -->
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+                          <path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"></path>
+                          <path d="M12 17v-6"></path>
+                          <path d="M2 12h20"></path>
+                          <circle cx="7" cy="17" r="2"></circle>
+                          <circle cx="17" cy="17" r="2"></circle>
+                        </svg>
+                      </div>
+                      <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Ride Started!</h1>
+                      <p style="margin: 12px 0 0 0; color: rgba(255, 255, 255, 0.95); font-size: 16px; font-weight: 400;">Please be ready for pickup</p>
+                    </td>
+                  </tr>
+                  
+                  <!-- Content -->
+                  <tr>
+                    <td style="padding: 40px 30px;">
+                      <p style="margin: 0 0 20px 0; color: #1a1a1a; font-size: 16px; line-height: 1.6;">
+                        Hi ${riderName},
+                      </p>
+                      <p style="margin: 0 0 30px 0; color: #4a4a4a; font-size: 16px; line-height: 1.6;">
+                        <strong>${driverName}</strong> has started the ride. Please be ready at your pickup location.
+                      </p>
+                      
+                      <!-- Ride Details Card -->
+                      <div style="background-color: #f8f9fa; border-radius: 12px; padding: 24px; margin: 30px 0; border: 1px solid #e9ecef;">
+                        <h2 style="margin: 0 0 20px 0; color: #1a1a1a; font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                          <!-- Location Icon -->
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4285F4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                          </svg>
+                          <span>Ride Details</span>
+                        </h2>
+                        
+                        <div style="margin-bottom: 20px;">
+                          <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px;">
+                            <div style="width: 12px; height: 12px; border-radius: 50%; background-color: #34C759; margin-top: 4px; flex-shrink: 0;"></div>
+                            <div style="flex: 1;">
+                              <p style="margin: 0 0 4px 0; color: #666666; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">From</p>
+                              <p style="margin: 0; color: #1a1a1a; font-size: 16px; font-weight: 600; line-height: 1.4;">${rideDetails.fromAddress}</p>
+                            </div>
+                          </div>
+                          
+                          <div style="width: 2px; height: 24px; background: linear-gradient(180deg, #34C759 0%, #FF3B30 100%); margin-left: 5px; margin-bottom: 16px;"></div>
+                          
+                          <div style="display: flex; align-items: flex-start; gap: 12px;">
+                            <div style="width: 12px; height: 12px; border-radius: 50%; background-color: #FF3B30; margin-top: 4px; flex-shrink: 0;"></div>
+                            <div style="flex: 1;">
+                              <p style="margin: 0 0 4px 0; color: #666666; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">To</p>
+                              <p style="margin: 0; color: #1a1a1a; font-size: 16px; font-weight: 600; line-height: 1.4;">${rideDetails.toAddress}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <table role="presentation" style="width: 100%; border-collapse: collapse; margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                          <tr>
+                            <td style="padding: 8px 0; color: #666666; font-size: 14px; width: 140px; text-align: left;">Date & Time:</td>
+                            <td style="padding: 8px 0; color: #1a1a1a; font-size: 14px; font-weight: 600; text-align: left;">${rideDetails.departureDate} at ${rideDetails.departureTime}</td>
+                          </tr>
+                        </table>
+                      </div>
+
+                      <!-- Important Notice -->
+                      <div style="background-color: #fff3cd; border: 2px solid #ffc107; border-radius: 12px; padding: 20px; margin: 30px 0;">
+                        <p style="margin: 0; color: #856404; font-size: 14px; line-height: 1.6; display: flex; align-items: flex-start; gap: 8px;">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffc107" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block; flex-shrink: 0; margin-top: 2px;">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                          </svg>
+                          <span><strong>Please be ready</strong> at your pickup location. The driver is on their way!</span>
+                        </p>
+                      </div>
+
+                      <!-- CTA -->
+                      <div style="text-align: center; margin: 40px 0 30px 0;">
+                        <a href="#" style="display: inline-block; background: linear-gradient(135deg, #4285F4 0%, #34C759 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);">
+                          View Ride in App
+                        </a>
+                      </div>
+
+                      <p style="margin: 30px 0 0 0; color: #666666; font-size: 14px; line-height: 1.6;">
+                        You can track your ride in real-time through the Waypool app.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Footer -->
+                <table role="presentation" style="max-width: 600px; margin: 20px auto 0; text-align: center;">
+                  <tr>
+                    <td>
+                      <p style="margin: 0; color: #999999; font-size: 12px; line-height: 1.5;">
+                        © ${new Date().getFullYear()} Waypool. All rights reserved.
+                      </p>
+                      <p style="margin: 8px 0 0 0; color: #999999; font-size: 11px;">
+                        Safe rides, better connections.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const text = `
+Ride Started!
+
+Hi ${riderName},
+
+${driverName} has started the ride. Please be ready at your pickup location.
+
+Ride Details:
+From: ${rideDetails.fromAddress}
+To: ${rideDetails.toAddress}
+Date & Time: ${rideDetails.departureDate} at ${rideDetails.departureTime}
+
+Please be ready at your pickup location. The driver is on their way!
+
+You can track your ride in real-time through the Waypool app.
+
+© ${new Date().getFullYear()} Waypool. All rights reserved.
+Safe rides, better connections.
+    `.trim();
+
+    await sendEmailViaGmail(riderEmail, subject, html, text);
+    console.log(`✅ Ride started email sent successfully to ${riderEmail}`);
+  } catch (error: any) {
+    const errorMessage = error?.message || 'Unknown error';
+    const errorCode = error?.code || 'N/A';
+    console.error(`❌ Error sending ride started email to ${riderEmail}:`);
+    console.error(`   Error message: ${errorMessage}`);
+    console.error(`   Error code: ${errorCode}`);
+    if (error?.stack) {
+      console.error(`   Stack trace:`, error.stack);
+    }
+    // Re-throw the error so it can be properly logged in the route handler
+    throw error;
   }
 }
 

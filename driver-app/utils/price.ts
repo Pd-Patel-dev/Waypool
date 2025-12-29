@@ -17,19 +17,9 @@ import { Ride } from '@/services/api';
  * @returns Gross earnings for the ride (before fees)
  */
 export function calculateRideEarnings(ride: Ride, bookedSeats?: number): number {
-  // If bookedSeats is not provided, calculate it
+  // If bookedSeats is not provided, calculate it using the utility function
   if (bookedSeats === undefined) {
-    if (ride.passengers && ride.passengers.length > 0) {
-      // Sum up all booked seats from passengers
-      bookedSeats = ride.passengers.reduce((sum, passenger) => {
-        return sum + (passenger.numberOfSeats || 1);
-      }, 0);
-    } else {
-      // Fallback: calculate from totalSeats and availableSeats
-      const totalSeats = ride.totalSeats || 0;
-      const availableSeats = ride.availableSeats || 0;
-      bookedSeats = Math.max(0, totalSeats - availableSeats);
-    }
+    bookedSeats = calculateBookedSeats(ride);
   }
 
   // Use pricePerSeat if available, otherwise fall back to price
@@ -73,5 +63,34 @@ export function calculateTotalEarnings(rides: Ride[]): number {
   return rides.reduce((total, ride) => {
     return total + calculateRideEarnings(ride);
   }, 0);
+}
+
+/**
+ * Calculate booked seats from passengers array
+ * This is the source of truth for booked seats calculation
+ * 
+ * @param ride - Ride object with passengers array
+ * @returns Number of booked seats
+ */
+export function calculateBookedSeats(ride: Ride): number {
+  if (ride.passengers && ride.passengers.length > 0) {
+    return ride.passengers.reduce((sum, passenger) => {
+      return sum + (passenger.numberOfSeats || 1);
+    }, 0);
+  }
+  return 0;
+}
+
+/**
+ * Calculate available seats as totalSeats - bookedSeats
+ * This ensures consistency: availableSeats = totalSeats - bookedSeats
+ * 
+ * @param ride - Ride object with totalSeats and passengers
+ * @returns Number of available seats (always >= 0)
+ */
+export function calculateAvailableSeats(ride: Ride): number {
+  const totalSeats = ride.totalSeats || 0;
+  const bookedSeats = calculateBookedSeats(ride);
+  return Math.max(0, totalSeats - bookedSeats);
 }
 

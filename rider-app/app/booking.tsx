@@ -9,6 +9,9 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   Modal,
+  Animated,
+  PanResponder,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -19,6 +22,11 @@ import AddressAutocomplete, { type AddressDetails } from '@/components/AddressAu
 import { getSavedAddresses, type SavedAddress } from '@/services/api';
 import { useUser } from '@/context/UserContext';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, BUTTONS, SHADOWS, RESPONSIVE_SPACING, CARDS } from '@/constants/designSystem';
+import { logger } from '@/utils/logger';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const BOTTOM_SHEET_MIN_HEIGHT = 250; // Increased from 120 to show more content
+const BOTTOM_SHEET_MAX_HEIGHT = SCREEN_HEIGHT * 0.85;
 
 // Conditionally import Location only on native platforms
 let Location: LocationService | null = null;
@@ -38,6 +46,13 @@ interface Ride {
   fromLongitude: number;
   toLatitude: number;
   toLongitude: number;
+  departureTime: string;
+  availableSeats: number;
+  driverName?: string;
+  carMake?: string | null;
+  carModel?: string | null;
+  carYear?: number | null;
+  carColor?: string | null;
 }
 
 export default function BookingScreen(): React.JSX.Element {
@@ -54,7 +69,69 @@ export default function BookingScreen(): React.JSX.Element {
   const [isLoadingSavedAddresses, setIsLoadingSavedAddresses] = useState(false);
   const [showAddressDropdown, setShowAddressDropdown] = useState(false);
   const [selectedSavedAddress, setSelectedSavedAddress] = useState<SavedAddress | null>(null);
+  const [numberOfSeats, setNumberOfSeats] = useState(1);
   const mapRef = useRef<MapView>(null);
+  
+  // Bottom Sheet Animation
+  const bottomSheetY = useRef(new Animated.Value(SCREEN_HEIGHT - BOTTOM_SHEET_MIN_HEIGHT)).current;
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderGrant: () => {
+        bottomSheetY.setOffset((bottomSheetY as any)._value);
+        bottomSheetY.setValue(0);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const currentY = (bottomSheetY as any)._offset + (bottomSheetY as any)._value;
+        const newY = currentY + gestureState.dy;
+        const minY = SCREEN_HEIGHT - BOTTOM_SHEET_MAX_HEIGHT;
+        const maxY = SCREEN_HEIGHT - BOTTOM_SHEET_MIN_HEIGHT;
+        
+        if (newY >= minY && newY <= maxY) {
+          bottomSheetY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        bottomSheetY.flattenOffset();
+        const currentY = (bottomSheetY as any)._value;
+        const velocity = gestureState.vy;
+        
+        let targetY = SCREEN_HEIGHT - BOTTOM_SHEET_MIN_HEIGHT;
+        const expanded = isExpanded;
+        
+        if (velocity < -0.5 || (!expanded && currentY < SCREEN_HEIGHT - BOTTOM_SHEET_MAX_HEIGHT * 0.7)) {
+          targetY = SCREEN_HEIGHT - BOTTOM_SHEET_MAX_HEIGHT;
+          setIsExpanded(true);
+        } else if (velocity > 0.5 || (expanded && currentY > SCREEN_HEIGHT - BOTTOM_SHEET_MAX_HEIGHT * 0.3)) {
+          targetY = SCREEN_HEIGHT - BOTTOM_SHEET_MIN_HEIGHT;
+          setIsExpanded(false);
+        } else {
+          targetY = expanded ? SCREEN_HEIGHT - BOTTOM_SHEET_MAX_HEIGHT : SCREEN_HEIGHT - BOTTOM_SHEET_MIN_HEIGHT;
+        }
+        
+        Animated.spring(bottomSheetY, {
+          toValue: targetY,
+          useNativeDriver: false,
+          tension: 50,
+          friction: 8,
+        }).start();
+      },
+    })
+  ).current;
+  
+  useEffect(() => {
+    Animated.spring(bottomSheetY, {
+      toValue: SCREEN_HEIGHT - BOTTOM_SHEET_MIN_HEIGHT,
+      useNativeDriver: false,
+      tension: 50,
+      friction: 8,
+    }).start();
+  }, []);
 
   useEffect(() => {
     // Parse ride data from params
@@ -75,7 +152,12 @@ export default function BookingScreen(): React.JSX.Element {
   // Load saved addresses
   useEffect(() => {
     const loadSavedAddresses = async () => {
-      if (!user?.id) return;
+      // Only load if user is logged in
+      if (!user?.id) {
+        setIsLoadingSavedAddresses(false);
+        return;
+      }
+      
       setIsLoadingSavedAddresses(true);
       try {
         const response = await getSavedAddresses();
@@ -83,12 +165,13 @@ export default function BookingScreen(): React.JSX.Element {
           setSavedAddresses(response.addresses);
         }
       } catch (error: any) {
-        logger.error('Error loading saved addresses', error, 'booking');
         // Silently fail - saved addresses are optional for booking flow
-        // Only log 401 errors, don't show alert to avoid interrupting booking
-        if (error.status !== 401) {
-          logger.warn('Failed to load saved addresses', error.message, 'booking');
+        // Don't log 401 errors (authentication issues) as they're expected if user isn't fully authenticated
+        // Only log other errors that might indicate a real problem
+        if (error.status && error.status !== 401) {
+          logger.warn('Failed to load saved addresses', error.message || 'Unknown error', 'booking');
         }
+        // For 401 errors, just silently fail - user can still book without saved addresses
       } finally {
         setIsLoadingSavedAddresses(false);
       }
@@ -300,15 +383,67 @@ export default function BookingScreen(): React.JSX.Element {
   const handleContinue = () => {
     if (!pickupDetails || !ride) return;
     
-    // Navigate to ride preview screen first
+    // Navigate directly to booking confirmation/payment screen
     router.push({
-      pathname: '/ride-preview',
+      pathname: '/booking-confirm',
       params: {
         ride: JSON.stringify(ride),
         pickupDetails: JSON.stringify(pickupDetails),
+        numberOfSeats: numberOfSeats.toString(),
         totalDistance: totalDistance?.toString() || '0',
       },
     });
+  };
+
+  const handleIncrementSeats = () => {
+    if (ride && numberOfSeats < ride.availableSeats) {
+      setNumberOfSeats(numberOfSeats + 1);
+    }
+  };
+
+  const handleDecrementSeats = () => {
+    if (numberOfSeats > 1) {
+      setNumberOfSeats(numberOfSeats - 1);
+    }
+  };
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'short', 
+        day: 'numeric', 
+        month: 'short' 
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  const formatTime = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  const handleBottomSheetPress = () => {
+    // Expand bottom sheet when tapped if not already expanded
+    if (!isExpanded) {
+      setIsExpanded(true);
+      Animated.spring(bottomSheetY, {
+        toValue: SCREEN_HEIGHT - BOTTOM_SHEET_MAX_HEIGHT,
+        useNativeDriver: false,
+        tension: 50,
+        friction: 8,
+      }).start();
+    }
   };
 
   if (isLoading || !ride) {
@@ -325,24 +460,9 @@ export default function BookingScreen(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <IconSymbol size={24} name="chevron.left" color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Book Your Seat</Text>
-          <View style={styles.placeholder} />
-        </View>
-
-        {/* Map Section */}
-        <View style={styles.mapContainer}>
+      
+      {/* Full Screen Map */}
+      <View style={styles.fullMapContainer}>
           <MapView
             ref={mapRef}
             provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
@@ -442,7 +562,20 @@ export default function BookingScreen(): React.JSX.Element {
                </View>
              </Marker>
           </MapView>
-          {/* Map Overlay Info */}
+          
+          {/* Header Overlay */}
+          <View style={styles.headerOverlay}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <IconSymbol size={24} name="chevron.left" color={COLORS.textPrimary} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Book Your Seat</Text>
+            <View style={styles.placeholder} />
+          </View>
+          
+          {/* Map Info Badge */}
           {totalDistance !== null && pickupDetails && (
             <View style={styles.mapInfoBadge}>
               <IconSymbol name="mappin.circle.fill" size={14} color={COLORS.primary} />
@@ -451,14 +584,45 @@ export default function BookingScreen(): React.JSX.Element {
           )}
         </View>
 
-        {/* Content */}
-        <View style={styles.contentContainer}>
-          <ScrollView 
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+        {/* Swipeable Bottom Sheet */}
+        <Animated.View
+          style={[
+            styles.bottomSheet,
+            {
+              top: bottomSheetY,
+            },
+          ]}
+          {...panResponder.panHandlers}
+        >
+          {/* Drag Handle - Tap to Expand */}
+          <TouchableOpacity
+            style={styles.dragHandle}
+            onPress={handleBottomSheetPress}
+            activeOpacity={0.7}
           >
+            <View style={styles.dragHandleBar} />
+          </TouchableOpacity>
+          
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardView}
+          >
+            {/* Tap overlay when collapsed - allows tapping anywhere to expand */}
+            {!isExpanded && (
+              <TouchableOpacity
+                style={styles.expandTapOverlay}
+                onPress={handleBottomSheetPress}
+                activeOpacity={1}
+              />
+            )}
+            
+            <ScrollView 
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              scrollEnabled={isExpanded}
+            >
             {/* Section: Pickup Location */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Pickup Location</Text>
@@ -516,8 +680,8 @@ export default function BookingScreen(): React.JSX.Element {
                 <Text style={styles.inputLabel}>
                   {savedAddresses.length > 0 ? 'Or enter address' : 'Enter pickup address'}
                 </Text>
-            <AddressAutocomplete
-              value={pickupAddress}
+                <AddressAutocomplete
+                  value={pickupAddress}
                   onChangeText={(text) => {
                     setPickupAddress(text);
                     if (selectedSavedAddress) {
@@ -529,8 +693,8 @@ export default function BookingScreen(): React.JSX.Element {
                     setSelectedSavedAddress(null);
                   }}
                   placeholder="Search for an address"
-              currentLocation={currentLocation}
-            />
+                  currentLocation={currentLocation}
+                />
               </View>
             </View>
 
@@ -539,34 +703,34 @@ export default function BookingScreen(): React.JSX.Element {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Route Preview</Text>
                 <View style={styles.routeCard}>
-                {/* Stop 1: Original Pickup */}
+                  {/* Stop 1: Original Pickup */}
                   <View style={styles.routeStopRow}>
                     <View style={styles.routeStopBadge}>
                       <Text style={styles.routeStopBadgeText}>1</Text>
-                  </View>
+                    </View>
                     <View style={styles.routeStopInfo}>
                       <Text style={styles.routeStopLabel}>Original Pickup</Text>
                       <Text style={styles.routeStopAddress} numberOfLines={2}>
                         {ride.fromAddress}
                       </Text>
+                    </View>
                   </View>
-                </View>
 
-                {/* Stop 2: Your Pickup */}
+                  {/* Stop 2: Your Pickup */}
                   <View style={styles.routeStopDivider} />
                   <View style={styles.routeStopRow}>
                     <View style={[styles.routeStopBadge, styles.routeStopBadgeGreen]}>
                       <Text style={styles.routeStopBadgeText}>2</Text>
-                  </View>
+                    </View>
                     <View style={styles.routeStopInfo}>
                       <Text style={styles.routeStopLabel}>Your Pickup</Text>
                       <Text style={styles.routeStopAddress} numberOfLines={2}>
                         {pickupDetails.fullAddress}
                       </Text>
+                    </View>
                   </View>
-                </View>
 
-                {/* Stop 3: Destination */}
+                  {/* Stop 3: Destination */}
                   <View style={styles.routeStopDivider} />
                   <View style={styles.routeStopRow}>
                     <View style={[styles.routeStopBadge, styles.routeStopBadgeRed]}>
@@ -577,7 +741,7 @@ export default function BookingScreen(): React.JSX.Element {
                       <Text style={styles.routeStopAddress} numberOfLines={2}>
                         {ride.toAddress}
                       </Text>
-                  </View>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -651,24 +815,24 @@ export default function BookingScreen(): React.JSX.Element {
                 </View>
               </TouchableOpacity>
             </Modal>
-          </ScrollView>
+            </ScrollView>
 
-          {/* Continue Button - Fixed at Bottom */}
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={[
-                styles.confirmButton,
-                !pickupDetails && styles.confirmButtonDisabled,
-              ]}
-              onPress={handleContinue}
-              disabled={!pickupDetails}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.confirmButtonText}>Continue</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
+            {/* Action Button - Fixed at Bottom */}
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  !pickupDetails && styles.confirmButtonDisabled,
+                ]}
+                onPress={handleContinue}
+                disabled={!pickupDetails}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmButtonText}>Continue to Payment</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Animated.View>
     </SafeAreaView>
   );
 }
@@ -687,17 +851,30 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  header: {
+  // Full Screen Map
+  fullMapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  map: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  // Header Overlay
+  headerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: RESPONSIVE_SPACING.padding,
     paddingTop: SPACING.base,
     paddingBottom: SPACING.base,
-    backgroundColor: COLORS.background,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
   },
   headerTitle: {
     ...TYPOGRAPHY.h3,
@@ -712,28 +889,44 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 20,
   },
-  mapContainer: {
-    height: 280,
-    backgroundColor: COLORS.background,
-    marginHorizontal: RESPONSIVE_SPACING.margin,
-    marginTop: SPACING.base,
-    marginBottom: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    position: 'relative',
+  // Bottom Sheet
+  bottomSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    height: BOTTOM_SHEET_MAX_HEIGHT,
+    ...SHADOWS.xl,
+    zIndex: 20,
   },
-  map: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
+  dragHandle: {
+    alignItems: 'center',
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
+  },
+  dragHandleBar: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
+  },
+  expandTapOverlay: {
+    position: 'absolute',
+    top: 50, // Below drag handle
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
   },
   mapInfoBadge: {
     position: 'absolute',
-    bottom: SPACING.base,
-    left: SPACING.base,
+    bottom: BOTTOM_SHEET_MIN_HEIGHT + SPACING.base,
+    left: RESPONSIVE_SPACING.padding,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -743,6 +936,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     borderWidth: 1,
     borderColor: COLORS.border,
+    zIndex: 15,
   },
   mapInfoText: {
     ...TYPOGRAPHY.bodySmall,
@@ -772,14 +966,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  contentContainer: {
-    flex: 1,
-  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: RESPONSIVE_SPACING.padding,
+    paddingTop: SPACING.base,
     paddingBottom: 100,
   },
   section: {
@@ -901,6 +1093,266 @@ const styles = StyleSheet.create({
     marginLeft: 15,
     marginVertical: SPACING.sm,
   },
+  routeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 6,
+    backgroundColor: COLORS.primary,
+  },
+  routeDotDest: {
+    backgroundColor: COLORS.error,
+  },
+  // Preview Step Styles
+  detailRow: {
+    marginBottom: SPACING.base,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+  },
+  detailContent: {
+    flex: 1,
+  },
+  detailLabel: {
+    ...TYPOGRAPHY.badge,
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs / 2,
+  },
+  detailValue: {
+    ...TYPOGRAPHY.body,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+  },
+  driverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.base,
+  },
+  driverAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverInitial: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 24,
+    color: COLORS.textPrimary,
+  },
+  driverInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  driverName: {
+    ...TYPOGRAPHY.body,
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.xs / 2,
+  },
+  carInfo: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.textSecondary,
+  },
+  seatSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xl,
+  },
+  seatButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.surfaceElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  seatButtonDisabled: {
+    opacity: 0.5,
+  },
+  seatCount: {
+    ...TYPOGRAPHY.h2,
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    minWidth: 40,
+    textAlign: 'center',
+  },
+  // Departure Card (Matching Ride Details)
+  departureCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    marginHorizontal: RESPONSIVE_SPACING.margin,
+    marginBottom: SPACING.base,
+    padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  departureCardTitle: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.base,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  detailRowLast: {
+    borderBottomWidth: 0,
+  },
+  detailRowLabel: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  detailRowLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  detailRowValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  detailRowText: {
+    ...TYPOGRAPHY.body,
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+    textAlign: 'right',
+    flex: 1,
+  },
+  // Driver Card (Matching Ride Details)
+  driverCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    marginHorizontal: RESPONSIVE_SPACING.margin,
+    marginBottom: SPACING.base,
+    padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  driverCardTitle: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.base,
+  },
+  driverCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.base,
+  },
+  driverCardAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverCardInitial: {
+    ...TYPOGRAPHY.h2,
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  driverCardInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  driverCardName: {
+    ...TYPOGRAPHY.body,
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.xs / 2,
+  },
+  driverCardVehicle: {
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  driverCardVehiclePlaceholder: {
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 14,
+    color: COLORS.textTertiary,
+    fontStyle: 'italic',
+  },
+  // Seats Card
+  seatsCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    marginHorizontal: RESPONSIVE_SPACING.margin,
+    marginBottom: SPACING.lg,
+    padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  seatsCardTitle: {
+    ...TYPOGRAPHY.h3,
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.base,
+  },
+  seatsSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xl,
+    paddingVertical: SPACING.base,
+  },
+  seatsButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.surfaceElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+  },
+  seatsButtonDisabled: {
+    opacity: 0.4,
+    borderColor: COLORS.border,
+  },
+  seatsCountContainer: {
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  seatsCount: {
+    ...TYPOGRAPHY.h2,
+    fontSize: 32,
+    fontWeight: '700',
+    color: COLORS.primary,
+    lineHeight: 38,
+  },
+  seatsLabel: {
+    ...TYPOGRAPHY.caption,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: -4,
+  },
   buttonContainer: {
     position: 'absolute',
     bottom: 0,
@@ -929,6 +1381,46 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
     letterSpacing: 0.3,
+  },
+  // Booking Bar (Matching Ride Details)
+  bookingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: SPACING.base,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: SPACING.xs,
+  },
+  priceText: {
+    ...TYPOGRAPHY.h2,
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  priceLabel: {
+    ...TYPOGRAPHY.bodySmall,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginBottom: 2,
+  },
+  bookNowButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.base,
+    borderRadius: BORDER_RADIUS.md,
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bookNowButtonText: {
+    ...TYPOGRAPHY.body,
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
   },
   // Modal Styles
   modalOverlay: {

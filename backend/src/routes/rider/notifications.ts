@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import type { Prisma } from '@prisma/client';
 import { authenticate, requireRider } from '../../middleware/auth';
+import { socketService } from '../../services/socketService';
 
 const router = express.Router();
 
@@ -238,6 +239,9 @@ router.put('/:id/read', authenticate, requireRider, async (req: Request, res: Re
       },
     });
 
+    // Emit badge update event to refresh badge count
+    socketService.emitToUser(riderId, 'notification:badge_update', {});
+
     return res.json({
       success: true,
       message: 'Notification marked as read',
@@ -271,6 +275,9 @@ router.put('/read-all', authenticate, requireRider, async (req: Request, res: Re
         isRead: true,
       },
     });
+
+    // Emit badge update event to refresh badge count
+    socketService.emitToUser(riderId, 'notification:badge_update', {});
 
     return res.json({
       success: true,

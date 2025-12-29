@@ -47,7 +47,27 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
       req.user = payload;
       next();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Invalid token';
+      // Provide more specific error messages
+      let message = 'Invalid token';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('expired')) {
+          message = 'Token expired. Please log in again.';
+        } else if (error.message.includes('Invalid token type')) {
+          message = 'Invalid token type. Please use an access token.';
+        } else if (error.message.includes('Invalid token')) {
+          message = 'Invalid or malformed token. Please log in again.';
+        } else {
+          message = error.message;
+        }
+      }
+      
+      console.error('Authentication failed:', {
+        error: message,
+        tokenLength: token.length,
+        tokenPrefix: token.substring(0, 20) + '...',
+      });
+      
       sendUnauthorized(res, message);
       return;
     }

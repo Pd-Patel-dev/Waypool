@@ -1,5 +1,6 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
+import { verifyToken, JWTPayload } from '../utils/jwt';
 
 interface SocketUser {
   userId: number;
@@ -43,45 +44,117 @@ class SocketService {
   private setupMiddleware() {
     if (!this.io) return;
 
-    // Authentication middleware (with test mode support)
+    // JWT-based authentication middleware (with test mode support)
     this.io.use((socket: Socket, next) => {
       const { isTestModeEnabled, logTestModeUsage } = require('../utils/testMode');
       
-      const driverId = socket.handshake.query.driverId;
-      const riderId = socket.handshake.query.riderId;
-      const role = socket.handshake.query.role;
-
-      // Validate connection
-      if (!role || (role !== 'driver' && role !== 'rider')) {
-        return next(new Error('Invalid role'));
-      }
-
-      const userId = role === 'driver' 
-        ? (driverId ? parseInt(driverId as string) : null)
-        : (riderId ? parseInt(riderId as string) : null);
-
-      if (!userId || isNaN(userId)) {
-        return next(new Error('User ID is required'));
-      }
-
-      // In test mode, bypass authentication but still use the actual user ID
+      // In test mode, allow query param authentication for backward compatibility
       if (isTestModeEnabled()) {
-        logTestModeUsage('Socket connection (test mode)', { 
-          role, 
-          userId,
-          socketId: socket.id 
-        });
+        const driverId = socket.handshake.query.driverId;
+        const riderId = socket.handshake.query.riderId;
+        const role = socket.handshake.query.role;
+
+        if (role && (role === 'driver' || role === 'rider')) {
+          const userId = role === 'driver' 
+            ? (driverId ? parseInt(driverId as string) : null)
+            : (riderId ? parseInt(riderId as string) : null);
+
+          if (userId && !isNaN(userId)) {
+            logTestModeUsage('Socket connection (test mode - query params)', { 
+              role, 
+              userId,
+              socketId: socket.id 
+            });
+            
+            this.socketToUser.set(socket.id, {
+              userId,
+              role: role as 'driver' | 'rider',
+              socketId: socket.id,
+              testMode: true,
+            });
+            
+            return next();
+          }
+        }
       }
 
-      // Store user info in Map (type-safe, no assertions needed)
-      this.socketToUser.set(socket.id, {
-        userId,
-        role: role as 'driver' | 'rider',
-        socketId: socket.id,
-        testMode: isTestModeEnabled(),
+      // JWT-based authentication (production and normal development)
+      // Token can be in auth.token (handshake.auth) or query.token
+      const token = 
+        (socket.handshake.auth?.token as string) || 
+        (socket.handshake.query?.token as string) ||
+        (socket.handshake.headers?.authorization?.replace('Bearer ', ''));
+
+      if (!token) {
+        console.error(`❌ WebSocket authentication failed for socket ${socket.id}: No token provided`, {
+          hasAuthToken: !!socket.handshake.auth?.token,
+          hasQueryToken: !!socket.handshake.query?.token,
+          hasAuthHeader: !!socket.handshake.headers?.authorization,
+          authKeys: Object.keys(socket.handshake.auth || {}),
+          queryKeys: Object.keys(socket.handshake.query || {}),
+        });
+        return next(new Error('Authentication token is required. Provide token in handshake.auth.token, query.token, or Authorization header.'));
+      }
+
+      // Log token presence (without logging the actual token for security)
+      console.log(`🔐 WebSocket authentication attempt for socket ${socket.id}:`, {
+        tokenLength: token.length,
+        tokenPrefix: token.substring(0, 20) + '...',
+        hasAuthToken: !!socket.handshake.auth?.token,
+        hasQueryToken: !!socket.handshake.query?.token,
+        hasAuthHeader: !!socket.handshake.headers?.authorization,
       });
 
-      next();
+      try {
+        // Verify JWT token
+        const payload: JWTPayload = verifyToken(token);
+        
+        // Verify role matches (driver or rider)
+        if (payload.role !== 'driver' && payload.role !== 'rider') {
+          console.error(`❌ WebSocket authentication failed for socket ${socket.id}: Invalid role in token`, {
+            role: payload.role,
+            userId: payload.userId,
+          });
+          return next(new Error('Invalid user role in token'));
+        }
+
+        // Store user info from JWT token
+        this.socketToUser.set(socket.id, {
+          userId: payload.userId,
+          role: payload.role,
+          socketId: socket.id,
+          testMode: false,
+        });
+
+        console.log(`✅ WebSocket authentication successful for socket ${socket.id}:`, {
+          userId: payload.userId,
+          role: payload.role,
+          email: payload.email,
+        });
+
+        next();
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Token verification failed';
+        const errorDetails: any = {
+          error: errorMessage,
+          tokenLength: token.length,
+          tokenPrefix: token.substring(0, 20) + '...',
+        };
+        
+        // Add more details for specific error types
+        if (error instanceof Error) {
+          if (error.message.includes('expired')) {
+            errorDetails.errorType = 'Token expired';
+          } else if (error.message.includes('invalid')) {
+            errorDetails.errorType = 'Invalid token format';
+          } else if (error.message.includes('secret')) {
+            errorDetails.errorType = 'JWT secret mismatch';
+          }
+        }
+        
+        console.error(`❌ WebSocket authentication failed for socket ${socket.id}:`, errorDetails);
+        return next(new Error(`Authentication failed: ${errorMessage}`));
+      }
     });
   }
 

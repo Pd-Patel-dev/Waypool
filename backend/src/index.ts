@@ -3,8 +3,13 @@ import express from "express";
 import type { Request, Response } from "express";
 import cors from "cors";
 import { createServer } from "http";
-import { getDatabaseStatus, disconnectDatabase } from "./utils/database";
+import {
+  getDatabaseStatus,
+  disconnectDatabase,
+  checkMigrationStatus,
+} from "./utils/database";
 import { validateAndLogEnvironment } from "./utils/envValidation";
+import { checkAllServices } from "./utils/serviceStatus";
 import driverRoutes from "./routes/driver";
 import riderRoutes from "./routes/rider";
 import stripeWebhookRoutes from "./routes/stripeWebhook.routes";
@@ -13,6 +18,7 @@ import { testModeMiddleware } from "./middleware/testModeAuth";
 import { isTestModeEnabled } from "./utils/testMode";
 import { initializeWeeklyPayoutScheduler } from "./services/weeklyPayoutService";
 import { apiRateLimiter } from "./middleware/rateLimiter";
+import { requestLogger } from "./middleware/requestLogger";
 
 // Validate environment variables at startup (before initializing services)
 validateAndLogEnvironment();
@@ -61,16 +67,19 @@ app.use("/api/webhooks", stripeWebhookRoutes);
 
 app.use(express.json());
 
+// Request logging middleware (after body parsing)
+app.use(requestLogger);
+
 // Apply general API rate limiting to all routes (except webhooks)
 // Note: Specific endpoints (auth, email) have stricter rate limits applied directly
 // Webhooks are excluded as they need to handle Stripe's rate requirements
 app.use((req, res, next) => {
   // Skip rate limiting for webhook routes
-  if (req.path.startsWith('/api/webhooks')) {
+  if (req.path.startsWith("/api/webhooks")) {
     return next();
   }
   // Apply general rate limiting to all other API routes
-  if (req.path.startsWith('/api')) {
+  if (req.path.startsWith("/api")) {
     return apiRateLimiter(req, res, next);
   }
   next();
@@ -92,25 +101,70 @@ app.get("/", (req: Request, res: Response) => {
   res.json({ message: "Welcome to Waypool Server" });
 });
 
-// Health check route
+// Health check route - Enhanced with service status checks
 app.get("/health", async (req: Request, res: Response) => {
-  const uptime = Math.floor((Date.now() - serverStartTime) / 1000); // uptime in seconds
-  const dbStatus = await getDatabaseStatus();
+  try {
+    const uptime = Math.floor((Date.now() - serverStartTime) / 1000); // uptime in seconds
+    const dbStatus = await getDatabaseStatus();
+    const migrationStatus = await checkMigrationStatus();
+    const services = await checkAllServices();
 
-  const healthStatus = dbStatus.connected ? "ok" : "degraded";
+    // Determine overall health status
+    const hasCriticalFailure = !dbStatus.connected;
+    const hasDegradedService = services.some((s) => s.status === "degraded");
+    const hasDownService = services.some((s) => s.status === "down");
 
-  res.status(dbStatus.connected ? 200 : 503).json({
-    status: healthStatus,
-    message: "Server is running",
-    uptime: uptime,
-    timestamp: new Date().toISOString(),
-    service: "Waypool Server",
-    version: "1.0.0",
-    database: {
-      connected: dbStatus.connected,
-      ...(dbStatus.error && { error: dbStatus.error }),
-    },
-  });
+    let healthStatus: "ok" | "degraded" | "down" = "ok";
+    if (hasCriticalFailure || hasDownService) {
+      healthStatus = "down";
+    } else if (hasDegradedService || !migrationStatus.isUpToDate) {
+      healthStatus = "degraded";
+    }
+
+    const statusCode =
+      healthStatus === "down" ? 503 : healthStatus === "degraded" ? 200 : 200;
+
+    res.status(statusCode).json({
+      status: healthStatus,
+      message:
+        healthStatus === "ok"
+          ? "All systems operational"
+          : healthStatus === "degraded"
+          ? "Some services are degraded"
+          : "Service unavailable",
+      uptime: uptime,
+      timestamp: new Date().toISOString(),
+      service: "Waypool Server",
+      version: process.env.APP_VERSION || "1.0.0",
+      environment: process.env.NODE_ENV || "development",
+      database: {
+        connected: dbStatus.connected,
+        migrations: {
+          upToDate: migrationStatus.isUpToDate,
+          ...(migrationStatus.pendingMigrations && {
+            pending: migrationStatus.pendingMigrations.length,
+          }),
+        },
+        ...(dbStatus.error && { error: dbStatus.error }),
+      },
+      services: services.reduce((acc, service) => {
+        acc[service.name.toLowerCase().replace(/\s+/g, "_")] = {
+          status: service.status,
+          message: service.message,
+          ...(service.details && { details: service.details }),
+        };
+        return acc;
+      }, {} as Record<string, any>),
+    });
+  } catch (error) {
+    console.error("❌ Error in health check:", error);
+    res.status(503).json({
+      status: "down",
+      message: "Health check failed",
+      error: error instanceof Error ? error.message : "Unknown error",
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Graceful shutdown

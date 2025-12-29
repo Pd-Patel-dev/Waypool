@@ -108,8 +108,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const driverId = user.id; // user.id is now guaranteed to be a number in UserContext
     
-    // Connect to WebSocket
-    websocketService.connect(driverId);
+    // Connect to WebSocket with JWT authentication
+    websocketService.connect(driverId).catch((error) => {
+      console.error('Failed to connect WebSocket:', error);
+    });
 
     // Listen for real-time notification events
     const handleNewNotification = () => {

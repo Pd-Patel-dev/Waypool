@@ -75,7 +75,8 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        riderId: data.riderId,
+        // Note: riderId is now obtained from JWT token on backend, but we keep it for backward compatibility
+        // Backend will ignore it and use the authenticated user's ID from the token
         paymentMethodId: data.paymentMethodId,
         paymentMethodType: data.paymentMethodType,
       }),
@@ -88,14 +89,35 @@ export async function savePaymentMethod(data: SavePaymentMethodRequest): Promise
 
     if (!response.ok) {
       const errorMessage = result.message || 'Failed to save payment method';
+      
+      // Provide more user-friendly error messages
+      let userFriendlyMessage = errorMessage;
+      
+      if (response.status === 401) {
+        if (errorMessage.includes('expired')) {
+          userFriendlyMessage = 'Your session has expired. Please log in again.';
+        } else if (errorMessage.includes('Invalid token')) {
+          userFriendlyMessage = 'Authentication failed. Please log out and log back in.';
+        } else {
+          userFriendlyMessage = 'Authentication required. Please log in again.';
+        }
+      } else if (response.status === 403) {
+        userFriendlyMessage = 'You do not have permission to perform this action.';
+      } else if (response.status === 404) {
+        userFriendlyMessage = 'Payment service not found. Please try again later.';
+      }
+      
       logger.error('API error', {
         status: response.status,
         message: errorMessage,
+        userFriendlyMessage,
         result,
       }, 'savePaymentMethod');
+      
       throw {
-        message: errorMessage,
+        message: userFriendlyMessage,
         status: response.status,
+        originalMessage: errorMessage,
       } as ApiError;
     }
 

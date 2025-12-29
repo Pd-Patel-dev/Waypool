@@ -74,7 +74,9 @@ class RealtimeService {
    * Initialize real-time service for a driver
    */
   initialize(driverId: number) {
-    websocketService.connect(driverId);
+    websocketService.connect(driverId).catch((error) => {
+      console.error('Failed to connect WebSocket:', error);
+    });
 
     // Set up all event listeners
     this.setupEventListeners();

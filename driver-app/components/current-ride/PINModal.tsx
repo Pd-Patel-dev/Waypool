@@ -28,6 +28,15 @@ export const PINModal: React.FC<PINModalProps> = ({
 }) => {
   const [pinInput, setPinInput] = useState('');
 
+  const handlePinChange = (text: string) => {
+    // Only allow numeric characters (0-9)
+    const numericOnly = text.replace(/[^0-9]/g, '');
+    // Limit to 4 digits
+    if (numericOnly.length <= 4) {
+      setPinInput(numericOnly);
+    }
+  };
+
   const handleVerify = async () => {
     if (pinInput.length !== 4) {
       Alert.alert('Invalid PIN', 'Please enter a 4-digit PIN');
@@ -62,7 +71,7 @@ export const PINModal: React.FC<PINModalProps> = ({
           <TextInput
             style={styles.pinInput}
             value={pinInput}
-            onChangeText={setPinInput}
+            onChangeText={handlePinChange}
             placeholder="0000"
             placeholderTextColor="#666666"
             keyboardType="number-pad"

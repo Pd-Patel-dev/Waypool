@@ -61,7 +61,9 @@ export default function NotificationsScreen(): React.JSX.Element {
     const riderId = typeof user.id === 'string' ? parseInt(user.id) : user.id;
     
     // Connect to WebSocket
-    websocketService.connect(riderId);
+    websocketService.connect(riderId).catch((error) => {
+      logger.error('Failed to connect WebSocket', error, 'notifications');
+    });
 
     // Listen for real-time notification events
     const handleNewNotification = () => {

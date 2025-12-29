@@ -18,10 +18,30 @@ async function apiFetch(
     if (requireAuth) {
       const token = await getAccessToken();
       if (token) {
+        // Validate token format (basic check)
+        if (token.trim().length === 0) {
+          console.warn('[apiFetch] Empty token detected, clearing tokens');
+          await clearTokens();
+          throw new Error('Invalid token: token is empty');
+        }
+        
         options.headers = {
           ...options.headers,
           Authorization: `Bearer ${token}`,
         };
+        
+        if (__DEV__) {
+          console.log('[apiFetch] Request with token:', {
+            url,
+            tokenLength: token.length,
+            tokenPrefix: token.substring(0, 20) + '...',
+          });
+        }
+      } else {
+        console.warn('[apiFetch] No access token available for authenticated request');
+        if (requireAuth) {
+          throw new Error('No access token available. Please log in.');
+        }
       }
     }
 
@@ -29,40 +49,76 @@ async function apiFetch(
 
     // If unauthorized, try refreshing token (only once to avoid loops)
     if (response.status === 401 && requireAuth && !url.includes('/auth/refresh')) {
-      // Token might be expired, try to refresh
-      const refreshToken = await getRefreshToken();
-      if (refreshToken) {
-        try {
-          const refreshResponse = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.REFRESH}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken }),
-          });
-
-          if (refreshResponse.ok) {
-            const refreshResult = await refreshResponse.json();
-            const newAccessToken = refreshResult.data?.accessToken || refreshResult.accessToken;
-            const newRefreshToken = refreshResult.data?.refreshToken || refreshResult.refreshToken;
-            
-            if (newAccessToken && newRefreshToken) {
-              await storeTokens(newAccessToken, newRefreshToken);
-              
-              // Retry the original request with new token
-              const retryOptionsWithAuth = {
-                ...options,
-                headers: {
-                  ...options.headers,
-                  Authorization: `Bearer ${newAccessToken}`,
-                },
-              };
-              return await fetchWithRetry(url, retryOptionsWithAuth, retryOptions);
-            }
+      // Check if response body contains authentication error
+      let isAuthError = false;
+      let errorMessage = '';
+      
+      try {
+        const clonedResponse = response.clone();
+        const contentType = clonedResponse.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await clonedResponse.json();
+          errorMessage = errorData.message || '';
+          // Check for authentication-related error messages
+          if (errorMessage.toLowerCase().includes('token') || 
+              errorMessage.toLowerCase().includes('invalid') ||
+              errorMessage.toLowerCase().includes('malformed') ||
+              errorMessage.toLowerCase().includes('expired') ||
+              errorMessage.toLowerCase().includes('authentication')) {
+            isAuthError = true;
           }
-        } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError);
-          // If refresh fails, clear tokens and let the 401 response through
-          await clearTokens();
         }
+      } catch (parseError) {
+        // If we can't parse, assume it's an auth error if status is 401
+        isAuthError = true;
+      }
+
+      if (isAuthError) {
+        console.log('[apiFetch] Authentication error detected, attempting token refresh...');
+        const refreshToken = await getRefreshToken();
+        
+        if (refreshToken) {
+          try {
+            const refreshResponse = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.REFRESH}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken }),
+            });
+
+            if (refreshResponse.ok) {
+              const refreshResult = await refreshResponse.json();
+              const newAccessToken = refreshResult.data?.accessToken || refreshResult.accessToken;
+              const newRefreshToken = refreshResult.data?.refreshToken || refreshResult.refreshToken;
+              
+              if (newAccessToken && newRefreshToken) {
+                console.log('[apiFetch] Token refresh successful, retrying original request');
+                await storeTokens(newAccessToken, newRefreshToken);
+                
+                // Retry the original request with new token
+                const retryOptionsWithAuth = {
+                  ...options,
+                  headers: {
+                    ...options.headers,
+                    Authorization: `Bearer ${newAccessToken}`,
+                  },
+                };
+                return await fetchWithRetry(url, retryOptionsWithAuth, retryOptions);
+              } else {
+                console.warn('[apiFetch] Token refresh response missing tokens');
+              }
+            } else {
+              console.warn('[apiFetch] Token refresh failed with status:', refreshResponse.status);
+            }
+          } catch (refreshError) {
+            console.error('[apiFetch] Token refresh error:', refreshError);
+          }
+        } else {
+          console.warn('[apiFetch] No refresh token available');
+        }
+        
+        // If refresh failed or no refresh token, clear tokens
+        console.log('[apiFetch] Clearing tokens due to authentication failure');
+        await clearTokens();
       }
     }
 
@@ -801,6 +857,9 @@ export const checkEmail = async (
 export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
   try {
     const url = `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}`;
+    
+    console.log('[getUpcomingRides] Fetching rides from:', url);
+    console.log('[getUpcomingRides] API_BASE_URL:', API_BASE_URL);
 
     const response = await apiFetch(
       url,
@@ -810,7 +869,11 @@ export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
           "Content-Type": "application/json",
         },
       },
-      {},
+      {
+        maxRetries: 3,
+        initialDelay: 1000,
+        maxDelay: 5000,
+      },
       true // requireAuth
     );
 
@@ -821,6 +884,7 @@ export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
         success: false,
         message:
           result.message || "Unable to load upcoming rides. Please try again.",
+        status: response.status,
       } as ApiError;
     }
 
@@ -829,12 +893,51 @@ export const getUpcomingRides = async (driverId?: number): Promise<Ride[]> => {
     const rides = result.data?.rides ?? result.rides ?? [];
     return Array.isArray(rides) ? rides : [];
   } catch (error: any) {
+    console.error('[getUpcomingRides] Error details:', {
+      message: error?.message,
+      status: error?.status,
+      url: `${API_BASE_URL}${API_ENDPOINTS.RIDES.UPCOMING}`,
+      apiBaseUrl: API_BASE_URL,
+      errorType: error?.constructor?.name,
+    });
+    
     if (error && typeof error === "object" && "message" in error) {
+      const errorMessage = String(error.message || '').toLowerCase();
+      
+      // Check if it's an authentication error
+      if (errorMessage.includes('invalid') && errorMessage.includes('token') ||
+          errorMessage.includes('malformed token') ||
+          errorMessage.includes('token expired') ||
+          errorMessage.includes('please log in again') ||
+          error?.status === 401) {
+        // Clear tokens and provide clear message
+        await clearTokens();
+        throw {
+          success: false,
+          message: "Your session has expired. Please log in again.",
+          status: 401,
+          requiresLogin: true,
+        } as ApiError & { requiresLogin?: boolean };
+      }
+      
+      // Check if it's a network error
+      if (errorMessage.includes('network request failed') || 
+          errorMessage.includes('failed to fetch') ||
+          errorMessage.includes('networkerror')) {
+        throw {
+          success: false,
+          message: `Cannot connect to server. Please check:\n1. Backend is running\n2. API URL is correct: ${API_BASE_URL}\n3. Device is on the same network`,
+          status: 0,
+        } as ApiError;
+      }
+      
       throw error;
     }
+    
     throw {
       success: false,
-      message: "Network error. Please check your connection.",
+      message: "Network error. Please check your connection and try again.",
+      status: error?.status || 0,
     } as ApiError;
   }
 };
@@ -922,10 +1025,19 @@ export const createRide = async (
     const result = await response.json();
 
     if (!response.ok) {
+      // Extract validation errors if present
+      const errorMessage = result.message || "Failed to create ride";
+      const validationErrors = result.errors || [];
+      
+      // If we have validation errors, show them in the message
+      const fullMessage = validationErrors.length > 0
+        ? `${errorMessage}\n\n${validationErrors.join('\n')}`
+        : errorMessage;
+      
       throw {
         success: false,
-        message: result.message || "Failed to create ride",
-        errors: result.errors || [],
+        message: fullMessage,
+        errors: validationErrors,
         status: response.status,
       } as ApiError;
     }

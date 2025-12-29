@@ -339,6 +339,16 @@ export default function AddCardScreen(): React.JSX.Element {
       // Handle specific error cases
       let errorMessage = error.message || 'Failed to add card. Please try again.';
       
+      // Handle JSON parse errors (usually means server returned HTML instead of JSON)
+      if (error.message?.includes('JSON Parse error') || error.message?.includes('Unexpected character')) {
+        errorMessage = 'Server communication error. Please check your internet connection and try again.';
+        if (error.status === 404) {
+          errorMessage = 'The payment service endpoint was not found. Please contact support.';
+        } else if (error.status === 500) {
+          errorMessage = 'Server error occurred. Please try again in a moment.';
+        }
+      }
+      
       // If rider not found (404), suggest logging out and back in
       if (error.status === 404 && (error.message?.includes('Rider not found') || error.message?.includes('not found'))) {
         Alert.alert(
