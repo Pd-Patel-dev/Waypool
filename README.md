@@ -181,11 +181,4 @@ This is a side project, so things might not be perfect. I've been learning as I 
 
 Also, make sure to set up all your environment variables properly. The backend won't start without the required ones, and the apps won't work without the API URL configured.
 
-## License
-
-Just a personal project, so no license really. Feel free to use it as reference or inspiration though!
-
----
-
-Built with way too much coffee ☕ and Stack Overflow searches 🔍
 
