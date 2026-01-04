@@ -28,3 +28,4 @@ COMMENT ON COLUMN bookings.payment_currency IS 'Currency code (e.g., usd)';
 COMMENT ON COLUMN bookings.refund_amount IS 'Amount refunded in dollars';
 COMMENT ON COLUMN bookings.refunded_at IS 'Timestamp when refund was processed';
 
+
